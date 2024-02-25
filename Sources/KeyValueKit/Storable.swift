@@ -84,6 +84,59 @@ extension Storable {
     #endif
 }
 
+// MARK: - Default Implementation for Types Whose Storable Value is Self
+
+extension Storable where StorableValue == Self {
+    // MARK: Converting to and from Storable Value
+    
+    @inlinable
+    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
+        storage()
+    }
+    
+    @inlinable
+    public func encodeForStorage() -> StorableValue {
+        self
+    }
+}
+
+// MARK: - Default Implementation for Types That Can Defer Serialization to Other Storable Type
+
+extension Storable where StorableValue: Storable, StorableValue.StorableValue == StorableValue {
+    // MARK: Interfacing With User Defaults
+    
+    @inlinable
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
+        .extract(userDefaultsKey, from: userDefaults)
+    }
+
+    @inlinable
+    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
+        value.store(value, as: userDefaultsKey, in: userDefaults)
+    }
+    
+    #if !os(watchOS)
+
+    @inlinable
+    public static func extract(
+        _ ubiquitousStoreKey: String,
+        from ubiquitousStore: NSUbiquitousKeyValueStore
+    ) -> StorableValue? {
+        .extract(ubiquitousStoreKey, from: ubiquitousStore)
+    }
+    
+    @inlinable
+    public func store(
+        _ value: StorableValue,
+        as ubiquitousStoreKey: String,
+        in ubiquitousStore: NSUbiquitousKeyValueStore
+    ) {
+        value.store(value, as: ubiquitousStoreKey, in: ubiquitousStore)
+    }
+
+    #endif
+}
+
 // MARK: - Novel Implementation
 
 extension Storable {
@@ -128,18 +181,6 @@ extension Bool: Storable {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-    
-    // MARK: Converting to and from Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> Self {
-        self
-    }
 
     // MARK: Interfacing With User Defaults
     
@@ -185,18 +226,6 @@ extension Data: Storable {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-    
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> Self {
-        self
-    }
 
     // MARK: Interfacing With User Defaults
 
@@ -234,7 +263,7 @@ extension Date: Storable {
     
     public typealias StorableValue = TimeInterval
     
-    // MARK: Converting to and From Storable Value
+    // MARK: Converting to and from Storable Value
     
     @inlinable
     public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
@@ -249,39 +278,6 @@ extension Date: Storable {
     public func encodeForStorage() -> TimeInterval {
         timeIntervalSince1970
     }
-    
-    // MARK: Interfacing With User Defaults
-    
-    @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
-        TimeInterval.extract(userDefaultsKey, from: userDefaults)
-    }
-
-    @inlinable
-    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        value.store(value, as: userDefaultsKey, in: userDefaults)
-    }
-    
-    #if !os(watchOS)
-
-    @inlinable
-    public static func extract(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> StorableValue? {
-        TimeInterval.extract(ubiquitousStoreKey, from: ubiquitousStore)
-    }
-    
-    @inlinable
-    public func store(
-        _ value: StorableValue,
-        as ubiquitousStoreKey: String,
-        in ubiquitousStore: NSUbiquitousKeyValueStore
-    ) {
-        value.store(value, as: ubiquitousStoreKey, in: ubiquitousStore)
-    }
-
-    #endif
 }
 
 // MARK: - Extension for Double
@@ -290,18 +286,6 @@ extension Double: Storable {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-    
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> Self {
-        self
-    }
 
     // MARK: Interfacing With User Defaults
     
@@ -348,18 +332,6 @@ extension Float: Storable {
     
     public typealias StorableValue = Self
     
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> Self {
-        self
-    }
-    
     // MARK: Interfacing With User Defaults
     
     @inlinable
@@ -395,18 +367,6 @@ extension Int: Storable {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-    
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> Self?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> Self {
-        self
-    }
 
     // MARK: Interfacing With User Defaults
 
@@ -442,15 +402,15 @@ extension String: Storable {
     
     public typealias StorableValue = Self
     
-    // MARK: Converting to and From Storable Value
+    // MARK: Converting to and from Storable Value
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> Self?) -> Self? {
+    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
         storage()
     }
     
     @inlinable
-    public func encodeForStorage() -> Self {
+    public func encodeForStorage() -> StorableValue {
         self
     }
 
@@ -459,6 +419,11 @@ extension String: Storable {
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
         userDefaults.string(forKey: userDefaultsKey)
+    }
+    
+    @inlinable
+    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
+        userDefaults.set(value, forKey: userDefaultsKey)
     }
     
     #if !os(watchOS)
@@ -489,18 +454,6 @@ extension Array: Storable where Element == String {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-    
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> Self?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> Self {
-        self
-    }
 
     // MARK: Interfacing With User Defaults
 
@@ -538,18 +491,6 @@ extension URL: Storable {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-    
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> Self?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> Self {
-        self
-    }
 
     // MARK: Interfacing With User Defaults
 

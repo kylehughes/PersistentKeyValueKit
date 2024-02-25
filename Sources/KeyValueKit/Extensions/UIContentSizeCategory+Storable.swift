@@ -11,7 +11,9 @@ import Foundation
 import UIKit
 
 extension UIContentSizeCategory: Storable {
-    // NO-OP
+    // MARK: Public Typealiases
+    
+    public typealias StorableValue = Self
 }
 
 #endif
