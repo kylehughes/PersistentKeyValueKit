@@ -16,7 +16,7 @@ public protocol KeyValuePersistable {
     
     static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence?
     
-    func store(_ value: Persistence, as userDefaultsKey: String, in userDefaults: UserDefaults)
+    func store(as userDefaultsKey: String, in userDefaults: UserDefaults)
     
     #if !os(watchOS)
     
@@ -24,7 +24,7 @@ public protocol KeyValuePersistable {
     
     static func extract(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Persistence?
     
-    func store(_ value: Persistence, as ubiquitousStoreKey: String, in ubiquitousStore: NSUbiquitousKeyValueStore)
+    func store(as ubiquitousStoreKey: String, in ubiquitousStore: NSUbiquitousKeyValueStore)
     
     #endif
 }

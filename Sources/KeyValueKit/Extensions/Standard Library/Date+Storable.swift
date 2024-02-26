@@ -26,11 +26,11 @@ extension Date: KeyValueSerializable {
     
     @inlinable
     public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
-        guard let KeyValueStorableValue = storage() else {
+        guard let serialization = storage() else {
             return nil
         }
         
-        return Date(timeIntervalSince1970: KeyValueStorableValue)
+        return Date(timeIntervalSince1970: serialization)
     }
     
     @inlinable

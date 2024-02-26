@@ -11,7 +11,9 @@ public protocol KeyValuePersistableAsProxy: KeyValuePersistable
 where
     Persistence: KeyValuePersistable,
     Persistence == Persistence.Persistence
-{}
+{
+    var persistenceValue: Persistence { get }
+}
 
 // MARK: - KeyValueStorable Implementation
 
@@ -24,8 +26,8 @@ extension KeyValuePersistableAsProxy {
     }
     
     @inlinable
-    public func store(_ value: Persistence, as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        value.store(value, as: userDefaultsKey, in: userDefaults)
+    public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
+        persistenceValue.store(as: userDefaultsKey, in: userDefaults)
     }
     
     #if !os(watchOS)
@@ -40,12 +42,22 @@ extension KeyValuePersistableAsProxy {
     
     @inlinable
     public func store(
-        _ value: Persistence,
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        value.store(value, as: ubiquitousStoreKey, in: ubiquitousStore)
+        persistenceValue.store(as: ubiquitousStoreKey, in: ubiquitousStore)
     }
 
     #endif
+}
+
+// MARK: - Default Implementation where Self Serializes to Proxy
+
+extension KeyValuePersistableAsProxy where Self: KeyValueSerializable, Persistence == Serialization {
+    // MARK: Public Instance Interface
+    
+    @inlinable
+    public var persistenceValue: Persistence {
+        encodeForStorage()
+    }
 }

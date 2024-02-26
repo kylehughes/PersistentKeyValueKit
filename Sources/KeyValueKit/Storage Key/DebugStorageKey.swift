@@ -36,7 +36,7 @@ extension DebugStorageKey {
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
         #if DEBUG
-        newValue.store(newValue.encodeForStorage(), as: id, in: userDefaults)
+        newValue.store(as: id, in: userDefaults)
         #else
         // NO-OP
         #endif
@@ -65,7 +65,7 @@ extension DebugStorageKey {
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         #if DEBUG
-        newValue.store(newValue.encodeForStorage(), as: id, in: ubiquitousStore)
+        newValue.store(as: id, in: ubiquitousStore)
         #else
         // NO-OP
         #endif

@@ -24,8 +24,8 @@ extension Bool: KeyValuePersistable {
     }
     
     @inlinable
-    public func store(_ value: Persistence, as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        userDefaults.set(value, forKey: userDefaultsKey)
+    public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
+        userDefaults.set(self, forKey: userDefaultsKey)
     }
     
     #if !os(watchOS)
@@ -42,11 +42,10 @@ extension Bool: KeyValuePersistable {
     
     @inlinable
     public func store(
-        _ value: Persistence,
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
+        ubiquitousStore.set(self, forKey: ubiquitousStoreKey)
     }
     
     #endif

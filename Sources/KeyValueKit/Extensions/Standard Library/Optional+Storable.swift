@@ -22,12 +22,12 @@ extension Optional: KeyValuePersistable where Wrapped: KeyValuePersistable {
     }
     
     @inlinable
-    public func store(_ value: Persistence, as userDefaultsKey: String, in userDefaults: UserDefaults) {
+    public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
         switch self {
         case .none:
             userDefaults.removeObject(forKey: userDefaultsKey)
         case let .some(wrapped):
-            wrapped.store(wrapped.encodeForStorage(), as: userDefaultsKey, in: userDefaults)
+            wrapped.store(as: userDefaultsKey, in: userDefaults)
         }
     }
     
@@ -45,7 +45,6 @@ extension Optional: KeyValuePersistable where Wrapped: KeyValuePersistable {
     
     @inlinable
     public func store(
-        _ value: Persistence,
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
@@ -53,7 +52,7 @@ extension Optional: KeyValuePersistable where Wrapped: KeyValuePersistable {
         case .none:
             ubiquitousStore.removeObject(forKey: ubiquitousStoreKey)
         case let .some(wrapped):
-            wrapped.store(wrapped.encodeForStorage(), as: ubiquitousStoreKey, in: ubiquitousStore)
+            wrapped.store(as: ubiquitousStoreKey, in: ubiquitousStore)
         }
     }
 

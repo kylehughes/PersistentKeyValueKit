@@ -54,7 +54,7 @@ extension StorageKey: StorageKeyProtocol {
     
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
-        newValue.store(newValue.encodeForStorage(), as: id, in: userDefaults)
+        newValue.store(as: id, in: userDefaults)
     }
     
     #if !os(watchOS)
@@ -71,7 +71,7 @@ extension StorageKey: StorageKeyProtocol {
     
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        newValue.store(newValue.encodeForStorage(), as: id, in: ubiquitousStore)
+        newValue.store(as: id, in: ubiquitousStore)
     }
     
     #endif
