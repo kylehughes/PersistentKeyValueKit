@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Storable Extension
 
-extension Array<String>: Storable {
+extension Array<String>: Storable, StorableAsSelf {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
@@ -19,6 +19,11 @@ extension Array<String>: Storable {
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
         userDefaults.stringArray(forKey: userDefaultsKey)
+    }
+    
+    @inlinable
+    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
+        userDefaults.set(value, forKey: userDefaultsKey)
     }
     
     #if !os(watchOS)

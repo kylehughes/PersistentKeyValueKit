@@ -9,11 +9,11 @@ import Foundation
 
 // MARK: - Storable Extension
 
-extension Bool: Storable {
+extension Bool: Storable, StorableAsSelf {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-
+    
     // MARK: Interfacing With User Defaults
     
     @inlinable

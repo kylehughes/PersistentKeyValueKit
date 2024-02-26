@@ -9,19 +9,26 @@ import Foundation
 
 // MARK: - Storable Extension
 
-extension Data: Storable {
+extension Data: Storable, StorableAsSelf {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
 
-    // MARK: Interfacing With User Defaults
+    // MARK: Interfacing with User Defaults
 
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
         userDefaults.data(forKey: userDefaultsKey)
     }
     
+    @inlinable
+    public func store(_ value: Data, as userDefaultsKey: String, in userDefaults: UserDefaults) {
+        userDefaults.set(value, forKey: userDefaultsKey)
+    }
+    
     #if !os(watchOS)
+    
+    // MARK: Interfacing with Ubiquitous Key-Value Store
     
     @inlinable
     public static func extract(

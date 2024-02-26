@@ -7,6 +7,9 @@
 
 import Foundation
 
+// TODO: it would be worth having different implementations that you can piece together for decode encode and extract / store i think
+// might want up to four composable protocols
+
 /// A type that can be a value in key-value storage implementations that conform to ``Storage``.
 public protocol Storable {
     // MARK: Associated Types
@@ -43,61 +46,6 @@ public protocol Storable {
     func store(_ value: StorableValue, as ubiquitousStoreKey: String, in ubiquitousStore: NSUbiquitousKeyValueStore)
     
     #endif
-}
-
-// MARK: - Default Implementation
-
-extension Storable {
-    // MARK: Interfacing with User Defaults
-    
-    @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
-        userDefaults.object(forKey: userDefaultsKey) as? StorableValue
-    }
-    
-    @inlinable
-    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        userDefaults.set(value, forKey: userDefaultsKey)
-    }
-    
-    #if !os(watchOS)
-    
-    // MARK: Interfacing with Ubiquitous Key-Value Store
-    
-    @inlinable
-    public static func extract(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> StorableValue? {
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? StorableValue
-    }
-    
-    @inlinable
-    public func store(
-        _ value: StorableValue,
-        as ubiquitousStoreKey: String,
-        in ubiquitousStore: NSUbiquitousKeyValueStore
-    ) {
-        ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
-    }
-    
-    #endif
-}
-
-// MARK: - Default Implementation for Types Whose Storable Value is Self
-
-extension Storable where StorableValue == Self {
-    // MARK: Converting to and from Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> StorableValue {
-        self
-    }
 }
 
 // MARK: - Novel Implementation

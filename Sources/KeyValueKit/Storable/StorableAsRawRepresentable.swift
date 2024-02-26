@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol StorableAsRawRepresentable: Storable, RawRepresentable
+public protocol StorableAsRawRepresentable: RawRepresentable, Storable, StorableAsProxy
 where
     RawValue: Storable,
     StorableValue == RawValue,

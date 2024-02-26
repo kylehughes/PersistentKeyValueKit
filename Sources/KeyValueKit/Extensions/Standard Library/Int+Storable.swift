@@ -9,11 +9,11 @@ import Foundation
 
 // MARK: - Storable Extension
 
-extension Int: Storable {
+extension Int: Storable, StorableAsSelf {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
-
+    
     // MARK: Interfacing With User Defaults
 
     @inlinable
@@ -35,7 +35,18 @@ extension Int: Storable {
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> StorableValue? {
+        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
+        // a 0 value.
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? StorableValue
+    }
+    
+    @inlinable
+    public func store(
+        _ value: StorableValue,
+        as ubiquitousStoreKey: String,
+        in ubiquitousStore: NSUbiquitousKeyValueStore
+    ) {
+        ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
     }
 
     #endif

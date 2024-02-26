@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Storable Extension
 
-extension Float: Storable {
+extension Float: Storable, StorableAsSelf {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
@@ -38,6 +38,15 @@ extension Float: Storable {
         // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
         // a 0 value.
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? StorableValue
+    }
+    
+    @inlinable
+    public func store(
+        _ value: StorableValue,
+        as ubiquitousStoreKey: String,
+        in ubiquitousStore: NSUbiquitousKeyValueStore
+    ) {
+        ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
     }
 
     #endif

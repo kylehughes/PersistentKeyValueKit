@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Storable Extension
 
-extension URL: Storable {
+extension URL: Storable, StorableAsSelf {
     // MARK: Public Typealiases
     
     public typealias StorableValue = Self
@@ -34,6 +34,15 @@ extension URL: Storable {
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> StorableValue? {
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? StorableValue
+    }
+    
+    @inlinable
+    public func store(
+        _ value: StorableValue,
+        as ubiquitousStoreKey: String,
+        in ubiquitousStore: NSUbiquitousKeyValueStore
+    ) {
+        ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
     }
 
     #endif

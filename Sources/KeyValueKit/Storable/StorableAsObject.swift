@@ -1,5 +1,5 @@
 //
-//  Double+Storable.swift
+//  StorableAsObject.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/25/24.
@@ -7,36 +7,32 @@
 
 import Foundation
 
+public protocol StorableAsObject: Storable {}
+
 // MARK: - Storable Extension
 
-extension Double: Storable, StorableAsSelf {
-    // MARK: Public Typealiases
-    
-    public typealias StorableValue = Self
-    
-    // MARK: Interfacing With User Defaults
+extension StorableAsObject {
+    // MARK: Interfacing with User Defaults
     
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a 0 value.
         userDefaults.object(forKey: userDefaultsKey) as? StorableValue
     }
-
+    
     @inlinable
     public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
         userDefaults.set(value, forKey: userDefaultsKey)
     }
     
     #if !os(watchOS)
-
+    
+    // MARK: Interfacing with Ubiquitous Key-Value Store
+    
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> StorableValue? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a 0 value.
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? StorableValue
     }
     
@@ -48,6 +44,6 @@ extension Double: Storable, StorableAsSelf {
     ) {
         ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
     }
-
+    
     #endif
 }

@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Storable Extension
 
-extension UUID: Storable {
+extension UUID: Storable, StorableAsProxy {
     // MARK: Public Typealiases
     
     public typealias StorableValue = String

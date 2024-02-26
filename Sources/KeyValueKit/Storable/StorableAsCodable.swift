@@ -7,7 +7,10 @@
 
 import Foundation
 
-public protocol StorableAsCodable: Storable, Codable where StorableValue == String {}
+public protocol StorableAsCodable: Codable, Storable, StorableAsProxy
+where
+    StorableValue == String
+{}
 
 // MARK: - Storable Implementation
 
