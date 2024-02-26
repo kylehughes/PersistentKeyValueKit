@@ -27,7 +27,7 @@ extension DebugStorageKey {
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
         #if DEBUG
-        .decode(for: self, from: Value.extract(self, from: userDefaults))
+        .deserialize(for: self, from: Value.extract(self, from: userDefaults))
         #else
         defaultValue
         #endif
@@ -56,7 +56,7 @@ extension DebugStorageKey {
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         #if DEBUG
-        .decode(for: self, from: Value.extract(self, from: ubiquitousStore))
+        .deserialize(for: self, from: Value.extract(self, from: ubiquitousStore))
         #else
         defaultValue
         #endif

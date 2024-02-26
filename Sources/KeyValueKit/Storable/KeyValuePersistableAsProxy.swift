@@ -58,6 +58,6 @@ extension KeyValuePersistableAsProxy where Self: KeyValueSerializable, Persisten
     
     @inlinable
     public var persistenceValue: Persistence {
-        encodeForStorage()
+        serialize()
     }
 }

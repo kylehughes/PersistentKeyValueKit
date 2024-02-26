@@ -44,7 +44,7 @@ extension StorageKey: StorageKeyProtocol {
 
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
-        .decode(for: self, from: Value.extract(self, from: userDefaults))
+        .deserialize(for: self, from: Value.extract(self, from: userDefaults))
     }
     
     @inlinable
@@ -61,7 +61,7 @@ extension StorageKey: StorageKeyProtocol {
     
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
-        .decode(for: self, from: Value.extract(self, from: ubiquitousStore))
+        .deserialize(for: self, from: Value.extract(self, from: ubiquitousStore))
     }
     
     @inlinable

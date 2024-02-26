@@ -20,8 +20,8 @@ extension KeyValueSerializableAsRawRepresentable {
     // MARK: Converting to and from KeyValueStorable Value
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
-        guard let rawValue = RawValue.decode(from: storage()), let value = Self(rawValue: rawValue) else {
+    public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {
+        guard let rawValue = RawValue.deserialize(from: serialization()), let value = Self(rawValue: rawValue) else {
             return nil
         }
         
@@ -29,7 +29,7 @@ extension KeyValueSerializableAsRawRepresentable {
     }
     
     @inlinable
-    public func encodeForStorage() -> Serialization {
-        rawValue.encodeForStorage()
+    public func serialize() -> Serialization {
+        rawValue.serialize()
     }
 }

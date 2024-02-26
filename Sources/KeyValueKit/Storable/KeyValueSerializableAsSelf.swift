@@ -18,12 +18,12 @@ extension KeyValueSerializableAsSelf {
     // MARK: Serializing & Deserializing
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
-        storage()
+    public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {
+        serialization()
     }
     
     @inlinable
-    public func encodeForStorage() -> Serialization {
+    public func serialize() -> Serialization {
         self
     }
 }

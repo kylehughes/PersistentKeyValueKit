@@ -21,7 +21,7 @@ public struct UserDefaultsRegistrationBuilder {
     public func adding<Value>(_ key: StorageKey<Value>) -> UserDefaultsRegistrationBuilder {
         var copy = self
         
-        copy.registrations[key.id] = key.defaultValue.encodeForStorage()
+        copy.registrations[key.id] = key.defaultValue.serialize()
         
         return copy
     }
@@ -29,8 +29,8 @@ public struct UserDefaultsRegistrationBuilder {
     public func adding<Value>(_ key: StorageKey<Value?>) -> UserDefaultsRegistrationBuilder {
         var copy = self
         
-        if let encodedValue = key.defaultValue.encodeForStorage() {
-            copy.registrations[key.id] = encodedValue
+        if let serialization = key.defaultValue.serialize() {
+            copy.registrations[key.id] = serialization
         }
         
         return copy
@@ -40,7 +40,7 @@ public struct UserDefaultsRegistrationBuilder {
         #if DEBUG
         var copy = self
         
-        copy.registrations[key.id] = key.defaultValue.encodeForStorage()
+        copy.registrations[key.id] = key.defaultValue.serialize()
         
         return copy
         #else
@@ -52,8 +52,8 @@ public struct UserDefaultsRegistrationBuilder {
         #if DEBUG
         var copy = self
         
-        if let encodedValue = key.defaultValue.encodeForStorage() {
-            copy.registrations[key.id] = encodedValue
+        if let serialization = key.defaultValue.serialize() {
+            copy.registrations[key.id] = serialization
         }
         
         return copy

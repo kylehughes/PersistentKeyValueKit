@@ -25,8 +25,8 @@ extension Date: KeyValueSerializable {
     // MARK: Converting to and from KeyValueStorable Value
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
-        guard let serialization = storage() else {
+    public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {
+        guard let serialization = serialization() else {
             return nil
         }
         
@@ -34,7 +34,7 @@ extension Date: KeyValueSerializable {
     }
     
     @inlinable
-    public func encodeForStorage() -> Serialization {
+    public func serialize() -> Serialization {
         timeIntervalSince1970
     }
 }

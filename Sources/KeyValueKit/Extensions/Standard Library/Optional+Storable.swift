@@ -69,24 +69,24 @@ extension Optional: KeyValueSerializable where Wrapped: KeyValueSerializable {
     // MARK: Serialization & Deserialization
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
+    public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {
         guard 
-            let wrappedKeyValueStorableValue = storage(),
-            let unwrappedKeyValueStorableValue = wrappedKeyValueStorableValue
+            let wrappedSerialization = serialization(),
+            let unwrappedSerialization = wrappedSerialization
         else {
             return nil
         }
         
-        return Wrapped.decode(from: unwrappedKeyValueStorableValue)
+        return Wrapped.deserialize(from: unwrappedSerialization)
     }
     
     @inlinable
-    public func encodeForStorage() -> Serialization {
+    public func serialize() -> Serialization {
         switch self {
         case .none:
             return nil
         case let .some(wrapped):
-            return wrapped.encodeForStorage()
+            return wrapped.serialize()
         }
     }
 }

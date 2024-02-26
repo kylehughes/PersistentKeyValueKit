@@ -18,9 +18,9 @@ extension KeyValueSerializableAsCodable {
     // MARK: Converting to and from KeyValueStorable Value
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
+    public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {
         guard
-            let jsonString = storage(),
+            let jsonString = serialization(),
             let json = jsonString.data(using: .utf8),
             let value = try? JSONDecoder().decode(Self.self, from: json)
         else {
@@ -31,7 +31,7 @@ extension KeyValueSerializableAsCodable {
     }
     
     @inlinable
-    public func encodeForStorage() -> Serialization {
+    public func serialize() -> Serialization {
         String(data: try! JSONEncoder().encode(self), encoding: .utf8)!
     }
 }

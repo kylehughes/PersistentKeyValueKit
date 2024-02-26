@@ -25,8 +25,8 @@ extension UUID: KeyValueSerializable {
     // MARK: Serializing & Deserializing
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
-        guard let serialization = storage() else {
+    public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {
+        guard let serialization = serialization() else {
             return nil
         }
         
@@ -34,7 +34,7 @@ extension UUID: KeyValueSerializable {
     }
     
     @inlinable
-    public func encodeForStorage() -> Serialization {
+    public func serialize() -> Serialization {
         uuidString
     }
 }

@@ -18,12 +18,12 @@ public protocol KeyValueSerializable {
     ///
     /// - Parameter storage: The closure that provides access to the value that should be deserialized, if it exists.
     /// - Returns: A new instance that is representative of the given value, if it exists and if possible.
-    static func decode(from storage: @autoclosure () -> Serialization?) -> Self?
+    static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self?
     
     /// Serializes this value.
     ///
     /// - Returns: The serialized version of this value.
-    func encodeForStorage() -> Serialization
+    func serialize() -> Serialization
 }
 
 // MARK: - Novel Implementation
@@ -32,10 +32,10 @@ extension KeyValueSerializable {
     // MARK: Serializing & Deserializing
     
     @inlinable
-    public static func decode<Key>(
+    public static func deserialize<Key>(
         for key: Key,
-        from storage: @autoclosure () -> Serialization?
+        from serialization: @autoclosure () -> Serialization?
     ) -> Self where Key: StorageKeyProtocol, Key.Value == Self {
-        decode(from: storage()) ?? key.defaultValue
+        deserialize(from: serialization()) ?? key.defaultValue
     }
 }
