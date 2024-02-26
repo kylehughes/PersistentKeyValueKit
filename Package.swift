@@ -6,6 +6,7 @@ let package = Package(
     name: "KeyValueKit",
     platforms: [
         .iOS(.v13),
+        .macOS(.v10_15),
         .watchOS(.v7),
     ],
     products: [

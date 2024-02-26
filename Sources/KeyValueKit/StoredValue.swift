@@ -9,7 +9,7 @@ import Combine
 import Foundation
 import SwiftUI
 
-@available(iOS 14.0, *)
+@available(iOS 14.0, macOS 11.0, *)
 @propertyWrapper
 public struct StoredValue<Key>: DynamicProperty where Key: StorageKeyProtocol {
     private let key: Key

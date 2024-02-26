@@ -109,6 +109,8 @@ extension Storable where StorableValue: Storable, StorableValue.StorableValue ==
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
         .extract(userDefaultsKey, from: userDefaults)
     }
+    
+    // TODO: i think i need to make even this a separate protocol you can opt into
 
     @inlinable
     public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
@@ -517,6 +519,30 @@ extension URL: Storable {
     #endif
 }
 
+// MARK: - Extension for UUID
+
+extension UUID: Storable {
+    // MARK: Public Typealiases
+    
+    public typealias StorableValue = String
+    
+    // MARK: Converting to and from Storable Value
+    
+    @inlinable
+    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
+        guard let storableValue = storage() else {
+            return nil
+        }
+        
+        return UUID(uuidString: storableValue)
+    }
+    
+    @inlinable
+    public func encodeForStorage() -> StorableValue {
+        uuidString
+    }
+}
+
 // MARK: - Extension for Optionals of Supported Types
 
 extension Optional: Storable where Wrapped: Storable {
@@ -584,155 +610,6 @@ extension Optional: Storable where Wrapped: Storable {
         case let .some(wrapped):
             wrapped.store(wrapped.encodeForStorage(), as: ubiquitousStoreKey, in: ubiquitousStore)
         }
-    }
-
-    #endif
-}
-
-// MARK: - Extension for RawRepresentables of Supported Types
-
-extension Storable where Self: RawRepresentable, RawValue: Storable, StorableValue == RawValue.StorableValue {
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> RawValue.StorableValue?) -> Self? {
-        guard let rawValue = RawValue.decode(from: storage()), let value = Self(rawValue: rawValue) else {
-            return nil
-        }
-        
-        return value
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> RawValue.StorableValue {
-        rawValue.encodeForStorage()
-    }
-
-    // MARK: Interfacing With User Defaults
-
-    @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> RawValue.StorableValue? {
-        RawValue.extract(userDefaultsKey, from: userDefaults)
-    }
-    
-    @inlinable
-    public func store(_ value: RawValue.StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        rawValue.store(value, as: userDefaultsKey, in: userDefaults)
-    }
-    
-    #if !os(watchOS)
-
-    @inlinable
-    public static func extract(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> RawValue.StorableValue? {
-        RawValue.extract(ubiquitousStoreKey, from: ubiquitousStore)
-    }
-    
-    @inlinable
-    public func store(
-        _ value: StorableValue,
-        as ubiquitousStoreKey: String,
-        in ubiquitousStore: NSUbiquitousKeyValueStore
-    ) {
-        rawValue.store(value, as: ubiquitousStoreKey, in: ubiquitousStore)
-    }
-
-    #endif
-}
-
-// MARK: - Extension for Codable Types
-
-extension Storable where Self: Codable, StorableValue == String {
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> String?) -> Self? {
-        guard
-            let jsonString = storage(),
-            let json = jsonString.data(using: .utf8),
-            let value = try? JSONDecoder().decode(Self.self, from: json)
-        else {
-            return nil
-        }
-        
-        return value
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> String {
-        String(data: try! JSONEncoder().encode(self), encoding: .utf8)!
-    }
-
-    // MARK: Interfacing With User Defaults
-
-    @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> String? {
-        .extract(userDefaultsKey, from: userDefaults)
-    }
-    
-    #if !os(watchOS)
-
-    @inlinable
-    public static func extract(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> StorableValue? {
-        .extract(ubiquitousStoreKey, from: ubiquitousStore)
-    }
-
-    #endif
-}
-
-// MARK: - Extension for Raw Representable & Codable Types (Conflict-Avoidance)
-
-extension Storable where Self: Codable & RawRepresentable, RawValue == String, StorableValue == String {
-    // MARK: Converting to and From Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> RawValue.StorableValue?) -> Self? {
-        guard let rawValue = RawValue.decode(from: storage()), let value = Self(rawValue: rawValue) else {
-            return nil
-        }
-        
-        return value
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> RawValue.StorableValue {
-        rawValue.encodeForStorage()
-    }
-
-    // MARK: Interfacing With User Defaults
-
-    @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> RawValue.StorableValue? {
-        RawValue.extract(userDefaultsKey, from: userDefaults)
-    }
-    
-    @inlinable
-    public func store(_ value: RawValue.StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        rawValue.store(value, as: userDefaultsKey, in: userDefaults)
-    }
-    
-    #if !os(watchOS)
-    
-    @inlinable
-    public static func extract(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> RawValue.StorableValue? {
-        RawValue.extract(ubiquitousStoreKey, from: ubiquitousStore)
-    }
-
-    @inlinable
-    public func store(
-        _ value: StorableValue,
-        as ubiquitousStoreKey: String,
-        in ubiquitousStore: NSUbiquitousKeyValueStore
-    ) {
-        rawValue.store(value, as: ubiquitousStoreKey, in: ubiquitousStore)
     }
 
     #endif
