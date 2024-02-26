@@ -100,45 +100,6 @@ extension Storable where StorableValue == Self {
     }
 }
 
-// MARK: - Default Implementation for Types That Can Defer Serialization to Other Storable Type
-
-extension Storable where StorableValue: Storable, StorableValue.StorableValue == StorableValue {
-    // MARK: Interfacing With User Defaults
-    
-    @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
-        .extract(userDefaultsKey, from: userDefaults)
-    }
-    
-    // TODO: i think i need to make even this a separate protocol you can opt into
-
-    @inlinable
-    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        value.store(value, as: userDefaultsKey, in: userDefaults)
-    }
-    
-    #if !os(watchOS)
-
-    @inlinable
-    public static func extract(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> StorableValue? {
-        .extract(ubiquitousStoreKey, from: ubiquitousStore)
-    }
-    
-    @inlinable
-    public func store(
-        _ value: StorableValue,
-        as ubiquitousStoreKey: String,
-        in ubiquitousStore: NSUbiquitousKeyValueStore
-    ) {
-        value.store(value, as: ubiquitousStoreKey, in: ubiquitousStore)
-    }
-
-    #endif
-}
-
 // MARK: - Novel Implementation
 
 extension Storable {
