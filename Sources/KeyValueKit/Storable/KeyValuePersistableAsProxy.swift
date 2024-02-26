@@ -13,7 +13,7 @@ where
     Persistence == Persistence.Persistence
 {}
 
-// MARK: - Storable Implementation
+// MARK: - KeyValueStorable Implementation
 
 extension KeyValuePersistableAsProxy {
     // MARK: Interfacing With User Defaults

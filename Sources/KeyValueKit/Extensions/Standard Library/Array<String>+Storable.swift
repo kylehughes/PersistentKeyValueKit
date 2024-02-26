@@ -1,5 +1,5 @@
 //
-//  Array<String>+Storable.swift
+//  Array<String>+KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/25/24.
@@ -7,22 +7,22 @@
 
 import Foundation
 
-// MARK: - Storable Extension
+// MARK: - KeyValuePersistable Extension
 
-extension Array<String>: Storable, StorableAsSelf {
+extension Array<String>: KeyValuePersistable {
     // MARK: Public Typealiases
     
-    public typealias StorableValue = Self
-
+    public typealias Persistence = Self
+    
     // MARK: Interfacing With User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
         userDefaults.stringArray(forKey: userDefaultsKey)
     }
     
     @inlinable
-    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
+    public func store(_ value: Persistence, as userDefaultsKey: String, in userDefaults: UserDefaults) {
         userDefaults.set(value, forKey: userDefaultsKey)
     }
     
@@ -33,13 +33,13 @@ extension Array<String>: Storable, StorableAsSelf {
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> StorableValue? {
-        ubiquitousStore.array(forKey: ubiquitousStoreKey) as? StorableValue
+    ) -> Persistence? {
+        ubiquitousStore.array(forKey: ubiquitousStoreKey) as? Persistence
     }
     
     @inlinable
     public func store(
-        _ value: StorableValue,
+        _ value: Persistence,
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
@@ -48,3 +48,15 @@ extension Array<String>: Storable, StorableAsSelf {
 
     #endif
 }
+
+// MARK: - KeyValueSerializable Extension
+
+extension Array<String>: KeyValueSerializable, KeyValueSerializableAsSelf {
+    // MARK: Public Typealiases
+    
+    public typealias Serialization = Self
+}
+
+// MARK: - KeyValueStorable Extension
+
+extension Array<String>: KeyValueStorable {}

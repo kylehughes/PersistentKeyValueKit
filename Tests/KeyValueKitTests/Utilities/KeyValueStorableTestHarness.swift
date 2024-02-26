@@ -1,5 +1,5 @@
 //
-//  StorableTestHarness.swift
+//  KeyValueStorableTestHarness.swift
 //  CodeMonkeyAppleTests
 //
 //  Created by Kyle Hughes on 4/18/22.
@@ -9,7 +9,7 @@ import Foundation
 import KeyValueKit
 import XCTest
 
-struct StorableTestHarness<Target> where Target: Equatable & Storable {
+struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValueStorable {
     private let firstValue: Target
     private let secondValue: Target
     private let storage: UserDefaults

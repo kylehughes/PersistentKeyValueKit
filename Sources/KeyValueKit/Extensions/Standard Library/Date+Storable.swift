@@ -1,5 +1,5 @@
 //
-//  Date+Storable.swift
+//  Date+KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/25/24.
@@ -7,26 +7,38 @@
 
 import Foundation
 
-// MARK: - Storable Extension
+// MARK: - KeyValuePersistable Extension
 
-extension Date: Storable, StorableAsProxy {
+extension Date: KeyValuePersistable, KeyValuePersistableAsProxy {
     // MARK: Public Typealiases
     
-    public typealias StorableValue = TimeInterval
+    public typealias Persistence = TimeInterval
+}
+
+// MARK: - KeyValueSerializable Extension
+
+extension Date: KeyValueSerializable {
+    // MARK: Public Typealiases
     
-    // MARK: Converting to and from Storable Value
+    public typealias Serialization = TimeInterval
+    
+    // MARK: Converting to and from KeyValueStorable Value
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        guard let storableValue = storage() else {
+    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
+        guard let KeyValueStorableValue = storage() else {
             return nil
         }
         
-        return Date(timeIntervalSince1970: storableValue)
+        return Date(timeIntervalSince1970: KeyValueStorableValue)
     }
     
     @inlinable
-    public func encodeForStorage() -> StorableValue {
+    public func encodeForStorage() -> Serialization {
         timeIntervalSince1970
     }
 }
+
+// MARK: - KeyValueStorable Extension
+
+extension Date: KeyValueStorable {}

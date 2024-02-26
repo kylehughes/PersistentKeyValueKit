@@ -1,5 +1,5 @@
 //
-//  UUID+Storable.swift
+//  UUID+KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/25/24.
@@ -7,26 +7,38 @@
 
 import Foundation
 
-// MARK: - Storable Extension
+// MARK: - KeyValuePersistable Extension
 
-extension UUID: Storable, StorableAsProxy {
+extension UUID: KeyValuePersistable, KeyValuePersistableAsProxy {
     // MARK: Public Typealiases
     
-    public typealias StorableValue = String
+    public typealias Persistence = String
+}
+
+// MARK: - KeyValueSerializable Extension
+
+extension UUID: KeyValueSerializable {
+    // MARK: Public Typealiases
     
-    // MARK: Converting to and from Storable Value
+    public typealias Serialization = String
+    
+    // MARK: Serializing & Deserializing
     
     @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        guard let storableValue = storage() else {
+    public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {
+        guard let serialization = storage() else {
             return nil
         }
         
-        return UUID(uuidString: storableValue)
+        return UUID(uuidString: serialization)
     }
     
     @inlinable
-    public func encodeForStorage() -> StorableValue {
+    public func encodeForStorage() -> Serialization {
         uuidString
     }
 }
+
+// MARK: - KeyValueStorable Extension
+
+extension UUID: KeyValueStorable {}

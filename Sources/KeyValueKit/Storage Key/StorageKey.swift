@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct StorageKey<Value>: Identifiable where Value: Storable {
+public struct StorageKey<Value>: Identifiable where Value: KeyValueStorable {
     public let defaultValue: Value
     public let id: String
     

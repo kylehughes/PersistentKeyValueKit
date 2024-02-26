@@ -10,7 +10,7 @@ import Foundation
 public protocol StorageKeyProtocol: Identifiable where ID == String {
     // MARK: Associated Types
     
-    associatedtype Value: Storable
+    associatedtype Value: KeyValueStorable
     
     // MARK: Instance Interface
     

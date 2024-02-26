@@ -1,5 +1,5 @@
 //
-//  String+Storable.swift
+//  String+KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/25/24.
@@ -7,50 +7,40 @@
 
 import Foundation
 
-// MARK: - Storable Extension
+// MARK: - KeyValuePersistable Extension
 
-extension String: Storable {
+extension String: KeyValuePersistable {
     // MARK: Public Typealiases
     
-    public typealias StorableValue = Self
+    public typealias Persistence = Self
     
-    // MARK: Converting to and from Storable Value
-    
-    @inlinable
-    public static func decode(from storage: @autoclosure () -> StorableValue?) -> Self? {
-        storage()
-    }
-    
-    @inlinable
-    public func encodeForStorage() -> StorableValue {
-        self
-    }
-
-    // MARK: Interfacing With User Defaults
+    // MARK: Interfacing with User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> StorableValue? {
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
         userDefaults.string(forKey: userDefaultsKey)
     }
     
     @inlinable
-    public func store(_ value: StorableValue, as userDefaultsKey: String, in userDefaults: UserDefaults) {
+    public func store(_ value: Persistence, as userDefaultsKey: String, in userDefaults: UserDefaults) {
         userDefaults.set(value, forKey: userDefaultsKey)
     }
     
     #if !os(watchOS)
+    
+    // MARK: Interfacing with Ubiquitous Key-Value Store
 
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> StorableValue? {
+    ) -> Persistence? {
         ubiquitousStore.string(forKey: ubiquitousStoreKey)
     }
     
     @inlinable
     public func store(
-        _ value: StorableValue,
+        _ value: Persistence,
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
@@ -59,3 +49,15 @@ extension String: Storable {
 
     #endif
 }
+
+// MARK: - KeyValueSerializable Extension
+
+extension String: KeyValueSerializable, KeyValueSerializableAsSelf {
+    // MARK: Public Typealiases
+    
+    public typealias Serialization = Self
+}
+
+// MARK: - KeyValueStorable Extension
+
+extension String: KeyValueStorable {}

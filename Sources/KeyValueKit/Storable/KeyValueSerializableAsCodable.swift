@@ -12,10 +12,10 @@ where
     Serialization == String
 {}
 
-// MARK: - Storable Implementation
+// MARK: - KeyValueStorable Implementation
 
 extension KeyValueSerializableAsCodable {
-    // MARK: Converting to and from Storable Value
+    // MARK: Converting to and from KeyValueStorable Value
     
     @inlinable
     public static func decode(from storage: @autoclosure () -> Serialization?) -> Self? {

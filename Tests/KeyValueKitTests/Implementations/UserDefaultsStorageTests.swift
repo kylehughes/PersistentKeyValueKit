@@ -25,11 +25,11 @@ extension UserDefaultsStorageTests {
     // MARK: Tests
     
     func test_bool() {
-        StorableTestHarness<Bool>(firstValue: true, secondValue: false, storage: storage).test()
+        KeyValueStorableTestHarness<Bool>(firstValue: true, secondValue: false, storage: storage).test()
     }
     
     func test_data() {
-        StorableTestHarness<Data>(
+        KeyValueStorableTestHarness<Data>(
             firstValue: UUID().uuidString.data(using: .utf8)!,
             secondValue: UUID().uuidString.data(using: .utf8)!,
             storage: storage
@@ -37,7 +37,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_date() {
-        StorableTestHarness<Date>(
+        KeyValueStorableTestHarness<Date>(
             firstValue: Date(timeIntervalSince1970: .random(in: 0 ... 100_000)),
             secondValue: Date(timeIntervalSince1970: .random(in: 0 ... 100_000)),
             storage: storage
@@ -45,7 +45,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_double() {
-        StorableTestHarness<Double>(
+        KeyValueStorableTestHarness<Double>(
             firstValue: .random(in: 0...100_000),
             secondValue: .random(in: 0...100_000),
             storage: storage
@@ -53,7 +53,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_float() {
-        StorableTestHarness<Float>(
+        KeyValueStorableTestHarness<Float>(
             firstValue: .random(in: 0...100_000),
             secondValue: .random(in: 0...100_000),
             storage: storage
@@ -61,7 +61,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_int() {
-        StorableTestHarness<Int>(
+        KeyValueStorableTestHarness<Int>(
             firstValue: .random(in: 0...100_000),
             secondValue: .random(in: 0...100_000),
             storage: storage
@@ -69,7 +69,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_string() {
-        StorableTestHarness<String>(
+        KeyValueStorableTestHarness<String>(
             firstValue: UUID().uuidString,
             secondValue: UUID().uuidString,
             storage: storage
@@ -77,7 +77,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_stringArray() {
-        StorableTestHarness<[String]>(
+        KeyValueStorableTestHarness<[String]>(
             firstValue: [UUID().uuidString, UUID().uuidString, UUID().uuidString],
             secondValue: [UUID().uuidString, UUID().uuidString, UUID().uuidString],
             storage: storage
@@ -85,7 +85,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_url() {
-        StorableTestHarness<URL>(
+        KeyValueStorableTestHarness<URL>(
             firstValue: URL(string: "https://kylehugh.es")!,
             secondValue: URL(string: "https://superhighway.info")!,
             storage: storage
@@ -99,7 +99,7 @@ extension UserDefaultsStorageTests {
     // MARK: Functional Tests
     
     func test_codable() {
-        StorableTestHarness<TestCodableStorable>(
+        KeyValueStorableTestHarness<TestCodableKeyValueStorable>(
             firstValue: .random,
             secondValue: .random,
             storage: storage
@@ -107,7 +107,7 @@ extension UserDefaultsStorageTests {
     }
     
     func test_rawRepresentable() {
-        StorableTestHarness<TestRawRepresentableStorable>(
+        KeyValueStorableTestHarness<TestRawRepresentableKeyValueStorable>(
             firstValue: .caseOne,
             secondValue: .caseTwo,
             storage: storage

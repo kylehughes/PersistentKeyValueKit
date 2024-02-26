@@ -8,7 +8,10 @@
 import Foundation
 import KeyValueKit
 
-public struct TestModel: Codable, Equatable, StorableAsCodable {
+public struct TestModel: Codable, Equatable, KeyValuePersistableAsProxy, KeyValueSerializableAsCodable, KeyValueStorable {
+    public typealias Persistence = String
+    public typealias Serialization = String
+    
     public let id: UUID
     public let fullName: String
     public let emailAddress: String?

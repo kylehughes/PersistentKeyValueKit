@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct DebugStorageKey<Value>: Identifiable, StorageKeyProtocol where Value: Storable {
+public struct DebugStorageKey<Value>: Identifiable, StorageKeyProtocol where Value: KeyValueStorable {
     public let defaultValue: Value
     public let id: String
     

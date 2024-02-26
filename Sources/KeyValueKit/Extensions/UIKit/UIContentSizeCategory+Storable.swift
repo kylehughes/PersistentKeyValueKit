@@ -1,5 +1,5 @@
 //
-//  UIContentSizeCategory+Storable.swift
+//  UIContentSizeCategory+KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 11/30/22.
@@ -10,10 +10,10 @@
 import Foundation
 import UIKit
 
-extension UIContentSizeCategory: Storable {
+extension UIContentSizeCategory: KeyValueStorable {
     // MARK: Public Typealiases
     
-    public typealias StorableValue = Self
+    public typealias KeyValueStorableValue = Self
 }
 
 #endif
