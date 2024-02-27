@@ -1,26 +1,24 @@
 //
-//  Bool+KeyValueStorable.swift
+//  Array<String>+KeyValuePersistable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/26/24.
 //
 
 import Foundation
 
 // MARK: - KeyValuePersistable Extension
 
-extension Bool: KeyValuePersistable {
+extension Array<String>: KeyValuePersistable {
     // MARK: Public Typealiases
     
     public typealias Persistence = Self
     
     // MARK: Interfacing With User Defaults
-    
+
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a `false` value.
-        userDefaults.object(forKey: userDefaultsKey) as? Persistence
+        userDefaults.stringArray(forKey: userDefaultsKey)
     }
     
     @inlinable
@@ -29,15 +27,14 @@ extension Bool: KeyValuePersistable {
     }
     
     #if !os(watchOS)
+
     
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a `false` value.
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Persistence
+        ubiquitousStore.array(forKey: ubiquitousStoreKey) as? Persistence
     }
     
     @inlinable
@@ -47,19 +44,6 @@ extension Bool: KeyValuePersistable {
     ) {
         ubiquitousStore.set(self, forKey: ubiquitousStoreKey)
     }
-    
+
     #endif
 }
-
-// MARK: - KeyValueSerializable Extension
-
-extension Bool: KeyValueSerializable, KeyValueSerializableAsSelf {
-    // MARK: Public Typealiases
-    
-    public typealias Serialization = Self
-}
-
-
-// MARK: - KeyValueStorable Extension
-
-extension Bool: KeyValueStorable {}

@@ -1,26 +1,28 @@
 //
-//  Array<String>+KeyValueStorable.swift
+//  Double+KeyValuePersistable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/27/24.
 //
 
 import Foundation
 
 // MARK: - KeyValuePersistable Extension
 
-extension Array<String>: KeyValuePersistable {
+extension Double: KeyValuePersistable {
     // MARK: Public Typealiases
     
     public typealias Persistence = Self
     
     // MARK: Interfacing With User Defaults
-
+    
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
-        userDefaults.stringArray(forKey: userDefaultsKey)
+        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
+        // a 0 value.
+        userDefaults.object(forKey: userDefaultsKey) as? Persistence
     }
-    
+
     @inlinable
     public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
         userDefaults.set(self, forKey: userDefaultsKey)
@@ -28,13 +30,14 @@ extension Array<String>: KeyValuePersistable {
     
     #if !os(watchOS)
 
-    
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
-        ubiquitousStore.array(forKey: ubiquitousStoreKey) as? Persistence
+        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
+        // a 0 value.
+        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Persistence
     }
     
     @inlinable
@@ -47,15 +50,3 @@ extension Array<String>: KeyValuePersistable {
 
     #endif
 }
-
-// MARK: - KeyValueSerializable Extension
-
-extension Array<String>: KeyValueSerializable, KeyValueSerializableAsSelf {
-    // MARK: Public Typealiases
-    
-    public typealias Serialization = Self
-}
-
-// MARK: - KeyValueStorable Extension
-
-extension Array<String>: KeyValueStorable {}

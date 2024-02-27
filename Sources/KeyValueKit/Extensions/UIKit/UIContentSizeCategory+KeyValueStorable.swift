@@ -10,10 +10,8 @@
 import Foundation
 import UIKit
 
-extension UIContentSizeCategory: KeyValueStorable {
-    // MARK: Public Typealiases
-    
-    public typealias KeyValueStorableValue = Self
-}
+// MARK: - KeyValueStorable Extension
+
+extension UIContentSizeCategory: KeyValueStorable {}
 
 #endif

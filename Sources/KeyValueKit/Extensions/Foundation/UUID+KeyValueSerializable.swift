@@ -1,19 +1,11 @@
 //
-//  UUID+KeyValueStorable.swift
+//  UUID+KeyValueSerializable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/26/24.
 //
 
 import Foundation
-
-// MARK: - KeyValuePersistable Extension
-
-extension UUID: KeyValuePersistable, KeyValuePersistableAsProxy {
-    // MARK: Public Typealiases
-    
-    public typealias Persistence = String
-}
 
 // MARK: - KeyValueSerializable Extension
 
@@ -38,7 +30,3 @@ extension UUID: KeyValueSerializable {
         uuidString
     }
 }
-
-// MARK: - KeyValueStorable Extension
-
-extension UUID: KeyValueStorable {}

@@ -1,8 +1,8 @@
 //
-//  String+KeyValueStorable.swift
+//  String+KeyValuePersistable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/27/24.
 //
 
 import Foundation
@@ -48,15 +48,3 @@ extension String: KeyValuePersistable {
 
     #endif
 }
-
-// MARK: - KeyValueSerializable Extension
-
-extension String: KeyValueSerializable, KeyValueSerializableAsSelf {
-    // MARK: Public Typealiases
-    
-    public typealias Serialization = Self
-}
-
-// MARK: - KeyValueStorable Extension
-
-extension String: KeyValueStorable {}

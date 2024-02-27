@@ -1,24 +1,26 @@
 //
-//  URL+KeyValueStorable.swift
+//  Int+KeyValuePersistable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/27/24.
 //
 
 import Foundation
 
 // MARK: - KeyValuePersistable Extension
 
-extension URL: KeyValuePersistable {
+extension Int: KeyValuePersistable {
     // MARK: Public Typealiases
     
     public typealias Persistence = Self
     
-    // MARK: Interfacing with User Defaults
+    // MARK: Interfacing With User Defaults
 
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
-        userDefaults.url(forKey: userDefaultsKey)
+        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
+        // a 0 value.
+        userDefaults.object(forKey: userDefaultsKey) as? Persistence
     }
     
     @inlinable
@@ -27,14 +29,14 @@ extension URL: KeyValuePersistable {
     }
     
     #if !os(watchOS)
-    
-    // MARK: Interfacing with Ubiquitous Key-Value Store
 
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
+        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
+        // a 0 value.
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Persistence
     }
     
@@ -48,15 +50,3 @@ extension URL: KeyValuePersistable {
 
     #endif
 }
-
-// MARK: - KeyValueSerializable Extension
-
-extension URL: KeyValueSerializable, KeyValueSerializableAsSelf {
-    // MARK: Public Typealiases
-    
-    public typealias Serialization = Self
-}
-
-// MARK: - KeyValueStorable Extension
-
-extension URL: KeyValueStorable {}

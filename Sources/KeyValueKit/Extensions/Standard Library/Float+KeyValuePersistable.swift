@@ -1,8 +1,8 @@
 //
-//  Float+KeyValueStorable.swift
+//  Float+KeyValuePersistable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/27/24.
 //
 
 import Foundation
@@ -50,15 +50,3 @@ extension Float: KeyValuePersistable {
 
     #endif
 }
-
-// MARK: - KeyValueSerializable Extension
-
-extension Float: KeyValueSerializable, KeyValueSerializableAsSelf {
-    // MARK: Public Typealiases
-    
-    public typealias Serialization = Self
-}
-
-// MARK: - KeyValueStorable Extension
-
-extension Float: KeyValueStorable {}

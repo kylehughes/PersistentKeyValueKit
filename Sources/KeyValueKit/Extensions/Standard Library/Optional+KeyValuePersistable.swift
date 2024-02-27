@@ -1,41 +1,46 @@
 //
-//  Data+KeyValueStorable.swift
+//  Optional+KeyValuePersistable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/27/24.
 //
 
 import Foundation
 
 // MARK: - KeyValuePersistable Extension
 
-extension Data: KeyValuePersistable {
+extension Optional: KeyValuePersistable where Wrapped: KeyValuePersistable {
     // MARK: Public Typealiases
     
-    public typealias Persistence = Self
+    public typealias Persistence = Wrapped.Persistence?
     
     // MARK: Interfacing with User Defaults
 
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
-        userDefaults.data(forKey: userDefaultsKey)
+        Wrapped.extract(userDefaultsKey, from: userDefaults)
     }
     
     @inlinable
     public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        userDefaults.set(self, forKey: userDefaultsKey)
+        switch self {
+        case .none:
+            userDefaults.removeObject(forKey: userDefaultsKey)
+        case let .some(wrapped):
+            wrapped.store(as: userDefaultsKey, in: userDefaults)
+        }
     }
     
     #if !os(watchOS)
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
-    
+
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
-        ubiquitousStore.data(forKey: ubiquitousStoreKey)
+        Wrapped.extract(ubiquitousStoreKey, from: ubiquitousStore)
     }
     
     @inlinable
@@ -43,20 +48,13 @@ extension Data: KeyValuePersistable {
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        ubiquitousStore.set(self, forKey: ubiquitousStoreKey)
+        switch self {
+        case .none:
+            ubiquitousStore.removeObject(forKey: ubiquitousStoreKey)
+        case let .some(wrapped):
+            wrapped.store(as: ubiquitousStoreKey, in: ubiquitousStore)
+        }
     }
-    
+
     #endif
 }
-
-// MARK: - KeyValueSerializable Extension
-
-extension Data: KeyValueSerializable, KeyValueSerializableAsSelf {
-    // MARK: Public Typealiases
-    
-    public typealias Serialization = Self
-}
-
-// MARK: - KeyValueStorable Extension
-
-extension Data: KeyValueStorable {}

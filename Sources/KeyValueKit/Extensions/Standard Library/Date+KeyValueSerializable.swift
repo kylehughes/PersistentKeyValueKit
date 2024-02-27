@@ -1,19 +1,11 @@
 //
-//  Date+KeyValueStorable.swift
+//  Date+KeyValueSerializable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/25/24.
+//  Created by Kyle Hughes on 2/26/24.
 //
 
 import Foundation
-
-// MARK: - KeyValuePersistable Extension
-
-extension Date: KeyValuePersistable, KeyValuePersistableAsProxy {
-    // MARK: Public Typealiases
-    
-    public typealias Persistence = TimeInterval
-}
 
 // MARK: - KeyValueSerializable Extension
 
@@ -38,7 +30,3 @@ extension Date: KeyValueSerializable {
         timeIntervalSince1970
     }
 }
-
-// MARK: - KeyValueStorable Extension
-
-extension Date: KeyValueStorable {}
