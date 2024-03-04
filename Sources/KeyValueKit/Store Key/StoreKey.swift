@@ -1,5 +1,5 @@
 //
-//  StorageKey.swift
+//  StoreKey.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 3/28/22.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct StorageKey<Value>: Identifiable where Value: KeyValueStorable {
+public struct StoreKey<Value>: Identifiable where Value: KeyValueStorable {
     public let defaultValue: Value
     public let id: String
     
@@ -22,25 +22,25 @@ public struct StorageKey<Value>: Identifiable where Value: KeyValueStorable {
 
 // MARK: - Conditional Codable Extension
 
-extension StorageKey: Codable where Value: Codable {
+extension StoreKey: Codable where Value: Codable {
     // NO-OP
 }
 
 // MARK: - Conditional Equatable Extension
 
-extension StorageKey: Equatable where Value: Equatable {
+extension StoreKey: Equatable where Value: Equatable {
     // NO-OP
 }
 
 // MARK: - Conditional Hashable Extension
 
-extension StorageKey: Hashable where Value: Hashable {
+extension StoreKey: Hashable where Value: Hashable {
     // NO-OP
 }
 
-// MARK: - StorageKeyProtocol Extension
+// MARK: - StoreKeyProtocol Extension
 
-extension StorageKey: StorageKeyProtocol {
+extension StoreKey: StoreKeyProtocol {
     // MARK: Public Instance Interface
 
     @inlinable

@@ -1,5 +1,5 @@
 //
-//  DebugStorageKey.swift
+//  DebugStoreKey.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 4/9/22.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct DebugStorageKey<Value>: Identifiable, StorageKeyProtocol where Value: KeyValueStorable {
+public struct DebugStoreKey<Value>: Identifiable, StoreKeyProtocol where Value: KeyValueStorable {
     public let defaultValue: Value
     public let id: String
     
@@ -20,9 +20,9 @@ public struct DebugStorageKey<Value>: Identifiable, StorageKeyProtocol where Val
     }
 }
 
-// MARK: - StorageKeyProtocol Extension
+// MARK: - StoreKeyProtocol Extension
 
-extension DebugStorageKey {
+extension DebugStoreKey {
     // MARK: Public Instance Interface
     
     @inlinable

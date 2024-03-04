@@ -18,7 +18,7 @@ public struct UserDefaultsRegistrationBuilder {
     
     // MARK: Public Instance Interface
     
-    public func adding<Value>(_ key: StorageKey<Value>) -> UserDefaultsRegistrationBuilder {
+    public func adding<Value>(_ key: StoreKey<Value>) -> UserDefaultsRegistrationBuilder {
         var copy = self
         
         copy.registrations[key.id] = key.defaultValue.serialize()
@@ -26,7 +26,7 @@ public struct UserDefaultsRegistrationBuilder {
         return copy
     }
 
-    public func adding<Value>(_ key: StorageKey<Value?>) -> UserDefaultsRegistrationBuilder {
+    public func adding<Value>(_ key: StoreKey<Value?>) -> UserDefaultsRegistrationBuilder {
         var copy = self
         
         if let serialization = key.defaultValue.serialize() {
@@ -36,7 +36,7 @@ public struct UserDefaultsRegistrationBuilder {
         return copy
     }
     
-    public func adding<Value>(_ key: DebugStorageKey<Value>) -> UserDefaultsRegistrationBuilder {
+    public func adding<Value>(_ key: DebugStoreKey<Value>) -> UserDefaultsRegistrationBuilder {
         #if DEBUG
         var copy = self
         
@@ -48,7 +48,7 @@ public struct UserDefaultsRegistrationBuilder {
         #endif
     }
     
-    public func adding<Value>(_ key: DebugStorageKey<Value?>) -> UserDefaultsRegistrationBuilder {
+    public func adding<Value>(_ key: DebugStoreKey<Value?>) -> UserDefaultsRegistrationBuilder {
         #if DEBUG
         var copy = self
         

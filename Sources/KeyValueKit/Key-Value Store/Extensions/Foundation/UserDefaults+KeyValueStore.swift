@@ -16,21 +16,21 @@ extension UserDefaults: KeyValueStore {
     }
     
     @inlinable
-    public func get<Key>(_ key: Key) -> Key.Value where Key: StorageKeyProtocol {
+    public func get<Key>(_ key: Key) -> Key.Value where Key: StoreKeyProtocol {
         key.get(from: self)
     }
     
     // MARK: Setting Values
     
     @inlinable
-    public func set<Key>(_ key: Key, to value: Key.Value) where Key: StorageKeyProtocol {
+    public func set<Key>(_ key: Key, to value: Key.Value) where Key: StoreKeyProtocol {
         key.set(to: value, in: self)
     }
     
     // MARK: Removing Values
     
     @inlinable
-    public func remove<Key>(_ key: Key) where Key: StorageKeyProtocol {
+    public func remove<Key>(_ key: Key) where Key: StoreKeyProtocol {
         key.remove(from: self)
     }
     
@@ -41,7 +41,7 @@ extension UserDefaults: KeyValueStore {
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?
-    ) where Key: StorageKeyProtocol {
+    ) where Key: StoreKeyProtocol {
         removeObserver(target, forKeyPath: key.id, context: context)
     }
     
@@ -51,7 +51,7 @@ extension UserDefaults: KeyValueStore {
         for key: Key,
         with context: UnsafeMutableRawPointer?,
         valueWillChange: () -> Void
-    ) where Key: StorageKeyProtocol {
+    ) where Key: StoreKeyProtocol {
         addObserver(target, forKeyPath: key.id, context: context)
     }
 }

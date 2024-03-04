@@ -17,14 +17,14 @@ extension NSUbiquitousKeyValueStore: KeyValueStore {
     // MARK: Getting Values
     
     @inlinable
-    public func get<Key>(_ key: Key) -> Key.Value where Key : StorageKeyProtocol {
+    public func get<Key>(_ key: Key) -> Key.Value where Key : StoreKeyProtocol {
         key.get(from: self)
     }
     
     // MARK: Setting Values
     
     @inlinable
-    public func set<Key>(_ key: Key, to value: Key.Value) where Key : StorageKeyProtocol {
+    public func set<Key>(_ key: Key, to value: Key.Value) where Key : StoreKeyProtocol {
         key.set(to: value, in: self)
         
         postInternalChangeNotification(for: key)
@@ -33,7 +33,7 @@ extension NSUbiquitousKeyValueStore: KeyValueStore {
     // MARK: Removing Values
 
     @inlinable
-    public func remove<Key>(_ key: Key) where Key: StorageKeyProtocol {
+    public func remove<Key>(_ key: Key) where Key: StoreKeyProtocol {
         key.remove(from: self)
         
         postInternalChangeNotification(for: key)
@@ -46,7 +46,7 @@ extension NSUbiquitousKeyValueStore: KeyValueStore {
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?
-    ) where Key: StorageKeyProtocol {
+    ) where Key: StoreKeyProtocol {
         NotificationCenter.default.removeObserver(self, name: Self.didChangeExternallyNotification, object: self)
         NotificationCenter.default.removeObserver(self, name: Self.didChangeInternallyNotification, object: self)
     }
@@ -57,7 +57,7 @@ extension NSUbiquitousKeyValueStore: KeyValueStore {
         for key: Key,
         with context: UnsafeMutableRawPointer?,
         valueWillChange: @escaping () -> Void
-    ) where Key: StorageKeyProtocol {
+    ) where Key: StoreKeyProtocol {
         NotificationCenter.default.addObserver(
             forName: Self.didChangeExternallyNotification,
             object: self,
@@ -84,7 +84,7 @@ extension NSUbiquitousKeyValueStore: KeyValueStore {
         for key: Key,
         via notification: Notification,
         valueWillChange: @escaping () -> Void
-    ) where Key: StorageKeyProtocol {
+    ) where Key: StoreKeyProtocol {
         guard let changedKeyIDs = notification.userInfo?[Self.changedKeysKey] as? [String] else {
             return
         }
@@ -99,7 +99,7 @@ extension NSUbiquitousKeyValueStore: KeyValueStore {
     }
     
     @usableFromInline
-    internal func postInternalChangeNotification<Key>(for key: Key) where Key: StorageKeyProtocol {
+    internal func postInternalChangeNotification<Key>(for key: Key) where Key: StoreKeyProtocol {
         NotificationCenter.default.post(
             name: Self.didChangeInternallyNotification,
             object: self,

@@ -11,17 +11,17 @@ import SwiftUI
 
 @available(iOS 14.0, macOS 11.0, *)
 @propertyWrapper
-public struct StoredValue<Key>: DynamicProperty where Key: StorageKeyProtocol {
+public struct StoredValue<Key>: DynamicProperty where Key: StoreKeyProtocol {
     private let key: Key
     
-    @StateObject private var observer: StorageKeyObserver<Key>
+    @StateObject private var observer: StoreKeyObserver<Key>
     
     // MARK: Public Initialization
     
     public init(_ key: Key, storage: KeyValueStore) {
         self.key = key
         
-        _observer = StateObject(wrappedValue: StorageKeyObserver(storage: storage, key: key))
+        _observer = StateObject(wrappedValue: StoreKeyObserver(storage: storage, key: key))
     }
     
     // MARK: Property Wrapper Implementation

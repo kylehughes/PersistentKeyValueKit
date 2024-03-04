@@ -12,15 +12,15 @@ public protocol KeyValueStore {
     
     var dictionaryRepresentation: [String: Any] { get }
     
-    func get<Key>(_ key: Key) -> Key.Value where Key: StorageKeyProtocol
+    func get<Key>(_ key: Key) -> Key.Value where Key: StoreKeyProtocol
     
     // MARK: Setting Values
     
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: StorageKeyProtocol
+    func set<Key>(_ key: Key, to value: Key.Value) where Key: StoreKeyProtocol
     
     // MARK: Removing Values
     
-    func remove<Key>(_ key: Key) where Key: StorageKeyProtocol
+    func remove<Key>(_ key: Key) where Key: StoreKeyProtocol
     
     // MARK: Observing Keys
     
@@ -28,14 +28,14 @@ public protocol KeyValueStore {
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?
-    ) where Key: StorageKeyProtocol
+    ) where Key: StoreKeyProtocol
     
     func register<Key>(
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?,
         valueWillChange: @escaping () -> Void
-    ) where Key: StorageKeyProtocol
+    ) where Key: StoreKeyProtocol
 }
 
 #if DEBUG

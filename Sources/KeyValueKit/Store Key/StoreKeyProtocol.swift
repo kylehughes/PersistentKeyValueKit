@@ -1,5 +1,5 @@
 //
-//  StorageKeyProtocol.swift
+//  StoreKeyProtocol.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 4/17/22.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol StorageKeyProtocol: Identifiable where ID == String {
+public protocol StoreKeyProtocol: Identifiable where ID == String {
     // MARK: Associated Types
     
     associatedtype Value: KeyValueStorable
@@ -15,7 +15,7 @@ public protocol StorageKeyProtocol: Identifiable where ID == String {
     // MARK: Instance Interface
     
     var defaultValue: Value { get }
-    var id: String { get }
+    var id: ID { get }
     
     func get(from userDefaults: UserDefaults) -> Value
     func remove(from userDefaults: UserDefaults)

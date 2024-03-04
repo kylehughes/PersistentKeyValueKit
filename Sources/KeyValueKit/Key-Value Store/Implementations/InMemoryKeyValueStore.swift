@@ -37,19 +37,19 @@ extension InMemoryKeyValueStore: KeyValueStore {
         storage
     }
     
-    public func get<Key>(_ key: Key) -> Key.Value where Key: StorageKeyProtocol {
+    public func get<Key>(_ key: Key) -> Key.Value where Key: StoreKeyProtocol {
         self[key.id] as? Key.Value ?? key.defaultValue
     }
     
     // MARK: Setting Values
     
-    public func set<Key>(_ key: Key, to value: Key.Value) where Key: StorageKeyProtocol {
+    public func set<Key>(_ key: Key, to value: Key.Value) where Key: StoreKeyProtocol {
         self[key.id] = value
     }
     
     // MARK: Removing Values
     
-    public func remove<Key>(_ key: Key) where Key: StorageKeyProtocol {
+    public func remove<Key>(_ key: Key) where Key: StoreKeyProtocol {
         storage.removeValue(forKey: key.id)
     }
     
@@ -59,7 +59,7 @@ extension InMemoryKeyValueStore: KeyValueStore {
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?
-    ) where Key: StorageKeyProtocol {
+    ) where Key: StoreKeyProtocol {
         fatalError("I should implement this.")
     }
     
@@ -68,7 +68,7 @@ extension InMemoryKeyValueStore: KeyValueStore {
         for key: Key,
         with context: UnsafeMutableRawPointer?,
         valueWillChange: () -> Void
-    ) where Key: StorageKeyProtocol {
+    ) where Key: StoreKeyProtocol {
         fatalError("I should implement this.")
     }
 }

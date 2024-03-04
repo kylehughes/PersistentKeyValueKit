@@ -37,7 +37,7 @@ struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValueSto
         let defaultValue: Value = firstValue
         let expectedValue: Value = defaultValue
         
-        let key = StorageKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
+        let key = StoreKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
         
         XCTAssertEqual(storage.get(key), expectedValue)
     }
@@ -47,7 +47,7 @@ struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValueSto
         let defaultValue: Value = nil
         let expectedValue: Value = defaultValue
         
-        let key = StorageKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
+        let key = StoreKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
         
         XCTAssertEqual(storage.get(key), expectedValue)
     }
@@ -57,7 +57,7 @@ struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValueSto
         let defaultValue: Value = firstValue
         let expectedValue: Value = secondValue
         
-        let key = StorageKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
+        let key = StoreKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
         storage.set(key, to: expectedValue)
 
         XCTAssertEqual(storage.get(key), expectedValue)
@@ -68,7 +68,7 @@ struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValueSto
         let defaultValue: Value = nil
         let expectedValue: Value = secondValue
         
-        let key = StorageKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
+        let key = StoreKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
         storage.set(key, to: expectedValue)
         
         let newValue: Value = storage.get(key)
@@ -81,7 +81,7 @@ struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValueSto
         let defaultValue: Value = firstValue
         let expectedValue: Value = nil
         
-        let key = StorageKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
+        let key = StoreKey<Value>(id: UUID().uuidString, defaultValue: defaultValue)
         storage.set(key, to: expectedValue)
         
         XCTAssertNil(storage.object(forKey: key.id))

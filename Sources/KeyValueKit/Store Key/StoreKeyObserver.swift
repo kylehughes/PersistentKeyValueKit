@@ -1,5 +1,5 @@
 //
-//  StorageKeyObserver.swift
+//  StoreKeyObserver.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 6/13/22.
@@ -13,7 +13,7 @@ import Foundation
 /// written under the same interface but that is not what it is optimized for. This lets us use ``StoredValue`` with
 /// any type of ``KeyValueStore`` and simplifies many callsites that previously had to be duplicated between those two
 /// known ``KeyValueStore`` implementations.
-public class StorageKeyObserver<Key>: NSObject, ObservableObject where Key: StorageKeyProtocol {
+public class StoreKeyObserver<Key>: NSObject, ObservableObject where Key: StoreKeyProtocol {
     public let key: Key
     public let storage: KeyValueStore
     

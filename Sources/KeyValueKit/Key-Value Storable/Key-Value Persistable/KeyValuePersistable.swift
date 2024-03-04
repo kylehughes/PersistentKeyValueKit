@@ -40,7 +40,7 @@ extension KeyValuePersistable {
     // MARK: Interfacing with User Defaults
     
     @inlinable
-    public static func extract(_ key: some StorageKeyProtocol, from userDefaults: UserDefaults) -> Persistence? {
+    public static func extract(_ key: some StoreKeyProtocol, from userDefaults: UserDefaults) -> Persistence? {
         extract(key.id, from: userDefaults)
     }
     
@@ -50,7 +50,7 @@ extension KeyValuePersistable {
     
     @inlinable
     public static func extract(
-        _ key: some StorageKeyProtocol,
+        _ key: some StoreKeyProtocol,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
         extract(key.id, from: ubiquitousStore)
