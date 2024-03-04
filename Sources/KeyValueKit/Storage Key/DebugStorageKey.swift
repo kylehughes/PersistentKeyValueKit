@@ -13,6 +13,7 @@ public struct DebugStorageKey<Value>: Identifiable, StorageKeyProtocol where Val
     
     // MARK: Public Initialization
     
+    @inlinable
     public init(id: String, defaultValue: Value) {
         self.id = id
         self.defaultValue = defaultValue

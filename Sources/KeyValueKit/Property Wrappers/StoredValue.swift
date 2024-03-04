@@ -18,7 +18,7 @@ public struct StoredValue<Key>: DynamicProperty where Key: StorageKeyProtocol {
     
     // MARK: Public Initialization
     
-    public init(_ key: Key, storage: Storage) {
+    public init(_ key: Key, storage: KeyValueStore) {
         self.key = key
         
         _observer = StateObject(wrappedValue: StorageKeyObserver(storage: storage, key: key))

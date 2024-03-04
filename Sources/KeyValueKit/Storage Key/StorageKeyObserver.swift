@@ -8,19 +8,20 @@
 import Combine
 import Foundation
 
-/// This class, and the `Storage` functions it relies upon, implement the two known ways to observe `UserDefaults` and
-/// `NSUbiquitousKeyValueStore`. It is likely that other `Storage` implementations can be written under the same
-/// interface but that is not what it is optimized for. This lets us use `StoredValue` with any type of `Storage` and
-/// simplifies many callsites that previously had to be duplicated between those two known `Storage` implementations.
+/// This class, and the ``KeyValueStore`` functions it relies upon, implement the two known ways to observe
+/// `UserDefaults` and `NSUbiquitousKeyValueStore`. It is likely that other ``KeyValueStore`` implementations can be
+/// written under the same interface but that is not what it is optimized for. This lets us use ``StoredValue`` with
+/// any type of ``KeyValueStore`` and simplifies many callsites that previously had to be duplicated between those two
+/// known ``KeyValueStore`` implementations.
 public class StorageKeyObserver<Key>: NSObject, ObservableObject where Key: StorageKeyProtocol {
     public let key: Key
-    public let storage: Storage
+    public let storage: KeyValueStore
     
     private var context: Int
     
     // MARK: Public Initialization
     
-    public init(storage: Storage, key: Key) {
+    public init(storage: KeyValueStore, key: Key) {
         self.storage = storage
         self.key = key
         

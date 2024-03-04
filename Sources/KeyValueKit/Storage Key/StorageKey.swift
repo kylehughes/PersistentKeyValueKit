@@ -13,6 +13,7 @@ public struct StorageKey<Value>: Identifiable where Value: KeyValueStorable {
     
     // MARK: Public Initialization
     
+    @inlinable
     public init(id: String, defaultValue: Value) {
         self.id = id
         self.defaultValue = defaultValue
