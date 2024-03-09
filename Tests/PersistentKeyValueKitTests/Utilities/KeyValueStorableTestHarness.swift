@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import KeyValueKit
+import PersistentKeyValueKit
 import XCTest
 
 struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValuePersistible {

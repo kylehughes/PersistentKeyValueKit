@@ -5,7 +5,7 @@
 //  Created by Kyle Hughes on 4/17/22.
 //
 
-import KeyValueKit
+import PersistentKeyValueKit
 
 enum TestRawRepresentableKeyValueStorable:
     String,

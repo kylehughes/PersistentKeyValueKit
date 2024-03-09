@@ -6,9 +6,15 @@
 //
 
 import Foundation
-import KeyValueKit
+import PersistentKeyValueKit
 
-struct TestCodableKeyValueStorable: Codable, Equatable, KeyValueStorableAsProxy, KeyValueSerializableAsCodable, KeyValuePersistible {
+struct TestCodableKeyValueStorable: 
+    Codable,
+    Equatable,
+    KeyValueStorableAsProxy,
+    KeyValueSerializableAsCodable,
+    KeyValuePersistible
+{
     typealias Persistence = String
     typealias Serialization = String
     

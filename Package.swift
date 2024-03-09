@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "KeyValueKit",
+    name: "PersistentKeyValueKit",
     platforms: [
         .iOS(.v13),
         .macOS(.v10_15),
@@ -11,20 +11,20 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "KeyValueKit",
+            name: "PersistentKeyValueKit",
             targets: [
-                "KeyValueKit",
+                "PersistentKeyValueKit",
             ]
         ),
     ],
     targets: [
         .target(
-            name: "KeyValueKit"
+            name: "PersistentKeyValueKit"
         ),
         .testTarget(
-            name: "KeyValueKitTests",
+            name: "PersistentKeyValueKitTests",
             dependencies: [
-                "KeyValueKit",
+                "PersistentKeyValueKit",
             ]
         ),
     ]
