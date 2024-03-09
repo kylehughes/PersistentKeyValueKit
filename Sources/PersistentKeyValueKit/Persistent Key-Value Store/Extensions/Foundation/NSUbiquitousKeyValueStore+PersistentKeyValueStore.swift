@@ -5,9 +5,11 @@
 //  Created by Kyle Hughes on 6/11/22.
 //
 
+#if !os(watchOS)
+
 import Foundation
 
-#if !os(watchOS)
+// MARK: - PersistentKeyValueStore Extension
 
 extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     public static let didChangeInternallyNotification = NSNotification.Name(
@@ -105,8 +107,8 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
             object: self,
             userInfo: [
                 Self.changedKeysKey: [
-                    key.id
-                ]
+                    key.id,
+                ],
             ]
         )
     }

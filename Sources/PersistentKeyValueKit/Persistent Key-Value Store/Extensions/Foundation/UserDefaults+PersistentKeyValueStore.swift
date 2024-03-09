@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - PersistentKeyValueStore Extension
+
 extension UserDefaults: PersistentKeyValueStore {
     // MARK: Getting Values
     
@@ -15,10 +17,23 @@ extension UserDefaults: PersistentKeyValueStore {
         dictionaryRepresentation()
     }
     
+    #if DEBUG
+    public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        guard
+            PersistentKeyValueKitConfiguration.shouldSkipRegistrationCheckInDebug ||
+            RegistrationStorage.shared.is(key, registeredIn: self)
+        else {
+            fatalError("Key \(key.id) must be registered before being retrieved.")
+        }
+        
+        return key.get(from: self)
+    }
+    #else
     @inlinable
     public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
         key.get(from: self)
     }
+    #endif
     
     // MARK: Setting Values
     
@@ -56,9 +71,41 @@ extension UserDefaults: PersistentKeyValueStore {
     }
 }
 
+// MARK: - Bespoke Implementation
+
+extension UserDefaults {
+    // MARK: Register Default Values
+    
+    #if DEBUG
+    public func register(_ keys: [any PersistentKeyProtocol]) {
+        var defaults: [String: Any] = [:]
+        
+        for key in keys {
+            defaults[key.id] = key.defaultValue.serialize()
+            RegistrationStorage.shared.didRegister(key.id, in: self)
+        }
+        
+        register(defaults: defaults)
+    }
+    #else
+    @inlinable
+    public func register(_ keys: [any PersistentKeyProtocol]) {
+        var defaults: [String: Any] = [:]
+        
+        for key in keys {
+            defaults[key.id] = key.defaultValue.serialize()
+        }
+        
+        register(defaults: defaults)
+    }
+    #endif
+}
+
+#if DEBUG
+
 // MARK: - RegistrationStorage Definition
 
-fileprivate class RegistrationStorage {
+private class RegistrationStorage {
     fileprivate static let shared = RegistrationStorage()
     
     private let lock: NSRecursiveLock
@@ -72,7 +119,7 @@ fileprivate class RegistrationStorage {
         storage = [:]
     }
     
-    // MARK: Fileprivate Initialization
+    // MARK: Fileprivate Instance Interface
     
     fileprivate func didRegister(_ id: String, in userDefaults: UserDefaults) {
         lock.lock()
@@ -89,4 +136,20 @@ fileprivate class RegistrationStorage {
             return registeredIDs
         }()
     }
+    
+    fileprivate func `is`(_ key: some PersistentKeyProtocol, registeredIn userDefaults: UserDefaults) -> Bool {
+        lock.lock()
+        
+        defer {
+            lock.unlock()
+        }
+        
+        guard let registeredIDs = storage[ObjectIdentifier(userDefaults)] else {
+            return false
+        }
+        
+        return registeredIDs.contains(key.id)
+    }
 }
+
+#endif
