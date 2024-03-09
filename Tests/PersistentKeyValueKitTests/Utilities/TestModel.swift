@@ -15,7 +15,7 @@ public struct TestModel:
     KeyValueSerializableAsCodable,
     KeyValuePersistible
 {
-    public typealias Persistence = String
+    public typealias Storage = String
     public typealias Serialization = String
     
     public let id: UUID

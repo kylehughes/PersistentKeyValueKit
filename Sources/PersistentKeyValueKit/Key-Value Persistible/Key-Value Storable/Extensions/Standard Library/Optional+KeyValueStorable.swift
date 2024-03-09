@@ -12,20 +12,20 @@ import Foundation
 extension Optional: KeyValueStorable where Wrapped: KeyValueStorable {
     // MARK: Public Typealiases
     
-    /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
-    public typealias Persistence = Wrapped.Persistence?
+    /// The type that the conforming type is stored as in a ``PersistentKeyValueStore``.
+    public typealias Storage = Wrapped.Storage?
     
     // MARK: Interfacing with User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         Wrapped.extract(userDefaultsKey, from: userDefaults)
     }
     
-    /// Store the value, as `Persistence`, at the given key in the given `UserDefaults`.
+    /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to store the value at.
-    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Persistence`, at `userDefaultsKey`.
+    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
     @inlinable
     public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
         switch self {
@@ -44,7 +44,7 @@ extension Optional: KeyValueStorable where Wrapped: KeyValueStorable {
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Persistence? {
+    ) -> Storage? {
         Wrapped.extract(ubiquitousStoreKey, from: ubiquitousStore)
     }
     

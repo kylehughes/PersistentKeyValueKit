@@ -9,7 +9,7 @@ import Foundation
 
 public protocol KeyValueStorableAsCodable: Codable, KeyValueStorable
 where
-    Persistence == String
+    Storage == String
 {
     // NO-OP
 }
@@ -20,7 +20,7 @@ extension KeyValueStorableAsCodable {
     // MARK: Interfacing with User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         .extract(userDefaultsKey, from: userDefaults)
     }
     
@@ -32,7 +32,7 @@ extension KeyValueStorableAsCodable {
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Persistence? {
+    ) -> Storage? {
         .extract(ubiquitousStoreKey, from: ubiquitousStore)
     }
 

@@ -8,6 +8,6 @@
 import Foundation
 
 /// A type that can be stored in a ``PersistentKeyValueStore`` implementation (i.e. be the value of a key).
-public protocol KeyValuePersistible: KeyValueStorable, KeyValueSerializable where Persistence == Serialization {
+public protocol KeyValuePersistible: KeyValueStorable, KeyValueSerializable where Storage == Serialization {
     // NO-OP
 }

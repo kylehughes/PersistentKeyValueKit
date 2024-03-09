@@ -12,20 +12,20 @@ import Foundation
 extension Data: KeyValueStorable {
     // MARK: Public Typealiases
     
-    /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
-    public typealias Persistence = Self
+    /// The type that the conforming type is stored as in a ``PersistentKeyValueStore``.
+    public typealias Storage = Self
     
     // MARK: Interfacing with User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         userDefaults.data(forKey: userDefaultsKey)
     }
     
-    /// Store the value, as `Persistence`, at the given key in the given `UserDefaults`.
+    /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to store the value at.
-    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Persistence`, at `userDefaultsKey`.
+    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
     @inlinable
     public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
         userDefaults.set(self, forKey: userDefaultsKey)
@@ -39,7 +39,7 @@ extension Data: KeyValueStorable {
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Persistence? {
+    ) -> Storage? {
         ubiquitousStore.data(forKey: ubiquitousStoreKey)
     }
     

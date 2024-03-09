@@ -7,27 +7,27 @@
 
 import Foundation
 
-public protocol KeyValueStorable<Persistence> {
+public protocol KeyValueStorable<Storage> {
     // MARK: Associated Types
     
-    /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
-    associatedtype Persistence
+    /// The type that the conforming type is stored as in a ``PersistentKeyValueStore``.
+    associatedtype Storage
     
     // MARK: Interfacing with User Defaults
     
-    static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence?
+    static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage?
     
-    /// Store the value, as `Persistence`, at the given key in the given `UserDefaults`.
+    /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to store the value at.
-    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Persistence`, at `userDefaultsKey`.
+    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
     func store(as userDefaultsKey: String, in userDefaults: UserDefaults)
     
     #if !os(watchOS)
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    static func extract(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Persistence?
+    static func extract(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Storage?
     
     func store(as ubiquitousStoreKey: String, in ubiquitousStore: NSUbiquitousKeyValueStore)
     
@@ -43,7 +43,7 @@ extension KeyValueStorable {
     public static func extract(
         _ key: some PersistentKeyProtocol,
         from userDefaults: UserDefaults
-    ) -> Persistence? {
+    ) -> Storage? {
         extract(key.id, from: userDefaults)
     }
     
@@ -55,7 +55,7 @@ extension KeyValueStorable {
     public static func extract(
         _ key: some PersistentKeyProtocol,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Persistence? {
+    ) -> Storage? {
         extract(key.id, from: ubiquitousStore)
     }
     

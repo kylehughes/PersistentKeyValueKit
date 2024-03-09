@@ -15,7 +15,7 @@ struct TestCodableKeyValueStorable:
     KeyValueSerializableAsCodable,
     KeyValuePersistible
 {
-    typealias Persistence = String
+    typealias Storage = String
     typealias Serialization = String
     
     static let random = TestCodableKeyValueStorable(int: .random(in: 0 ... .max), string: UUID().uuidString)

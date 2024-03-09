@@ -14,7 +14,7 @@ enum TestRawRepresentableKeyValueStorable:
     KeyValueSerializableAsRawRepresentable,
     KeyValuePersistible
 {
-    typealias Persistence = RawValue
+    typealias Storage = RawValue
     typealias Serialization = RawValue
 
     case caseOne

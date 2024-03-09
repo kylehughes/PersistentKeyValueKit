@@ -17,14 +17,14 @@ extension KeyValueStorableAsObject {
     // MARK: Interfacing with User Defaults
     
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
-        userDefaults.object(forKey: userDefaultsKey) as? Persistence
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
+        userDefaults.object(forKey: userDefaultsKey) as? Storage
     }
     
-    /// Store the value, as `Persistence`, at the given key in the given `UserDefaults`.
+    /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to store the value at.
-    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Persistence`, at `userDefaultsKey`.
+    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
     @inlinable
     public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
         userDefaults.set(self, forKey: userDefaultsKey)
@@ -38,8 +38,8 @@ extension KeyValueStorableAsObject {
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Persistence? {
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Persistence
+    ) -> Storage? {
+        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Storage
     }
     
     @inlinable

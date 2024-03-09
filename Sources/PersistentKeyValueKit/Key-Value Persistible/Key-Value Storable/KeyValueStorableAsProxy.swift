@@ -9,12 +9,12 @@ import Foundation
 
 public protocol KeyValueStorableAsProxy: KeyValueStorable
 where
-    Persistence: KeyValueStorable,
-    Persistence == Persistence.Persistence
+    Storage: KeyValueStorable,
+    Storage == Storage.Storage
 {
     // MARK: Instance Interface
     
-    var persistenceValue: Persistence { get }
+    var StorageValue: Storage { get }
 }
 
 // MARK: - KeyValuePersistible Implementation
@@ -23,17 +23,17 @@ extension KeyValueStorableAsProxy {
     // MARK: Interfacing with User Defaults
     
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
+    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         .extract(userDefaultsKey, from: userDefaults)
     }
     
-    /// Store the value, as `Persistence`, at the given key in the given `UserDefaults`.
+    /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to store the value at.
-    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Persistence`, at `userDefaultsKey`.
+    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
     @inlinable
     public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        persistenceValue.store(as: userDefaultsKey, in: userDefaults)
+        StorageValue.store(as: userDefaultsKey, in: userDefaults)
     }
     
     #if !os(watchOS)
@@ -44,7 +44,7 @@ extension KeyValueStorableAsProxy {
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Persistence? {
+    ) -> Storage? {
         .extract(ubiquitousStoreKey, from: ubiquitousStore)
     }
     
@@ -53,7 +53,7 @@ extension KeyValueStorableAsProxy {
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        persistenceValue.store(as: ubiquitousStoreKey, in: ubiquitousStore)
+        StorageValue.store(as: ubiquitousStoreKey, in: ubiquitousStore)
     }
 
     #endif
@@ -61,11 +61,11 @@ extension KeyValueStorableAsProxy {
 
 // MARK: - Default Implementation where Self Serializes to Proxy
 
-extension KeyValueStorableAsProxy where Self: KeyValueSerializable, Persistence == Serialization {
+extension KeyValueStorableAsProxy where Self: KeyValueSerializable, Storage == Serialization {
     // MARK: Public Instance Interface
     
     @inlinable
-    public var persistenceValue: Persistence {
+    public var StorageValue: Storage {
         serialize()
     }
 }
