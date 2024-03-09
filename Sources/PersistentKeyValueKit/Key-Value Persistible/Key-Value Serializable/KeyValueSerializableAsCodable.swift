@@ -11,7 +11,10 @@ public protocol KeyValueSerializableAsCodable: Codable, KeyValueSerializable
 where
     Serialization == String
 {
-    // NO-OP
+    // MARK: Static Interface
+    
+    static var decoder: JSONDecoder { get }
+    static var encoder: JSONEncoder { get }
 }
 
 // MARK: - KeyValuePersistible Implementation
@@ -24,7 +27,7 @@ extension KeyValueSerializableAsCodable {
         guard
             let jsonString = serialization(),
             let json = jsonString.data(using: .utf8),
-            let value = try? JSONDecoder().decode(Self.self, from: json)
+            let value = try? decoder.decode(Self.self, from: json)
         else {
             return nil
         }
@@ -34,6 +37,26 @@ extension KeyValueSerializableAsCodable {
     
     @inlinable
     public func serialize() -> Serialization {
-        String(data: try! JSONEncoder().encode(self), encoding: .utf8)!
+        guard let data = try? Self.encoder.encode(self), let string = String(data: data, encoding: .utf8) else {
+            fatalError("Unable to encode to JSON")
+        }
+        
+        return string
+    }
+}
+
+// MARK: - Default Implementation
+
+extension KeyValueSerializableAsCodable {
+    // MARK: Public Static Interface
+    
+    @inlinable
+    public static var decoder: JSONDecoder {
+        JSONDecoder()
+    }
+    
+    @inlinable
+    public static var encoder: JSONEncoder {
+        JSONEncoder()
     }
 }
