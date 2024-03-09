@@ -14,7 +14,7 @@ where
 {
     // MARK: Instance Interface
     
-    var StorageValue: Storage { get }
+    var storageValue: Storage { get }
 }
 
 // MARK: - KeyValuePersistible Implementation
@@ -33,7 +33,7 @@ extension KeyValueStorableAsProxy {
     /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
     @inlinable
     public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
-        StorageValue.store(as: userDefaultsKey, in: userDefaults)
+        storageValue.store(as: userDefaultsKey, in: userDefaults)
     }
     
     #if !os(watchOS)
@@ -53,7 +53,7 @@ extension KeyValueStorableAsProxy {
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        StorageValue.store(as: ubiquitousStoreKey, in: ubiquitousStore)
+        storageValue.store(as: ubiquitousStoreKey, in: ubiquitousStore)
     }
 
     #endif
@@ -65,7 +65,7 @@ extension KeyValueStorableAsProxy where Self: KeyValueSerializable, Storage == S
     // MARK: Public Instance Interface
     
     @inlinable
-    public var StorageValue: Storage {
+    public var storageValue: Storage {
         serialize()
     }
 }
