@@ -1,5 +1,5 @@
 //
-//  KeyValueStore.swift
+//  PersistentKeyValueStore.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 3/21/21.
@@ -7,20 +7,20 @@
 
 import Foundation
 
-public protocol KeyValueStore {
+public protocol PersistentKeyValueStore {
     // MARK: Getting Values
     
     var dictionaryRepresentation: [String: Any] { get }
     
-    func get<Key>(_ key: Key) -> Key.Value where Key: StoreKeyProtocol
+    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol
     
     // MARK: Setting Values
     
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: StoreKeyProtocol
+    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol
     
     // MARK: Removing Values
     
-    func remove<Key>(_ key: Key) where Key: StoreKeyProtocol
+    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol
     
     // MARK: Observing Keys
     
@@ -28,25 +28,25 @@ public protocol KeyValueStore {
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?
-    ) where Key: StoreKeyProtocol
+    ) where Key: PersistentKeyProtocol
     
     func register<Key>(
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?,
         valueWillChange: @escaping () -> Void
-    ) where Key: StoreKeyProtocol
+    ) where Key: PersistentKeyProtocol
 }
 
 #if DEBUG
 // MARK: - Preview
 
-extension KeyValueStore where Self == InMemoryKeyValueStore {
+extension PersistentKeyValueStore where Self == InMemoryPersistentKeyValueStore {
     // MARK: Public Static Interface
     
     @inlinable
     public static var preview: Self {
-        InMemoryKeyValueStore()
+        InMemoryPersistentKeyValueStore()
     }
 }
 #endif

@@ -36,7 +36,7 @@ extension KeyValueSerializable {
     public static func deserialize<Key>(
         for key: Key,
         from serialization: @autoclosure () -> Serialization?
-    ) -> Self where Key: StoreKeyProtocol, Key.Value == Self {
+    ) -> Self where Key: PersistentKeyProtocol, Key.Value == Self {
         deserialize(from: serialization()) ?? key.defaultValue
     }
 }

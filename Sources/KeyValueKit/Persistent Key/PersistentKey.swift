@@ -1,5 +1,5 @@
 //
-//  StoreKey.swift
+//  PersistentKey.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 3/28/22.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct StoreKey<Value>: Identifiable where Value: KeyValueStorable {
+public struct PersistentKey<Value>: Identifiable where Value: KeyValueStorable {
     public let defaultValue: Value
     public let id: String
     
@@ -22,25 +22,25 @@ public struct StoreKey<Value>: Identifiable where Value: KeyValueStorable {
 
 // MARK: - Conditional Codable Extension
 
-extension StoreKey: Codable where Value: Codable {
+extension PersistentKey: Codable where Value: Codable {
     // NO-OP
 }
 
 // MARK: - Conditional Equatable Extension
 
-extension StoreKey: Equatable where Value: Equatable {
+extension PersistentKey: Equatable where Value: Equatable {
     // NO-OP
 }
 
 // MARK: - Conditional Hashable Extension
 
-extension StoreKey: Hashable where Value: Hashable {
+extension PersistentKey: Hashable where Value: Hashable {
     // NO-OP
 }
 
-// MARK: - StoreKeyProtocol Extension
+// MARK: - PersistentKeyProtocol Extension
 
-extension StoreKey: StoreKeyProtocol {
+extension PersistentKey: PersistentKeyProtocol {
     // MARK: Public Instance Interface
 
     @inlinable

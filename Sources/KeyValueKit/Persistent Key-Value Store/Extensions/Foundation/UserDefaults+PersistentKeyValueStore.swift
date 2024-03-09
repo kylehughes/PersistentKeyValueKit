@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension UserDefaults: KeyValueStore {
+extension UserDefaults: PersistentKeyValueStore {
     // MARK: Getting Values
     
     @inlinable
@@ -16,21 +16,21 @@ extension UserDefaults: KeyValueStore {
     }
     
     @inlinable
-    public func get<Key>(_ key: Key) -> Key.Value where Key: StoreKeyProtocol {
+    public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
         key.get(from: self)
     }
     
     // MARK: Setting Values
     
     @inlinable
-    public func set<Key>(_ key: Key, to value: Key.Value) where Key: StoreKeyProtocol {
+    public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
         key.set(to: value, in: self)
     }
     
     // MARK: Removing Values
     
     @inlinable
-    public func remove<Key>(_ key: Key) where Key: StoreKeyProtocol {
+    public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
         key.remove(from: self)
     }
     
@@ -41,7 +41,7 @@ extension UserDefaults: KeyValueStore {
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?
-    ) where Key: StoreKeyProtocol {
+    ) where Key: PersistentKeyProtocol {
         removeObserver(target, forKeyPath: key.id, context: context)
     }
     
@@ -51,7 +51,7 @@ extension UserDefaults: KeyValueStore {
         for key: Key,
         with context: UnsafeMutableRawPointer?,
         valueWillChange: () -> Void
-    ) where Key: StoreKeyProtocol {
+    ) where Key: PersistentKeyProtocol {
         addObserver(target, forKeyPath: key.id, context: context)
     }
 }

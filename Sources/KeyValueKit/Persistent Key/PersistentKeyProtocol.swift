@@ -1,5 +1,5 @@
 //
-//  StoreKeyProtocol.swift
+//  PersistentKeyProtocol.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 4/17/22.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol StoreKeyProtocol: Identifiable where ID == String {
+public protocol PersistentKeyProtocol: Identifiable where ID == String {
     // MARK: Associated Types
     
     associatedtype Value: KeyValueStorable

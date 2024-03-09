@@ -1,5 +1,5 @@
 //
-//  StoreKeyObserver.swift
+//  PersistentKeyObserver.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 6/13/22.
@@ -8,20 +8,20 @@
 import Combine
 import Foundation
 
-/// This class, and the ``KeyValueStore`` functions it relies upon, implement the two known ways to observe
-/// `UserDefaults` and `NSUbiquitousKeyValueStore`. It is likely that other ``KeyValueStore`` implementations can be
+/// This class, and the ``PersistentKeyValueStore`` functions it relies upon, implement the two known ways to observe
+/// `UserDefaults` and `NSUbiquitousKeyValueStore`. It is likely that other ``PersistentKeyValueStore`` implementations can be
 /// written under the same interface but that is not what it is optimized for. This lets us use ``StoredValue`` with
-/// any type of ``KeyValueStore`` and simplifies many callsites that previously had to be duplicated between those two
-/// known ``KeyValueStore`` implementations.
-public class StoreKeyObserver<Key>: NSObject, ObservableObject where Key: StoreKeyProtocol {
+/// any type of ``PersistentKeyValueStore`` and simplifies many callsites that previously had to be duplicated between those two
+/// known ``PersistentKeyValueStore`` implementations.
+public class PersistentKeyObserver<Key>: NSObject, ObservableObject where Key: PersistentKeyProtocol {
     public let key: Key
-    public let storage: KeyValueStore
+    public let storage: PersistentKeyValueStore
     
     private var context: Int
     
     // MARK: Public Initialization
     
-    public init(storage: KeyValueStore, key: Key) {
+    public init(storage: PersistentKeyValueStore, key: Key) {
         self.storage = storage
         self.key = key
         

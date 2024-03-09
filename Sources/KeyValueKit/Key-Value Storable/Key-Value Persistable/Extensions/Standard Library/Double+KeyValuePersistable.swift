@@ -12,7 +12,7 @@ import Foundation
 extension Double: KeyValuePersistable {
     // MARK: Public Typealiases
     
-    /// The type that the conforming type is persisted as in a ``KeyValueStore``.
+    /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
     public typealias Persistence = Self
     
     // MARK: Interfacing with User Defaults

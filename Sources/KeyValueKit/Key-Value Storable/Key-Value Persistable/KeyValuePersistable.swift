@@ -10,7 +10,7 @@ import Foundation
 public protocol KeyValuePersistable {
     // MARK: Associated Types
     
-    /// The type that the conforming type is persisted as in a ``KeyValueStore``.
+    /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
     associatedtype Persistence
     
     // MARK: Interfacing with User Defaults
@@ -40,7 +40,10 @@ extension KeyValuePersistable {
     // MARK: Interfacing with User Defaults
     
     @inlinable
-    public static func extract(_ key: some StoreKeyProtocol, from userDefaults: UserDefaults) -> Persistence? {
+    public static func extract(
+        _ key: some PersistentKeyProtocol,
+        from userDefaults: UserDefaults
+    ) -> Persistence? {
         extract(key.id, from: userDefaults)
     }
     
@@ -50,7 +53,7 @@ extension KeyValuePersistable {
     
     @inlinable
     public static func extract(
-        _ key: some StoreKeyProtocol,
+        _ key: some PersistentKeyProtocol,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
         extract(key.id, from: ubiquitousStore)
