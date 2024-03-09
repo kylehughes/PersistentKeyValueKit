@@ -10,7 +10,9 @@ import Foundation
 public protocol KeyValueSerializableAsSelf: KeyValueSerializable 
 where
     Serialization == Self
-{}
+{
+    // NO-OP
+}
 
 // MARK: - KeyValueSerializable Extension
 

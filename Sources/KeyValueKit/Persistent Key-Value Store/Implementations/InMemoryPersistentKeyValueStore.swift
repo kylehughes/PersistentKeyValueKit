@@ -60,7 +60,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
         for key: Key,
         with context: UnsafeMutableRawPointer?
     ) where Key: PersistentKeyProtocol {
-        fatalError("I should implement this.")
+        fatalError("Unimplemented")
     }
     
     public func register<Key>(
@@ -69,6 +69,6 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
         with context: UnsafeMutableRawPointer?,
         valueWillChange: () -> Void
     ) where Key: PersistentKeyProtocol {
-        fatalError("I should implement this.")
+        fatalError("Unimplemented")
     }
 }

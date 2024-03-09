@@ -9,7 +9,7 @@ import Foundation
 import KeyValueKit
 import XCTest
 
-struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValueStorable {
+struct KeyValueStorableTestHarness<Target> where Target: Equatable & KeyValuePersistible {
     private let firstValue: Target
     private let secondValue: Target
     private let storage: UserDefaults

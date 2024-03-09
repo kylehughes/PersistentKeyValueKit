@@ -1,5 +1,5 @@
 //
-//  String+KeyValuePersistable.swift
+//  Double+KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/27/24.
@@ -7,21 +7,23 @@
 
 import Foundation
 
-// MARK: - KeyValuePersistable Extension
+// MARK: - KeyValueStorable Extension
 
-extension String: KeyValuePersistable {
+extension Double: KeyValueStorable {
     // MARK: Public Typealiases
     
     /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
     public typealias Persistence = Self
     
     // MARK: Interfacing with User Defaults
-
+    
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
-        userDefaults.string(forKey: userDefaultsKey)
+        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
+        // a 0 value.
+        userDefaults.object(forKey: userDefaultsKey) as? Persistence
     }
-    
+
     /// Store the value, as `Persistence`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to store the value at.
@@ -40,7 +42,9 @@ extension String: KeyValuePersistable {
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
-        ubiquitousStore.string(forKey: ubiquitousStoreKey)
+        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
+        // a 0 value.
+        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Persistence
     }
     
     @inlinable

@@ -10,9 +10,9 @@ import KeyValueKit
 enum TestRawRepresentableKeyValueStorable:
     String,
     Equatable,
-    KeyValuePersistableAsProxy,
+    KeyValueStorableAsProxy,
     KeyValueSerializableAsRawRepresentable,
-    KeyValueStorable
+    KeyValuePersistible
 {
     typealias Persistence = RawValue
     typealias Serialization = RawValue

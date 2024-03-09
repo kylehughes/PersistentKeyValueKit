@@ -14,7 +14,7 @@ extension Date: KeyValueSerializable {
     
     public typealias Serialization = TimeInterval
     
-    // MARK: Converting to and from KeyValueStorable Value
+    // MARK: Converting to and from KeyValuePersistible Value
     
     @inlinable
     public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {

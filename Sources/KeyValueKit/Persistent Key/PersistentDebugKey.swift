@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol where Value: KeyValueStorable {
+public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol where Value: KeyValuePersistible {
     public let defaultValue: Value
     public let id: String
     

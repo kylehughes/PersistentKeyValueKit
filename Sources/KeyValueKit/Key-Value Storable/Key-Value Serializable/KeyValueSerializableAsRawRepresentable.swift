@@ -12,12 +12,14 @@ where
     RawValue: KeyValueSerializable,
     Serialization == RawValue,
     Serialization == RawValue.Serialization
-{}
+{
+    // NO-OP
+}
 
-// MARK: - KeyValueStorable Implementation
+// MARK: - KeyValuePersistible Implementation
 
 extension KeyValueSerializableAsRawRepresentable {
-    // MARK: Converting to and from KeyValueStorable Value
+    // MARK: Converting to and from KeyValuePersistible Value
     
     @inlinable
     public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {

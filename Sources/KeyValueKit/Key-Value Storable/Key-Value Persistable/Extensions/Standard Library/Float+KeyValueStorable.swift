@@ -1,5 +1,5 @@
 //
-//  Double+KeyValuePersistable.swift
+//  Float+KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/27/24.
@@ -7,15 +7,15 @@
 
 import Foundation
 
-// MARK: - KeyValuePersistable Extension
+// MARK: - KeyValueStorable Extension
 
-extension Double: KeyValuePersistable {
+extension Float: KeyValueStorable {
     // MARK: Public Typealiases
     
     /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
     public typealias Persistence = Self
     
-    // MARK: Interfacing with User Defaults
+    // MARK: Interfacing With User Defaults
     
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
@@ -23,7 +23,7 @@ extension Double: KeyValuePersistable {
         // a 0 value.
         userDefaults.object(forKey: userDefaultsKey) as? Persistence
     }
-
+    
     /// Store the value, as `Persistence`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to store the value at.
@@ -34,8 +34,6 @@ extension Double: KeyValuePersistable {
     }
     
     #if !os(watchOS)
-    
-    // MARK: Interfacing with Ubiquitous Key-Value Store
 
     @inlinable
     public static func extract(

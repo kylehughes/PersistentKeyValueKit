@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct PersistentKey<Value>: Identifiable where Value: KeyValueStorable {
+public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistible {
     public let defaultValue: Value
     public let id: String
     

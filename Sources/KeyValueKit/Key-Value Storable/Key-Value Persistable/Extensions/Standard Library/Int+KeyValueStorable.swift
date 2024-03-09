@@ -1,26 +1,26 @@
 //
-//  Bool+KeyValuePersistable.swift
+//  Int+KeyValueStorable.swift
 //  KeyValueKit
 //
-//  Created by Kyle Hughes on 2/26/24.
+//  Created by Kyle Hughes on 2/27/24.
 //
 
 import Foundation
 
-// MARK: - KeyValuePersistable Extension
+// MARK: - KeyValueStorable Extension
 
-extension Bool: KeyValuePersistable {
+extension Int: KeyValueStorable {
     // MARK: Public Typealiases
     
     /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
     public typealias Persistence = Self
     
     // MARK: Interfacing With User Defaults
-    
+
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Persistence? {
         // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a `false` value.
+        // a 0 value.
         userDefaults.object(forKey: userDefaultsKey) as? Persistence
     }
     
@@ -34,14 +34,14 @@ extension Bool: KeyValuePersistable {
     }
     
     #if !os(watchOS)
-    
+
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Persistence? {
         // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a `false` value.
+        // a 0 value.
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Persistence
     }
     
@@ -52,6 +52,6 @@ extension Bool: KeyValuePersistable {
     ) {
         ubiquitousStore.set(self, forKey: ubiquitousStoreKey)
     }
-    
+
     #endif
 }

@@ -1,5 +1,5 @@
 //
-//  KeyValuePersistableAsCodable.swift
+//  KeyValueStorableAsCodable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/25/24.
@@ -7,14 +7,16 @@
 
 import Foundation
 
-public protocol KeyValuePersistableAsCodable: Codable, KeyValuePersistable
+public protocol KeyValueStorableAsCodable: Codable, KeyValueStorable
 where
     Persistence == String
-{}
+{
+    // NO-OP
+}
 
-// MARK: - KeyValuePersistable Extension
+// MARK: - KeyValueStorable Extension
 
-extension KeyValuePersistableAsCodable {
+extension KeyValueStorableAsCodable {
     // MARK: Interfacing with User Defaults
 
     @inlinable

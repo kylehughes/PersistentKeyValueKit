@@ -1,5 +1,5 @@
 //
-//  KeyValuePersistable.swift
+//  KeyValueStorable.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 2/25/24.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol KeyValuePersistable {
+public protocol KeyValueStorable {
     // MARK: Associated Types
     
     /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
@@ -36,7 +36,7 @@ public protocol KeyValuePersistable {
 
 // MARK: - Novel Implementation
 
-extension KeyValuePersistable {
+extension KeyValueStorable {
     // MARK: Interfacing with User Defaults
     
     @inlinable

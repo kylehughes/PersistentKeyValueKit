@@ -10,12 +10,14 @@ import Foundation
 public protocol KeyValueSerializableAsCodable: Codable, KeyValueSerializable
 where
     Serialization == String
-{}
+{
+    // NO-OP
+}
 
-// MARK: - KeyValueStorable Implementation
+// MARK: - KeyValuePersistible Implementation
 
 extension KeyValueSerializableAsCodable {
-    // MARK: Converting to and from KeyValueStorable Value
+    // MARK: Converting to and from KeyValuePersistible Value
     
     @inlinable
     public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {

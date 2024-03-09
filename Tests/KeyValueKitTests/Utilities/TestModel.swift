@@ -8,7 +8,7 @@
 import Foundation
 import KeyValueKit
 
-public struct TestModel: Codable, Equatable, KeyValuePersistableAsProxy, KeyValueSerializableAsCodable, KeyValueStorable {
+public struct TestModel: Codable, Equatable, KeyValueStorableAsProxy, KeyValueSerializableAsCodable, KeyValuePersistible {
     public typealias Persistence = String
     public typealias Serialization = String
     
