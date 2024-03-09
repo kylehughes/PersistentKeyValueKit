@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol PersistentKeyProtocol: Identifiable where ID == String {
+public protocol PersistentKeyProtocol<Value>: Identifiable where ID == String {
     // MARK: Associated Types
     
     associatedtype Value: KeyValuePersistible

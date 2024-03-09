@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol KeyValueSerializable {
+public protocol KeyValueSerializable<Serialization> {
     // MARK: Associated Types
     
     associatedtype Serialization

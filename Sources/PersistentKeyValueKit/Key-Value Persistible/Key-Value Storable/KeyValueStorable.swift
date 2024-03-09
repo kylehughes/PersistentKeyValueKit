@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol KeyValueStorable {
+public protocol KeyValueStorable<Persistence> {
     // MARK: Associated Types
     
     /// The type that the conforming type is persisted as in a ``PersistentKeyValueStore``.
