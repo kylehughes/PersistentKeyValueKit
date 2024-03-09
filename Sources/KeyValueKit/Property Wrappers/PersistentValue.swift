@@ -1,5 +1,5 @@
 //
-//  StoredValue.swift
+//  PersistentValue.swift
 //  KeyValueKit
 //
 //  Created by Kyle Hughes on 4/21/22.
@@ -9,16 +9,16 @@ import Combine
 import Foundation
 import SwiftUI
 
-@available(iOS 14.0, macOS 11.0, *)
+@available(iOS 14.0, macOS 11.0, watchOS 7.0, *)
 @propertyWrapper
-public struct StoredValue<Key>: DynamicProperty where Key: PersistentKeyProtocol {
+public struct PersistentValue<Key>: DynamicProperty where Key: PersistentKeyProtocol {
     private let key: Key
     
     @StateObject private var observer: PersistentKeyObserver<Key>
     
     // MARK: Public Initialization
     
-    public init(_ key: Key, storage: PersistentKeyValueStore) {
+    public init(_ key: Key, storage: some PersistentKeyValueStore) {
         self.key = key
         
         _observer = StateObject(wrappedValue: PersistentKeyObserver(storage: storage, key: key))

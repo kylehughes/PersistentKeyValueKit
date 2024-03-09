@@ -9,19 +9,19 @@ import Combine
 import Foundation
 
 /// This class, and the ``PersistentKeyValueStore`` functions it relies upon, implement the two known ways to observe
-/// `UserDefaults` and `NSUbiquitousKeyValueStore`. It is likely that other ``PersistentKeyValueStore`` implementations can be
-/// written under the same interface but that is not what it is optimized for. This lets us use ``StoredValue`` with
-/// any type of ``PersistentKeyValueStore`` and simplifies many callsites that previously had to be duplicated between those two
-/// known ``PersistentKeyValueStore`` implementations.
+/// `UserDefaults` and `NSUbiquitousKeyValueStore`. It is likely that other ``PersistentKeyValueStore`` implementations 
+/// can be written under the same interface but that is not what it is optimized for. This lets us use
+/// ``PersistentValue`` with  any type of ``PersistentKeyValueStore`` and simplifies many callsites that previously had
+/// to be duplicated between those two known ``PersistentKeyValueStore`` implementations.
 public class PersistentKeyObserver<Key>: NSObject, ObservableObject where Key: PersistentKeyProtocol {
     public let key: Key
-    public let storage: PersistentKeyValueStore
+    public let storage: any PersistentKeyValueStore
     
     private var context: Int
     
     // MARK: Public Initialization
     
-    public init(storage: PersistentKeyValueStore, key: Key) {
+    public init(storage: some PersistentKeyValueStore, key: Key) {
         self.storage = storage
         self.key = key
         
