@@ -55,3 +55,38 @@ extension UserDefaults: PersistentKeyValueStore {
         addObserver(target, forKeyPath: key.id, context: context)
     }
 }
+
+// MARK: - RegistrationStorage Definition
+
+fileprivate class RegistrationStorage {
+    fileprivate static let shared = RegistrationStorage()
+    
+    private let lock: NSRecursiveLock
+    
+    private var storage: [ObjectIdentifier: Set<String>]
+    
+    // MARK: Fileprivate Initialization
+    
+    fileprivate init() {
+        lock = NSRecursiveLock()
+        storage = [:]
+    }
+    
+    // MARK: Fileprivate Initialization
+    
+    fileprivate func didRegister(_ id: String, in userDefaults: UserDefaults) {
+        lock.lock()
+        
+        defer {
+            lock.unlock()
+        }
+        
+        let key = ObjectIdentifier(userDefaults)
+
+        storage[key] = {
+            var registeredIDs = storage[key, default: []]
+            registeredIDs.insert(id)
+            return registeredIDs
+        }()
+    }
+}
