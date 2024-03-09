@@ -77,6 +77,17 @@ extension UserDefaults {
     // MARK: Register Default Values
     
     #if DEBUG
+    public func register(_ keys: any PersistentKeyProtocol...) {
+        var defaults: [String: Any] = [:]
+        
+        for key in keys {
+            defaults[key.id] = key.defaultValue.serialize()
+            RegistrationStorage.shared.didRegister(key.id, in: self)
+        }
+        
+        register(defaults: defaults)
+    }
+    
     public func register(_ keys: [any PersistentKeyProtocol]) {
         var defaults: [String: Any] = [:]
         
@@ -88,6 +99,17 @@ extension UserDefaults {
         register(defaults: defaults)
     }
     #else
+    @inlinable
+    public func register(_ keys: any PersistentKeyProtocol...) {
+        var defaults: [String: Any] = [:]
+        
+        for key in keys {
+            defaults[key.id] = key.defaultValue.serialize()
+        }
+        
+        register(defaults: defaults)
+    }
+    
     @inlinable
     public func register(_ keys: [any PersistentKeyProtocol]) {
         var defaults: [String: Any] = [:]
