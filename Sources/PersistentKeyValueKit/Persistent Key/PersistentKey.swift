@@ -7,6 +7,19 @@
 
 import Foundation
 
+/// A key for a value in a ``PersistentKeyValueStore``.
+///
+/// It is encouraged to use static accessors for keys because our APIs are designed for static member lookup.
+/// 
+/// e.g.
+///
+/// ```swift
+/// extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
+///     static var dateAskedForAppStoreRating: Self {
+///         Self(id: "DateAskedForAppStoreRating", defaultValue: nil)
+///     }
+/// }
+/// ```
 public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistible {
     public let defaultValue: Value
     public let id: String
