@@ -12,12 +12,19 @@ import Foundation
 // MARK: - PersistentKeyValueStore Extension
 
 extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
+    /// The notification that is posted when the value of a key changes internally.
     public static let didChangeInternallyNotification = NSNotification.Name(
         "NSUbiquitousKeyValueStore.DidChangeInternally"
     )
     
     // MARK: Getting Values
     
+    /// Gets the value for the given key.
+    ///
+    /// The default value is returned if the key has not been set.
+    ///
+    /// - Parameter key: The key to get the value for.
+    /// - Returns: The value for the given key, or the default value if the key has not been set.
     @inlinable
     public func get<Key>(_ key: Key) -> Key.Value where Key : PersistentKeyProtocol {
         key.get(from: self)
@@ -25,6 +32,10 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     
     // MARK: Setting Values
     
+    /// Sets the value for the given key.
+    ///
+    /// - Parameter key: The key to set the value for.
+    /// - Parameter value: The new value for the key.
     @inlinable
     public func set<Key>(_ key: Key, to value: Key.Value) where Key : PersistentKeyProtocol {
         key.set(to: value, in: self)
@@ -34,6 +45,9 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     
     // MARK: Removing Values
 
+    /// Removes the value for the given key.
+    ///
+    /// - Parameter key: The key to remove the value for.
     @inlinable
     public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
         key.remove(from: self)
@@ -43,6 +57,11 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     
     // MARK: Observing Keys
     
+    /// Deregisters an observer for the given key.
+    ///
+    /// - Parameter target: The observer to deregister.
+    /// - Parameter key: The key to stop observing.
+    /// - Parameter context: The context to use for the observer.
     @inlinable
     public func deregister<Key>(
         observer target: NSObject,
@@ -53,6 +72,12 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
         NotificationCenter.default.removeObserver(self, name: Self.didChangeInternallyNotification, object: self)
     }
     
+    /// Registers an observer for the given key.
+    ///
+    /// - Parameter target: The observer to register.
+    /// - Parameter key: The key to observe.
+    /// - Parameter context: The context to use for the observer.
+    /// - Parameter valueWillChange: The closure to call when the value of the key changes.
     @inlinable
     public func register<Key>(
         observer target: NSObject,

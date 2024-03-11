@@ -7,9 +7,12 @@
 
 import Foundation
 
+/// A type that can be serialized and deserialized to another type, with the intention of being stored in a
+/// ``PersistentKeyValueStore``.
 public protocol KeyValueSerializable<Serialization> {
     // MARK: Associated Types
     
+    /// The type that this value can be serialized to and deserialized from.
     associatedtype Serialization
     
     // MARK: Serializing & Deserializing
@@ -23,7 +26,7 @@ public protocol KeyValueSerializable<Serialization> {
     
     /// Serializes this value.
     ///
-    /// - Returns: The serialized version of this value.
+    /// - Returns: The serialization of this value.
     func serialize() -> Serialization
 }
 
@@ -32,6 +35,14 @@ public protocol KeyValueSerializable<Serialization> {
 extension KeyValueSerializable {
     // MARK: Serializing & Deserializing
     
+    /// Creates a new instance by deserializing from the given value, or returns the default value if the value cannot
+    /// be deserialized.
+    ///
+    /// - Parameter key: The key that the value is associated with.
+    /// - Parameter serialization: The closure that provides access to the value that should be deserialized, if it
+    ///   exists.
+    /// - Returns: A new instance that is representative of the given value, if it exists and if possible, or the
+    ///   default value if the value cannot be deserialized.
     @inlinable
     public static func deserialize<Key>(
         for key: Key,

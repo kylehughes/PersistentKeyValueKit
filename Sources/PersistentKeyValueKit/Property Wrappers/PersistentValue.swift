@@ -9,6 +9,14 @@ import Combine
 import Foundation
 import SwiftUI
 
+/// A property wrapper that provides a value from a ``PersistentKeyValueStore``.
+///
+/// e.g.
+///
+/// ```swift
+/// @PersistentValue(.isAppStoreRatingEnabled, storage: userDefaults)
+/// var isAppStoreRatingEnabled: Bool
+/// ```
 @available(iOS 14.0, macOS 11.0, watchOS 7.0, *)
 @propertyWrapper
 public struct PersistentValue<Key>: DynamicProperty where Key: PersistentKeyProtocol {
@@ -18,6 +26,10 @@ public struct PersistentValue<Key>: DynamicProperty where Key: PersistentKeyProt
     
     // MARK: Public Initialization
     
+    /// Creates a new property wrapper that provides a value from a ``PersistentKeyValueStore``.
+    ///
+    /// - Parameter key: The key to observe.
+    /// - Parameter storage: The store to observe the key in.
     public init(_ key: Key, storage: some PersistentKeyValueStore) {
         self.key = key
         
@@ -26,6 +38,9 @@ public struct PersistentValue<Key>: DynamicProperty where Key: PersistentKeyProt
     
     // MARK: Property Wrapper Implementation
     
+    /// The value of the key in the store.
+    ///
+    /// This value is updated whenever the value in the store changes.
     @inlinable
     public var projectedValue: Binding<Key.Value> {
         Binding {
@@ -35,6 +50,9 @@ public struct PersistentValue<Key>: DynamicProperty where Key: PersistentKeyProt
         }
     }
     
+    /// The value of the key in the store.
+    ///
+    /// This value is updated whenever the value in the store changes.
     public var wrappedValue: Key.Value {
         get {
             observer.value

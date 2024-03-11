@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// A key for a value that is only mutable in debug builds.
+/// A key for a value in a ``PersistentKeyValueStore`` that is only mutable in debug builds.
 ///
 /// In production builds, the default value is always returned and setting the value has no effect.
 ///
