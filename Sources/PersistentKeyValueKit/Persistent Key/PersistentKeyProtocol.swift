@@ -11,9 +11,6 @@ import Foundation
 ///
 /// This interface is designed around the two persistent key-value stores provided by Apple platforms: `UserDefaults`
 /// and `NSUbiquitousKeyValueStore`. It is not intended to support a generic key-value store implementation.
-///
-/// - SeeAlso: ``PersistentDebugKey``
-/// - SeeAlso: ``PersistentKey``
 public protocol PersistentKeyProtocol<Value>: Identifiable where ID == String {
     // MARK: Associated Types
     
@@ -55,7 +52,7 @@ public protocol PersistentKeyProtocol<Value>: Identifiable where ID == String {
     
     #if !os(watchOS)
     // MARK: Interfacing with Ubiquitous Key-Value Store
-    
+
     /// Gets the value of the key from the given `NSUbiquitousKeyValueStore`.
     ///
     /// The default value is returned if the key has not been set.

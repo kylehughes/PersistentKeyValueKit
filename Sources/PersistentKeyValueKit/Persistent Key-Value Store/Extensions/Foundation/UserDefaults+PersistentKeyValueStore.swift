@@ -47,6 +47,9 @@ extension UserDefaults: PersistentKeyValueStore {
     ///
     /// The default value is returned if the key has not been set.
     ///
+    /// In debug builds, this method will raise a fatal error if the key has not been registered before being retrieved,
+    /// or configured otherwise. In production builds, registration is not checked.
+    ///
     /// - Parameter key: The key to get the value for.
     /// - Returns: The value for the given key, or the default value if the key has not been set.
     public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
@@ -148,8 +151,10 @@ extension UserDefaults {
         register(defaults: defaults)
     }
     #else
-
     /// Registers the given keys with their default values.
+    ///
+    /// In debug builds, this method will record the registration of the keys for later checking. In production builds,
+    /// registration is not recorded.
     ///
     /// - Parameter keys: The keys to register.
     @inlinable
