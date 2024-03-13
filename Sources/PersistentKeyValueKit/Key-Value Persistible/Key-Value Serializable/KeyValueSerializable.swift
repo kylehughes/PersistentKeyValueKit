@@ -17,11 +17,11 @@ public protocol KeyValueSerializable<Serialization> {
     
     // MARK: Serializing & Deserializing
 
-    /// Creates a new instance by deserializing from the given value.
+    /// Creates a new instance by deserializing from the given serialization.
     ///
-    /// - Parameter serialization: The closure that provides access to the value that should be deserialized, if it
-    ///   exists.
-    /// - Returns: A new instance that is representative of the given value, if it exists and if possible.
+    /// - Parameter serialization: The closure that provides access to the serialization that should be deserialized, 
+    ///   if it exists.
+    /// - Returns: A new instance that is representative of the serialization, if it exists and if possible.
     static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self?
     
     /// Serializes this value.
@@ -35,14 +35,14 @@ public protocol KeyValueSerializable<Serialization> {
 extension KeyValueSerializable {
     // MARK: Serializing & Deserializing
     
-    /// Creates a new instance by deserializing from the given value, or returns the default value if the value cannot
-    /// be deserialized.
+    /// Creates a new instance by deserializing from the given serialization, or returns the default value if the
+    /// serialization cannot be deserialized.
     ///
     /// - Parameter key: The key that the value is associated with.
-    /// - Parameter serialization: The closure that provides access to the value that should be deserialized, if it
-    ///   exists.
-    /// - Returns: A new instance that is representative of the given value, if it exists and if possible, or the
-    ///   default value if the value cannot be deserialized.
+    /// - Parameter serialization: The closure that provides access to the serialization that should be deserialized, 
+    ///   if it exists.
+    /// - Returns: A new instance that is representative of the serialization, if it exists and if possible, or the
+    ///   default value if the serialization cannot be deserialized.
     @inlinable
     public static func deserialize<Key>(
         for key: Key,

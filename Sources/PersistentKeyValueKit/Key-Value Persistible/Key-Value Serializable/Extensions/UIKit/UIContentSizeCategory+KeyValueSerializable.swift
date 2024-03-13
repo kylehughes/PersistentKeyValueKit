@@ -15,6 +15,7 @@ import UIKit
 extension UIContentSizeCategory: KeyValueSerializable, KeyValueSerializableAsRawRepresentable {
     // MARK: Public Typealiases
     
+    /// The type that this value can be serialized to and deserialized from.
     public typealias Serialization = RawValue
 }
 

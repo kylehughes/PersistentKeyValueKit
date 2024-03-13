@@ -12,5 +12,6 @@ import Foundation
 extension Array<String>: KeyValueSerializable, KeyValueSerializableAsSelf {
     // MARK: Public Typealiases
     
+    /// The type that this value can be serialized to and deserialized from.
     public typealias Serialization = Self
 }

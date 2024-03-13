@@ -12,10 +12,16 @@ import Foundation
 extension Optional: KeyValueSerializable where Wrapped: KeyValueSerializable {
     // MARK: Public Typealiases
     
+    /// The type that this value can be serialized to and deserialized from.
     public typealias Serialization = Wrapped.Serialization?
     
     // MARK: Serialization & Deserialization
     
+    /// Creates a new instance by deserializing from the given serialization.
+    ///
+    /// - Parameter serialization: The closure that provides access to the serialization that should be deserialized, 
+    ///   if it exists.
+    /// - Returns: A new instance that is representative of the serialization, if it exists and if possible.
     @inlinable
     public static func deserialize(from serialization: @autoclosure () -> Serialization?) -> Self? {
         guard
@@ -28,13 +34,14 @@ extension Optional: KeyValueSerializable where Wrapped: KeyValueSerializable {
         return Wrapped.deserialize(from: unwrappedSerialization)
     }
     
+    /// Serializes this value.
+    ///
+    /// - Returns: The serialization of this value.
     @inlinable
     public func serialize() -> Serialization {
         switch self {
-        case .none:
-            return nil
-        case let .some(wrapped):
-            return wrapped.serialize()
+        case .none: nil
+        case let .some(wrapped): wrapped.serialize()
         }
     }
 }
