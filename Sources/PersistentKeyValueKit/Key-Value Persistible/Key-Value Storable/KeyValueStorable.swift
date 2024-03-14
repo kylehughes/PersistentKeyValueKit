@@ -9,11 +9,12 @@ import Foundation
 
 /// A type that can be stored in a ``PersistentKeyValueStore``.
 ///
-/// The interface for this protocol is designed to allow special types to use their special storage functions on
-/// `UserDefaults` and `NSUbiquitousKeyValueStore`. The special types are those that have specific storage functions on
-/// `UserDefaults` and `NSUbiquitousKeyValueStore`. These are effectively the "raw" types for the framework, and we
-/// try to make it easy for other types to be converted to and from these types so that we can always make use of the
-/// most efficient storage functions.
+/// The interface for this protocol is designed to allow special types to use their specific storage functions on
+/// `UserDefaults` and `NSUbiquitousKeyValueStore`. The special types are, thus, defined as those that have specific 
+/// storage functions on `UserDefaults` and `NSUbiquitousKeyValueStore`.
+///
+/// These are effectively the "raw" types for the framework, and we try to make it easy for other types to be converted 
+/// to and from these types so that we can always make use of the most efficient storage functions.
 ///
 /// For `UserDefaults`, these types are:
 ///
@@ -38,6 +39,10 @@ import Foundation
 /// - `Double` (`get`, `set`)
 /// - `Int64` (`get`, `set`)
 /// - `String` (`get`, `set`)
+///
+/// It is likely you do not need to conform to this protocol specifically. Instead, you should conform to one of the
+/// protocols that extend this one, like ``KeyValueStorableAsProxy``. They provide common default implementations that
+/// efficiently defer to the raw types.
 public protocol KeyValueStorable<Storage> {
     // MARK: Associated Types
     
