@@ -1,6 +1,6 @@
 # PersistentKeyValueKit
 
-TKTK
+Perfectly-shaped abstractions for `UserDefaults` and `NSUbiquitiousKeyValueStore`.
 
 ## About
 
