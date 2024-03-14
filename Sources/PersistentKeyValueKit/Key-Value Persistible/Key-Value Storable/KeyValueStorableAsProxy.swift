@@ -7,6 +7,13 @@
 
 import Foundation
 
+/// A type that can be stored in a ``PersistentKeyValueStore`` as another type that is also ``KeyValueStorable``.
+///
+/// This is a helper protocol designed to provide common default implementations of ``KeyValueStorable``.
+///
+/// This protocol is useful for types that are ``KeyValueSerializable`` to a type that is also ``KeyValueStorable``. For
+/// example, `Date` is serialized to `TimeInterval` (i.e. `Double`) and conforms to this protocol to leverage `Double`'s
+/// ``KeyValueStorable`` implementation.
 public protocol KeyValueStorableAsProxy: KeyValueStorable
 where
     Storage: KeyValueStorable,
@@ -14,6 +21,7 @@ where
 {
     // MARK: Instance Interface
     
+    /// The value to store in a ``PersistentKeyValueStore``.
     var storageValue: Storage { get }
 }
 
