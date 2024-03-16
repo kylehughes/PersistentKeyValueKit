@@ -94,7 +94,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Parameter userDefaults: The `UserDefaults` to set the value in.
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
-        newValue.store(as: id, in: userDefaults)
+        newValue.set(as: id, in: userDefaults)
     }
     
     #if !os(watchOS)
@@ -127,7 +127,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in.
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        newValue.store(as: id, in: ubiquitousStore)
+        newValue.set(as: id, in: ubiquitousStore)
     }
     
     #endif

@@ -22,17 +22,17 @@ extension Optional: KeyValueStorable where Wrapped: KeyValueStorable {
         Wrapped.get(userDefaultsKey, from: userDefaults)
     }
     
-    /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
+    /// Set the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
-    /// - Parameter userDefaultsKey: The key to store the value at.
-    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
+    /// - Parameter userDefaultsKey: The key to set the value at.
+    /// - Parameter userDefaults: The `UserDefaults` to set the value in, as `Storage`, at `userDefaultsKey`.
     @inlinable
-    public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
+    public func set(as userDefaultsKey: String, in userDefaults: UserDefaults) {
         switch self {
         case .none:
             userDefaults.removeObject(forKey: userDefaultsKey)
         case let .some(wrapped):
-            wrapped.store(as: userDefaultsKey, in: userDefaults)
+            wrapped.set(as: userDefaultsKey, in: userDefaults)
         }
     }
     
@@ -49,7 +49,7 @@ extension Optional: KeyValueStorable where Wrapped: KeyValueStorable {
     }
     
     @inlinable
-    public func store(
+    public func set(
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
@@ -57,7 +57,7 @@ extension Optional: KeyValueStorable where Wrapped: KeyValueStorable {
         case .none:
             ubiquitousStore.removeObject(forKey: ubiquitousStoreKey)
         case let .some(wrapped):
-            wrapped.store(as: ubiquitousStoreKey, in: ubiquitousStore)
+            wrapped.set(as: ubiquitousStoreKey, in: ubiquitousStore)
         }
     }
 

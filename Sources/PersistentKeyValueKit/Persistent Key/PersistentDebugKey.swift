@@ -93,7 +93,7 @@ extension PersistentDebugKey {
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
         #if DEBUG
-        newValue.store(as: id, in: userDefaults)
+        newValue.set(as: id, in: userDefaults)
         #else
         // NO-OP
         #endif
@@ -143,7 +143,7 @@ extension PersistentDebugKey {
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         #if DEBUG
-        newValue.store(as: id, in: ubiquitousStore)
+        newValue.set(as: id, in: ubiquitousStore)
         #else
         // NO-OP
         #endif

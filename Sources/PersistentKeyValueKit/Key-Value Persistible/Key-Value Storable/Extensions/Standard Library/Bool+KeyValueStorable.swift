@@ -24,12 +24,12 @@ extension Bool: KeyValueStorable {
         userDefaults.object(forKey: userDefaultsKey) as? Storage
     }
     
-    /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
+    /// Set the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
-    /// - Parameter userDefaultsKey: The key to store the value at.
-    /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `userDefaultsKey`.
+    /// - Parameter userDefaultsKey: The key to set the value at.
+    /// - Parameter userDefaults: The `UserDefaults` to set the value in, as `Storage`, at `userDefaultsKey`.
     @inlinable
-    public func store(as userDefaultsKey: String, in userDefaults: UserDefaults) {
+    public func set(as userDefaultsKey: String, in userDefaults: UserDefaults) {
         userDefaults.set(self, forKey: userDefaultsKey)
     }
     
@@ -46,7 +46,7 @@ extension Bool: KeyValueStorable {
     }
     
     @inlinable
-    public func store(
+    public func set(
         as ubiquitousStoreKey: String,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {

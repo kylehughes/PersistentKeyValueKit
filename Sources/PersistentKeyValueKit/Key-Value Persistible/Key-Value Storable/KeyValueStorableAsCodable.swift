@@ -20,7 +20,7 @@ where
 extension KeyValueStorableAsCodable {
     // MARK: Interfacing with User Defaults
 
-    /// Extract the value, as `Storage`, at the given key from the given `UserDefaults`.
+    /// Get the value, as `Storage`, at the given key from the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to get the value from.
     /// - Parameter userDefaults: The `UserDefaults` to get the value from, as `Storage`, at `userDefaultsKey`.
@@ -34,7 +34,7 @@ extension KeyValueStorableAsCodable {
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
-    /// Extract the value, as `Storage`, at the given key from the given `NSUbiquitousKeyValueStore`.
+    /// Get the value, as `Storage`, at the given key from the given `NSUbiquitousKeyValueStore`.
     ///
     /// - Parameter ubiquitousStoreKey: The key to get the value from.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from, as `Storage`, at
