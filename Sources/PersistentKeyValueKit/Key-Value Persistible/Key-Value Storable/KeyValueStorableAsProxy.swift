@@ -32,12 +32,12 @@ extension KeyValueStorableAsProxy {
     
     /// Extract the value, as `Storage`, at the given key from the given `UserDefaults`.
     ///
-    /// - Parameter userDefaultsKey: The key to extract the value from.
-    /// - Parameter userDefaults: The `UserDefaults` to extract the value from, as `Storage`, at `userDefaultsKey`.
+    /// - Parameter userDefaultsKey: The key to get the value from.
+    /// - Parameter userDefaults: The `UserDefaults` to get the value from, as `Storage`, at `userDefaultsKey`.
     /// - Returns: The value, as `Storage`, at `userDefaultsKey` in `userDefaults`, if it exists.
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
-        .extract(userDefaultsKey, from: userDefaults)
+    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
+        .get(userDefaultsKey, from: userDefaults)
     }
     
     /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
@@ -55,16 +55,16 @@ extension KeyValueStorableAsProxy {
 
     /// Extract the value, as `Storage`, at the given key from the given `NSUbiquitousKeyValueStore`.
     ///
-    /// - Parameter ubiquitousStoreKey: The key to extract the value from.
-    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to extract the value from, as `Storage`, at
+    /// - Parameter ubiquitousStoreKey: The key to get the value from.
+    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from, as `Storage`, at
     ///   `ubiquitousStoreKey`.
     /// - Returns: The value, as `Storage`, at `ubiquitousStoreKey` in `ubiquitousStore`, if it exists.
     @inlinable
-    public static func extract(
+    public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Storage? {
-        .extract(ubiquitousStoreKey, from: ubiquitousStore)
+        .get(ubiquitousStoreKey, from: ubiquitousStore)
     }
     
     /// Store the value, as `Storage`, at the given key in the given `NSUbiquitousKeyValueStore`.

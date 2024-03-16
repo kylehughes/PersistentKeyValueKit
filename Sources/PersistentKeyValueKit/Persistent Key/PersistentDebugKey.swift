@@ -65,7 +65,7 @@ extension PersistentDebugKey {
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
         #if DEBUG
-        .deserialize(for: self, from: Value.extract(self, from: userDefaults))
+        .deserialize(for: self, from: Value.get(self, from: userDefaults))
         #else
         defaultValue
         #endif
@@ -114,7 +114,7 @@ extension PersistentDebugKey {
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         #if DEBUG
-        .deserialize(for: self, from: Value.extract(self, from: ubiquitousStore))
+        .deserialize(for: self, from: Value.get(self, from: ubiquitousStore))
         #else
         defaultValue
         #endif

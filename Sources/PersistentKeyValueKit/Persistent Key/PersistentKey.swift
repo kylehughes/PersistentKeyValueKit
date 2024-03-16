@@ -77,7 +77,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Returns: The value of the key in the given `UserDefaults`, or the default value if the key has not been set.
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
-        .deserialize(for: self, from: Value.extract(self, from: userDefaults))
+        .deserialize(for: self, from: Value.get(self, from: userDefaults))
     }
     
     /// Removes the value of the key from the given `UserDefaults`.
@@ -110,7 +110,7 @@ extension PersistentKey: PersistentKeyProtocol {
     ///   not been set.
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
-        .deserialize(for: self, from: Value.extract(self, from: ubiquitousStore))
+        .deserialize(for: self, from: Value.get(self, from: ubiquitousStore))
     }
     
     /// Removes the value of the key from the given `NSUbiquitousKeyValueStore`.

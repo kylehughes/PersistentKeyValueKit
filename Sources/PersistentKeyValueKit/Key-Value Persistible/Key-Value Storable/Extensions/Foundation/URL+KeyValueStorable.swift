@@ -18,7 +18,7 @@ extension URL: KeyValueStorable {
     // MARK: Interfacing with User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
+    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         userDefaults.url(forKey: userDefaultsKey)
     }
     
@@ -36,7 +36,7 @@ extension URL: KeyValueStorable {
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
     @inlinable
-    public static func extract(
+    public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Storage? {

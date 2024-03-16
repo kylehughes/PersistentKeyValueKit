@@ -53,10 +53,10 @@ public protocol KeyValueStorable<Storage> {
     
     /// Extract the value, as `Storage`, at the given key from the given `UserDefaults`.
     ///
-    /// - Parameter userDefaultsKey: The key to extract the value from.
-    /// - Parameter userDefaults: The `UserDefaults` to extract the value from, as `Storage`, at `userDefaultsKey`.
+    /// - Parameter userDefaultsKey: The key to get the value from.
+    /// - Parameter userDefaults: The `UserDefaults` to get the value from, as `Storage`, at `userDefaultsKey`.
     /// - Returns: The value, as `Storage`, at `userDefaultsKey` in `userDefaults`, if it exists.
-    static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage?
+    static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage?
     
     /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
@@ -70,11 +70,11 @@ public protocol KeyValueStorable<Storage> {
     
     /// Extract the value, as `Storage`, at the given key from the given `NSUbiquitousKeyValueStore`.
     ///
-    /// - Parameter ubiquitousStoreKey: The key to extract the value from.
-    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to extract the value from, as `Storage`, at
+    /// - Parameter ubiquitousStoreKey: The key to get the value from.
+    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from, as `Storage`, at
     ///   `ubiquitousStoreKey`.
     /// - Returns: The value, as `Storage`, at `ubiquitousStoreKey` in `ubiquitousStore`, if it exists.
-    static func extract(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Storage?
+    static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Storage?
     
     /// Store the value, as `Storage`, at the given key in the given `NSUbiquitousKeyValueStore`.
     ///
@@ -96,11 +96,11 @@ extension KeyValueStorable {
     /// - Parameter key: The key to store the value at.
     /// - Parameter userDefaults: The `UserDefaults` to store the value in, as `Storage`, at `key`.
     @inlinable
-    public static func extract(
+    public static func get(
         _ key: some PersistentKeyProtocol,
         from userDefaults: UserDefaults
     ) -> Storage? {
-        extract(key.id, from: userDefaults)
+        get(key.id, from: userDefaults)
     }
     
     #if !os(watchOS)
@@ -112,11 +112,11 @@ extension KeyValueStorable {
     /// - Parameter key: The key to store the value at.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to store the value in, as `Storage`, at `key`.
     @inlinable
-    public static func extract(
+    public static func get(
         _ key: some PersistentKeyProtocol,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Storage? {
-        extract(key.id, from: ubiquitousStore)
+        get(key.id, from: ubiquitousStore)
     }
     
     #endif

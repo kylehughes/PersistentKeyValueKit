@@ -18,7 +18,7 @@ extension Double: KeyValueStorable {
     // MARK: Interfacing with User Defaults
     
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
+    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
         // a 0 value.
         userDefaults.object(forKey: userDefaultsKey) as? Storage
@@ -38,7 +38,7 @@ extension Double: KeyValueStorable {
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
     @inlinable
-    public static func extract(
+    public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Storage? {

@@ -18,7 +18,7 @@ extension Bool: KeyValueStorable {
     // MARK: Interfacing With User Defaults
     
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
+    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
         // a `false` value.
         userDefaults.object(forKey: userDefaultsKey) as? Storage
@@ -36,7 +36,7 @@ extension Bool: KeyValueStorable {
     #if !os(watchOS)
     
     @inlinable
-    public static func extract(
+    public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Storage? {

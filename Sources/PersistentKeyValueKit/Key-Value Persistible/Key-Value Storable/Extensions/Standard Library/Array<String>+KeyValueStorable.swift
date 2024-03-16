@@ -18,7 +18,7 @@ extension Array<String>: KeyValueStorable {
     // MARK: Interfacing With User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
+    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         userDefaults.stringArray(forKey: userDefaultsKey)
     }
     
@@ -35,7 +35,7 @@ extension Array<String>: KeyValueStorable {
 
     
     @inlinable
-    public static func extract(
+    public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Storage? {

@@ -18,8 +18,8 @@ extension Optional: KeyValueStorable where Wrapped: KeyValueStorable {
     // MARK: Interfacing with User Defaults
 
     @inlinable
-    public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
-        Wrapped.extract(userDefaultsKey, from: userDefaults)
+    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
+        Wrapped.get(userDefaultsKey, from: userDefaults)
     }
     
     /// Store the value, as `Storage`, at the given key in the given `UserDefaults`.
@@ -41,11 +41,11 @@ extension Optional: KeyValueStorable where Wrapped: KeyValueStorable {
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
     @inlinable
-    public static func extract(
+    public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Storage? {
-        Wrapped.extract(ubiquitousStoreKey, from: ubiquitousStore)
+        Wrapped.get(ubiquitousStoreKey, from: ubiquitousStore)
     }
     
     @inlinable
