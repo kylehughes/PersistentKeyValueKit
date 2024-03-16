@@ -30,6 +30,11 @@ where
 extension KeyValueStorableAsProxy {
     // MARK: Interfacing with User Defaults
     
+    /// Extract the value, as `Storage`, at the given key from the given `UserDefaults`.
+    ///
+    /// - Parameter userDefaultsKey: The key to extract the value from.
+    /// - Parameter userDefaults: The `UserDefaults` to extract the value from, as `Storage`, at `userDefaultsKey`.
+    /// - Returns: The value, as `Storage`, at `userDefaultsKey` in `userDefaults`, if it exists.
     @inlinable
     public static func extract(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
         .extract(userDefaultsKey, from: userDefaults)
@@ -48,6 +53,12 @@ extension KeyValueStorableAsProxy {
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
+    /// Extract the value, as `Storage`, at the given key from the given `NSUbiquitousKeyValueStore`.
+    ///
+    /// - Parameter ubiquitousStoreKey: The key to extract the value from.
+    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to extract the value from, as `Storage`, at
+    ///   `ubiquitousStoreKey`.
+    /// - Returns: The value, as `Storage`, at `ubiquitousStoreKey` in `ubiquitousStore`, if it exists.
     @inlinable
     public static func extract(
         _ ubiquitousStoreKey: String,
@@ -56,6 +67,11 @@ extension KeyValueStorableAsProxy {
         .extract(ubiquitousStoreKey, from: ubiquitousStore)
     }
     
+    /// Store the value, as `Storage`, at the given key in the given `NSUbiquitousKeyValueStore`.
+    ///
+    /// - Parameter ubiquitousStoreKey: The key to store the value at.
+    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to store the value in, as `Storage`, at
+    ///   `ubiquitousStoreKey`.
     @inlinable
     public func store(
         as ubiquitousStoreKey: String,
@@ -72,6 +88,9 @@ extension KeyValueStorableAsProxy {
 extension KeyValueStorableAsProxy where Self: KeyValueSerializable, Storage == Serialization {
     // MARK: Public Instance Interface
     
+    /// The value to store in a ``PersistentKeyValueStore``.
+    ///
+    /// - Returns: The result of calling `serialize()`.
     @inlinable
     public var storageValue: Storage {
         serialize()
