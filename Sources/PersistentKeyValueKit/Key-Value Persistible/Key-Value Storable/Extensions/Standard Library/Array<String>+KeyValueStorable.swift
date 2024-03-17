@@ -12,7 +12,7 @@ import Foundation
 extension Array<String>: KeyValueStorable {
     // MARK: Public Typealiases
     
-    /// The type that the conforming type is stored as in a ``PersistentKeyValueStore``.
+    /// The type that values of this type are stored as in a ``PersistentKeyValueStore``.
     public typealias Storage = Self
     
     // MARK: Interfacing With User Defaults
