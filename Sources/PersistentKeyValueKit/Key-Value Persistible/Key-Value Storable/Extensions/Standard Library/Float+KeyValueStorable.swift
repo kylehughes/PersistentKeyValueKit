@@ -17,13 +17,6 @@ extension Float: KeyValueStorable {
     
     // MARK: Interfacing With User Defaults
     
-    @inlinable
-    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a 0 value.
-        userDefaults.object(forKey: userDefaultsKey) as? Storage
-    }
-    
     /// Set the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to set the value at.
@@ -36,22 +29,6 @@ extension Float: KeyValueStorable {
     #if !os(watchOS)
 
     // MARK: Interfacing With Ubiquitous Key-Value Store
-
-    /// Get the value, as `Storage`, at the given key from the given `NSUbiquitousKeyValueStore`.
-    ///
-    /// - Parameter ubiquitousStoreKey: The key to get the value from.
-    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from, as `Storage`, at
-    ///   `ubiquitousStoreKey`.
-    /// - Returns: The value, as `Storage`, at `ubiquitousStoreKey` in `ubiquitousStore`, if it exists.
-    @inlinable
-    public static func get(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Storage? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a 0 value.
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Storage
-    }
     
     /// Set the value, as `Storage`, at the given key in the given `NSUbiquitousKeyValueStore`.
     ///

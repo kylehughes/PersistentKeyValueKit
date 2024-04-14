@@ -1,5 +1,5 @@
 //
-//  Double+KeyValuePersistible.swift
+//  Float+KeyValuePersistible.swift
 //  PersistentKeyValueKit
 //
 //  Created by Kyle Hughes on 4/13/24.
@@ -9,13 +9,15 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Double: NewKeyValuePersistible {
+extension Float: NewKeyValuePersistible {
+    // MARK: Public Static Interface
+    
     public static let persistentKeyValueRepresentation = SelfPersistentKeyValueRepresentation<Self>()
 }
 
 // MARK: - StaticPersistentKeyValueRepresentation Extension
 
-extension Double: StaticPersistentKeyValueRepresentation {
+extension Float: StaticPersistentKeyValueRepresentation {
     // MARK: Interfacing with User Defaults
     
     @inlinable

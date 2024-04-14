@@ -1,5 +1,5 @@
 //
-//  Int+KeyValuePersistible.swift
+//  String+KeyValuePersistible.swift
 //  PersistentKeyValueKit
 //
 //  Created by Kyle Hughes on 4/13/24.
@@ -9,20 +9,20 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Int: NewKeyValuePersistible {
+extension String: NewKeyValuePersistible {
+    // MARK: Public Static Interface
+    
     public static let persistentKeyValueRepresentation = SelfPersistentKeyValueRepresentation<Self>()
 }
 
 // MARK: - StaticPersistentKeyValueRepresentation Extension
 
-extension Int: StaticPersistentKeyValueRepresentation {
+extension String: StaticPersistentKeyValueRepresentation {
     // MARK: Interfacing with User Defaults
     
     @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a 0 value.
-        userDefaults.object(forKey: userDefaultsKey) as? Self
+        userDefaults.string(forKey: userDefaultsKey)
     }
     
     @inlinable
@@ -37,9 +37,7 @@ extension Int: StaticPersistentKeyValueRepresentation {
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Self? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a 0 value.
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Storage
+        ubiquitousStore.string(forKey: ubiquitousStoreKey)
     }
     
     @inlinable

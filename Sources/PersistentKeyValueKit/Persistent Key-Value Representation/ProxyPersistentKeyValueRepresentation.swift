@@ -8,13 +8,13 @@
 import Foundation
 
 public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: NewKeyValuePersistible {
-    public let deserializing: (Proxy) -> Value
+    public let deserializing: (Proxy) -> Value?
     public let serializing: (Value) -> Proxy
     
     // MARK: Public Initialization
     
     @inlinable
-    public init(serializing: @escaping (Value) -> Proxy, deserializing: @escaping (Proxy) -> Value) {
+    public init(serializing: @escaping (Value) -> Proxy, deserializing: @escaping (Proxy) -> Value?) {
         self.serializing = serializing
         self.deserializing = deserializing
     }

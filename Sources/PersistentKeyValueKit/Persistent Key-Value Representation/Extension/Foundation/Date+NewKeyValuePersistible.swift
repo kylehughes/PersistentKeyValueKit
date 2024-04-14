@@ -10,6 +10,8 @@ import Foundation
 // MARK: - KeyValuePersistible Extension
 
 extension Date: NewKeyValuePersistible {
+    // MARK: Public Static Interface
+    
     public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation(
         serializing: \.timeIntervalSince1970,
         deserializing: Date.init(timeIntervalSince1970:)

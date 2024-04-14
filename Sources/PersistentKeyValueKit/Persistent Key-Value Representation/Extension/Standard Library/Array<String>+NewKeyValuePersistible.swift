@@ -1,5 +1,5 @@
 //
-//  Data+KeyValuePersistible.swift
+//  Array<String>+KeyValuePersistible.swift
 //  PersistentKeyValueKit
 //
 //  Created by Kyle Hughes on 4/13/24.
@@ -9,18 +9,20 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Data: NewKeyValuePersistible {
+extension Array<String>: NewKeyValuePersistible {
+    // MARK: Public Static Interface
+    
     public static let persistentKeyValueRepresentation = SelfPersistentKeyValueRepresentation<Self>()
 }
 
 // MARK: - StaticPersistentKeyValueRepresentation Extension
 
-extension Data: StaticPersistentKeyValueRepresentation {
+extension Array<String>: StaticPersistentKeyValueRepresentation {
     // MARK: Interfacing with User Defaults
     
     @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
-        userDefaults.data(forKey: userDefaultsKey)
+        userDefaults.stringArray(forKey: userDefaultsKey)
     }
     
     @inlinable
@@ -35,7 +37,7 @@ extension Data: StaticPersistentKeyValueRepresentation {
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Self? {
-        ubiquitousStore.data(forKey: ubiquitousStoreKey)
+        ubiquitousStore.array(forKey: ubiquitousStoreKey) as? Self
     }
     
     @inlinable
