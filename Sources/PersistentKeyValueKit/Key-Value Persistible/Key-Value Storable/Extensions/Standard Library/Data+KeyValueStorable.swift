@@ -16,11 +16,6 @@ extension Data: KeyValueStorable {
     public typealias Storage = Self
     
     // MARK: Interfacing with User Defaults
-
-    @inlinable
-    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Storage? {
-        userDefaults.data(forKey: userDefaultsKey)
-    }
     
     /// Set the value, as `Storage`, at the given key in the given `UserDefaults`.
     ///
@@ -34,20 +29,6 @@ extension Data: KeyValueStorable {
     #if !os(watchOS)
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
-    
-    /// Get the value, as `Storage`, at the given key from the given `NSUbiquitousKeyValueStore`.
-    ///
-    /// - Parameter ubiquitousStoreKey: The key to get the value from.
-    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from, as `Storage`, at
-    ///   `ubiquitousStoreKey`.
-    /// - Returns: The value, as `Storage`, at `ubiquitousStoreKey` in `ubiquitousStore`, if it exists.
-    @inlinable
-    public static func get(
-        _ ubiquitousStoreKey: String,
-        from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Storage? {
-        ubiquitousStore.data(forKey: ubiquitousStoreKey)
-    }
     
     /// Set the value, as `Storage`, at the given key in the given `NSUbiquitousKeyValueStore`.
     ///
