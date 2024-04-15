@@ -57,3 +57,22 @@ extension ProxyPersistentKeyValueRepresentation: PersistentKeyValueRepresentatio
         Proxy.persistentKeyValueRepresentation.set(ubiquitousStoreKey, to: serializing(value), in: ubiquitousStore)
     }
 }
+
+// MARK: - Extension For RawRepresentable Values
+
+extension ProxyPersistentKeyValueRepresentation 
+where
+    Value: RawRepresentable,
+    Value.RawValue: NewKeyValuePersistible,
+    Proxy == Value.RawValue
+{
+    // MARK: Public Static Interface
+    
+    @inlinable
+    public static var rawValue: ProxyPersistentKeyValueRepresentation<Value, Value.RawValue> {
+        ProxyPersistentKeyValueRepresentation(
+            serializing: \.rawValue,
+            deserializing: Value.init(rawValue:)
+        )
+    }
+}
