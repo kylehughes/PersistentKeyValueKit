@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: NewKeyValuePersistible {
+public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: KeyValuePersistible {
     public let deserializing: (Proxy) -> Value?
     public let serializing: (Value) -> Proxy
     
@@ -63,7 +63,7 @@ extension ProxyPersistentKeyValueRepresentation: PersistentKeyValueRepresentatio
 extension ProxyPersistentKeyValueRepresentation 
 where
     Value: RawRepresentable,
-    Value.RawValue: NewKeyValuePersistible,
+    Value.RawValue: KeyValuePersistible,
     Proxy == Value.RawValue
 {
     // MARK: Public Static Interface

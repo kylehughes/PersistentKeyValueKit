@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension UUID: NewKeyValuePersistible {
+extension UUID: KeyValuePersistible {
     // MARK: Public Static Interface
     
     public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation<UUID, String>(

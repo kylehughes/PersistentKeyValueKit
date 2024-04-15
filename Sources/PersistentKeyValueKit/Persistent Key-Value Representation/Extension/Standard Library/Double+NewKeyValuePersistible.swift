@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Double: NewKeyValuePersistible {
+extension Double: KeyValuePersistible {
     // MARK: Public Static Interface
     
     public static let persistentKeyValueRepresentation = SelfPersistentKeyValueRepresentation<Self>()

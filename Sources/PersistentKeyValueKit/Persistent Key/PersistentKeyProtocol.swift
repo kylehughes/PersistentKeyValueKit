@@ -15,7 +15,7 @@ public protocol PersistentKeyProtocol<Value>: Identifiable where ID == String {
     // MARK: Associated Types
     
     /// The type of the value for the key.
-    associatedtype Value: NewKeyValuePersistible
+    associatedtype Value: KeyValuePersistible
     
     // MARK: Instance Interface
     

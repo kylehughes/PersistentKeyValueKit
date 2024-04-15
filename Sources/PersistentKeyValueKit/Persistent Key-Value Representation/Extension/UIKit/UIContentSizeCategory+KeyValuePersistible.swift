@@ -11,7 +11,7 @@ import UIKit
 
 // MARK: - KeyValuePersistible Extension
 
-extension UIContentSizeCategory: NewKeyValuePersistible {
+extension UIContentSizeCategory: KeyValuePersistible {
     // MARK: Public Static Interface
     
     public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation<Self, RawValue>.rawValue

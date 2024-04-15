@@ -22,7 +22,7 @@ import Foundation
 /// …
 /// userDefaults.get(.dateAskedForAppStoreRating)
 /// ```
-public struct PersistentKey<Value>: Identifiable where Value: NewKeyValuePersistible {
+public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistible {
     /// The default value for the key.
     /// 
     /// This value is used when the key has not been set.

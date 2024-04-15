@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Optional: NewKeyValuePersistible where Wrapped: NewKeyValuePersistible {
+extension Optional: KeyValuePersistible where Wrapped: KeyValuePersistible {
     // MARK: Public Static Interface
     
     @inlinable

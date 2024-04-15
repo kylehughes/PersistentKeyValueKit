@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Date: NewKeyValuePersistible {
+extension Date: KeyValuePersistible {
     // MARK: Public Static Interface
     
     public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation(

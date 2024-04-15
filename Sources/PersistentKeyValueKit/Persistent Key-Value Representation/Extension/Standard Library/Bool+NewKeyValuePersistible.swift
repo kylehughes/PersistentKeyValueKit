@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Bool: NewKeyValuePersistible {
+extension Bool: KeyValuePersistible {
     // MARK: Public Static Interface
     
     public static let persistentKeyValueRepresentation = SelfPersistentKeyValueRepresentation<Self>()

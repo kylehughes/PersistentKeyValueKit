@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol StaticPersistentKeyValueRepresentation: NewKeyValuePersistible {
+public protocol StaticPersistentKeyValueRepresentation: KeyValuePersistible {
     // MARK: Interfacing with User Defaults
     
     /// Get the value, as `Storage`, at the given key from the given `UserDefaults`.

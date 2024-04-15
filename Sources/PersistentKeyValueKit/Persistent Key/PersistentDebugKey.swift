@@ -24,7 +24,7 @@ import Foundation
 /// …
 /// userDefaults.get(.isAppStoreRatingEnabled)
 /// ```
-public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol where Value: NewKeyValuePersistible {
+public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol where Value: KeyValuePersistible {
     /// The default value for the key.
     ///
     /// In debug builds, this value is used when the key has not been set. In production builds, this value is always 

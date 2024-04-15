@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension Float: NewKeyValuePersistible {
+extension Float: KeyValuePersistible {
     // MARK: Public Static Interface
     
     public static let persistentKeyValueRepresentation = SelfPersistentKeyValueRepresentation<Self>()

@@ -5,7 +5,7 @@
 //  Created by Kyle Hughes on 4/13/24.
 //
 
-public protocol NewKeyValuePersistible {
+public protocol KeyValuePersistible {
     // MARK: Associated Types
     
     associatedtype PersistentKeyValueRepresentation: PersistentKeyValueKit.PersistentKeyValueRepresentation<Self>
