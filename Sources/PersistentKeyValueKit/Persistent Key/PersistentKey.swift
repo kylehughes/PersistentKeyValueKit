@@ -33,6 +33,8 @@ public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistibl
     /// This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     public let id: String
     
+    public let representation: any PersistentKeyValueRepresentation<Value>
+    
     // MARK: Public Initialization
     
     /// Creates a new key with the given identifier and default value.
@@ -40,28 +42,58 @@ public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistibl
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
     @inlinable
-    public init(id: String, defaultValue: Value) {
+    public init(
+        id: String,
+        defaultValue: Value,
+        representation: some PersistentKeyValueRepresentation<Value>
+    ) {
         self.id = id
         self.defaultValue = defaultValue
+        self.representation = representation
+    }
+    
+    /// Creates a new key with the given identifier and default value.
+    ///
+    /// - Parameter id: The unique identifier for the key.
+    /// - Parameter defaultValue: The default value for the key.
+    @inlinable
+    public init(
+        id: String,
+        defaultValue: Value
+    ) {
+        self.id = id
+        self.defaultValue = defaultValue
+        
+        representation = Value.persistentKeyValueRepresentation
     }
 }
 
-// MARK: - Conditional Codable Extension
-
-extension PersistentKey: Codable where Value: Codable {
-    // NO-OP
-}
+// TODO: consider making codable and making each representation have to be codable…
+// proxy could be imple,mented as a bunch of protocol implementations which are structs so we cna code them. and common
+// operations like keyvalue. if you do a new thing you have to make a new struct. hmm. too much probably. easy to use
+// everywhere though.
 
 // MARK: - Conditional Equatable Extension
 
 extension PersistentKey: Equatable where Value: Equatable {
-    // NO-OP
+    // MARK: Public Static Interface
+    
+    @inlinable
+    public static func == (lhs: PersistentKey<Value>, rhs: PersistentKey<Value>) -> Bool {
+        lhs.defaultValue == rhs.defaultValue && lhs.id == rhs.id
+    }
 }
 
 // MARK: - Conditional Hashable Extension
 
 extension PersistentKey: Hashable where Value: Hashable {
-    // NO-OP
+    // MARK: Public Instance Interface
+    
+    @inlinable
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(defaultValue)
+        hasher.combine(id)
+    }
 }
 
 // MARK: - PersistentKeyProtocol Extension
@@ -77,7 +109,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Returns: The value of the key in the given `UserDefaults`, or the default value if the key has not been set.
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
-        .persistentKeyValueRepresentation.get(id, from: userDefaults) ?? defaultValue
+        representation.get(id, from: userDefaults) ?? defaultValue
     }
     
     /// Removes the value of the key from the given `UserDefaults`.
@@ -94,7 +126,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Parameter userDefaults: The `UserDefaults` to set the value in.
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
-        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: userDefaults)
+        representation.set(id, to: newValue, in: userDefaults)
     }
     
     #if !os(watchOS)
@@ -110,7 +142,7 @@ extension PersistentKey: PersistentKeyProtocol {
     ///   not been set.
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
-        .persistentKeyValueRepresentation.get(id, from: ubiquitousStore) ?? defaultValue
+        representation.get(id, from: ubiquitousStore) ?? defaultValue
     }
     
     /// Removes the value of the key from the given `NSUbiquitousKeyValueStore`.
@@ -127,7 +159,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in.
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: ubiquitousStore)
+        representation.set(id, to: newValue, in: ubiquitousStore)
     }
     
     #endif

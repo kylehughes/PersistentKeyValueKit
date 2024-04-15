@@ -36,6 +36,8 @@ public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol whe
     /// This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     public let id: String
     
+    public let representation: any PersistentKeyValueRepresentation<Value>
+    
     // MARK: Public Initialization
     
     /// Creates a new key with the given identifier and default value.
@@ -43,9 +45,25 @@ public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol whe
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
     @inlinable
-    public init(id: String, defaultValue: Value) {
+    public init(
+        id: String,
+        defaultValue: Value,
+        representation: some PersistentKeyValueRepresentation<Value>
+    ) {
         self.id = id
         self.defaultValue = defaultValue
+        self.representation = representation
+    }
+    
+    @inlinable
+    public init(
+        id: String,
+        defaultValue: Value
+    ) {
+        self.id = id
+        self.defaultValue = defaultValue
+        
+        representation = Value.persistentKeyValueRepresentation
     }
 }
 
@@ -65,7 +83,7 @@ extension PersistentDebugKey {
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
         #if DEBUG
-        .persistentKeyValueRepresentation.get(id, from: userDefaults) ?? defaultValue
+        representation.get(id, from: userDefaults) ?? defaultValue
         #else
         defaultValue
         #endif
@@ -93,7 +111,7 @@ extension PersistentDebugKey {
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
         #if DEBUG
-        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: userDefaults)
+        representation.set(id, to: newValue, in: userDefaults)
         #else
         // NO-OP
         #endif
@@ -114,7 +132,7 @@ extension PersistentDebugKey {
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         #if DEBUG
-        .persistentKeyValueRepresentation.get(id, from: ubiquitousStore) ?? defaultValue
+        representation.get(id, from: ubiquitousStore) ?? defaultValue
         #else
         defaultValue
         #endif
@@ -143,7 +161,7 @@ extension PersistentDebugKey {
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         #if DEBUG
-        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: ubiquitousStore)
+        representation.set(id, to: newValue, in: ubiquitousStore)
         #else
         // NO-OP
         #endif
