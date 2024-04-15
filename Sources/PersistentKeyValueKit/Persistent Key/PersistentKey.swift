@@ -22,7 +22,7 @@ import Foundation
 /// …
 /// userDefaults.get(.dateAskedForAppStoreRating)
 /// ```
-public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistible {
+public struct PersistentKey<Value>: Identifiable where Value: NewKeyValuePersistible {
     /// The default value for the key.
     /// 
     /// This value is used when the key has not been set.
@@ -77,7 +77,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Returns: The value of the key in the given `UserDefaults`, or the default value if the key has not been set.
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
-        .deserialize(for: self, from: Value.get(self, from: userDefaults))
+        .persistentKeyValueRepresentation.get(id, from: userDefaults) ?? defaultValue
     }
     
     /// Removes the value of the key from the given `UserDefaults`.
@@ -94,7 +94,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Parameter userDefaults: The `UserDefaults` to set the value in.
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
-        newValue.set(as: id, in: userDefaults)
+        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: userDefaults)
     }
     
     #if !os(watchOS)
@@ -110,7 +110,7 @@ extension PersistentKey: PersistentKeyProtocol {
     ///   not been set.
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
-        .deserialize(for: self, from: Value.get(self, from: ubiquitousStore))
+        .persistentKeyValueRepresentation.get(id, from: ubiquitousStore) ?? defaultValue
     }
     
     /// Removes the value of the key from the given `NSUbiquitousKeyValueStore`.
@@ -127,7 +127,7 @@ extension PersistentKey: PersistentKeyProtocol {
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in.
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        newValue.set(as: id, in: ubiquitousStore)
+        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: ubiquitousStore)
     }
     
     #endif

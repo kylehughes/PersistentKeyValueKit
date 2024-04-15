@@ -24,7 +24,7 @@ import Foundation
 /// …
 /// userDefaults.get(.isAppStoreRatingEnabled)
 /// ```
-public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol where Value: KeyValuePersistible {
+public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol where Value: NewKeyValuePersistible {
     /// The default value for the key.
     ///
     /// In debug builds, this value is used when the key has not been set. In production builds, this value is always 
@@ -65,7 +65,7 @@ extension PersistentDebugKey {
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
         #if DEBUG
-        .deserialize(for: self, from: Value.get(self, from: userDefaults))
+        .persistentKeyValueRepresentation.get(id, from: userDefaults) ?? defaultValue
         #else
         defaultValue
         #endif
@@ -93,7 +93,7 @@ extension PersistentDebugKey {
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
         #if DEBUG
-        newValue.set(as: id, in: userDefaults)
+        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: userDefaults)
         #else
         // NO-OP
         #endif
@@ -114,7 +114,7 @@ extension PersistentDebugKey {
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         #if DEBUG
-        .deserialize(for: self, from: Value.get(self, from: ubiquitousStore))
+        .persistentKeyValueRepresentation.get(id, from: ubiquitousStore) ?? defaultValue
         #else
         defaultValue
         #endif
@@ -143,7 +143,7 @@ extension PersistentDebugKey {
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         #if DEBUG
-        newValue.set(as: id, in: ubiquitousStore)
+        Value.persistentKeyValueRepresentation.set(id, to: newValue, in: ubiquitousStore)
         #else
         // NO-OP
         #endif

@@ -117,6 +117,7 @@ extension UserDefaults {
     // MARK: Register Default Values
     
     #if DEBUG
+    
     /// Registers the given keys with their default values.
     ///
     /// In debug builds, this method will record the registration of the keys for later checking. In production builds,
@@ -124,14 +125,15 @@ extension UserDefaults {
     ///
     /// - Parameter keys: The keys to register.
     public func register(_ keys: any PersistentKeyProtocol...) {
-        var defaults: [String: Any] = [:]
-        
-        for key in keys {
-            defaults[key.id] = key.defaultValue.serialize()
-            RegistrationStorage.shared.didRegister(key.id, in: self)
-        }
-        
-        register(defaults: defaults)
+        // TODO: need way for persistent representation to convert value to represenation value??
+//        var defaults: [String: Any] = [:]
+//        
+//        for key in keys {
+//            defaults[key.id] = key.defaultValue.serialize()
+//            RegistrationStorage.shared.didRegister(key.id, in: self)
+//        }
+//        
+//        register(defaults: defaults)
     }
     
     /// Registers the given keys with their default values.
@@ -141,16 +143,18 @@ extension UserDefaults {
     ///
     /// - Parameter keys: The keys to register.
     public func register(_ keys: [any PersistentKeyProtocol]) {
-        var defaults: [String: Any] = [:]
-        
-        for key in keys {
-            defaults[key.id] = key.defaultValue.serialize()
-            RegistrationStorage.shared.didRegister(key.id, in: self)
-        }
-        
-        register(defaults: defaults)
+//        var defaults: [String: Any] = [:]
+//        
+//        for key in keys {
+//            defaults[key.id] = key.defaultValue.serialize()
+//            RegistrationStorage.shared.didRegister(key.id, in: self)
+//        }
+//        
+//        register(defaults: defaults)
     }
+    
     #else
+    
     /// Registers the given keys with their default values.
     ///
     /// In debug builds, this method will record the registration of the keys for later checking. In production builds,
@@ -181,10 +185,12 @@ extension UserDefaults {
         
         register(defaults: defaults)
     }
+    
     #endif
 }
 
 #if DEBUG
+
 // MARK: - RegistrationStorage Definition
 
 private class RegistrationStorage {
@@ -233,4 +239,5 @@ private class RegistrationStorage {
         return registeredIDs.contains(key.id)
     }
 }
+
 #endif
