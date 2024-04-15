@@ -38,7 +38,7 @@ extension Bool: StaticPersistentKeyValueRepresentation {
     public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
-    ) -> Storage? {
+    ) -> Self? {
         // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
         // a `false` value.
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Self

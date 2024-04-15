@@ -41,7 +41,7 @@ extension Double: StaticPersistentKeyValueRepresentation {
     ) -> Self? {
         // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
         // a 0 value.
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Storage
+        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Self
     }
     
     @inlinable
