@@ -22,7 +22,7 @@ extension Optional: NewKeyValuePersistible where Wrapped: NewKeyValuePersistible
     }
 }
 
-// TODO: specific implementations for each known type so we cna do let? for perf?
+// TODO: This never gets run :(
 extension Optional<String> {
     public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation<Self, Self> {
         $0
