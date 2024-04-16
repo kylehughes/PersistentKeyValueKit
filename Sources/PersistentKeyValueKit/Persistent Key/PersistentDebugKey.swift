@@ -40,6 +40,17 @@ public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol whe
     
     // MARK: Public Initialization
     
+    @inlinable
+    public init(
+        id: String,
+        defaultValue: Value
+    ) {
+        self.id = id
+        self.defaultValue = defaultValue
+        
+        representation = Value.persistentKeyValueRepresentation
+    }
+    
     /// Creates a new key with the given identifier and default value.
     ///
     /// - Parameter id: The unique identifier for the key.
@@ -53,17 +64,6 @@ public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol whe
         self.id = id
         self.defaultValue = defaultValue
         self.representation = representation
-    }
-    
-    @inlinable
-    public init(
-        id: String,
-        defaultValue: Value
-    ) {
-        self.id = id
-        self.defaultValue = defaultValue
-        
-        representation = Value.persistentKeyValueRepresentation
     }
 }
 
@@ -168,4 +168,27 @@ extension PersistentDebugKey {
     }
     
     #endif
+}
+
+// MARK: - Conditional Equatable Extension
+
+extension PersistentDebugKey: Equatable where Value: Equatable {
+    // MARK: Public Static Interface
+    
+    @inlinable
+    public static func == (lhs: PersistentDebugKey<Value>, rhs: PersistentDebugKey<Value>) -> Bool {
+        lhs.defaultValue == rhs.defaultValue && lhs.id == rhs.id
+    }
+}
+
+// MARK: - Conditional Hashable Extension
+
+extension PersistentDebugKey: Hashable where Value: Hashable {
+    // MARK: Public Instance Interface
+    
+    @inlinable
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(defaultValue)
+        hasher.combine(id)
+    }
 }

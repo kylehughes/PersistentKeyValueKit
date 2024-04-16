@@ -25,7 +25,7 @@ import Foundation
 public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistible {
     /// The default value for the key.
     /// 
-    /// This value is used when the key has not been set.
+    /// This value is returned when the key is not present.
     public let defaultValue: Value
 
     /// The unique identifier for the key.
@@ -36,6 +36,17 @@ public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistibl
     public let representation: any PersistentKeyValueRepresentation<Value>
     
     // MARK: Public Initialization
+    
+    @inlinable
+    public init(
+        id: String,
+        defaultValue: Value
+    ) {
+        self.id = id
+        self.defaultValue = defaultValue
+        
+        representation = Value.persistentKeyValueRepresentation
+    }
     
     /// Creates a new key with the given identifier and default value.
     ///
@@ -51,49 +62,6 @@ public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistibl
         self.defaultValue = defaultValue
         self.representation = representation
     }
-    
-    /// Creates a new key with the given identifier and default value.
-    ///
-    /// - Parameter id: The unique identifier for the key.
-    /// - Parameter defaultValue: The default value for the key.
-    @inlinable
-    public init(
-        id: String,
-        defaultValue: Value
-    ) {
-        self.id = id
-        self.defaultValue = defaultValue
-        
-        representation = Value.persistentKeyValueRepresentation
-    }
-}
-
-// TODO: consider making codable and making each representation have to be codable…
-// proxy could be imple,mented as a bunch of protocol implementations which are structs so we cna code them. and common
-// operations like keyvalue. if you do a new thing you have to make a new struct. hmm. too much probably. easy to use
-// everywhere though.
-
-// MARK: - Conditional Equatable Extension
-
-extension PersistentKey: Equatable where Value: Equatable {
-    // MARK: Public Static Interface
-    
-    @inlinable
-    public static func == (lhs: PersistentKey<Value>, rhs: PersistentKey<Value>) -> Bool {
-        lhs.defaultValue == rhs.defaultValue && lhs.id == rhs.id
-    }
-}
-
-// MARK: - Conditional Hashable Extension
-
-extension PersistentKey: Hashable where Value: Hashable {
-    // MARK: Public Instance Interface
-    
-    @inlinable
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(defaultValue)
-        hasher.combine(id)
-    }
 }
 
 // MARK: - PersistentKeyProtocol Extension
@@ -103,10 +71,10 @@ extension PersistentKey: PersistentKeyProtocol {
 
     /// Gets the value of the key from the given `UserDefaults`.
     ///
-    /// The default value is returned if the key has not been set.
+    /// The default value is returned if the key is not present.
     ///
     /// - Parameter userDefaults: The `UserDefaults` to get the value from.
-    /// - Returns: The value of the key in the given `UserDefaults`, or the default value if the key has not been set.
+    /// - Returns: The value of the key in the given `UserDefaults`, or the default value if the key is not present.
     @inlinable
     public func get(from userDefaults: UserDefaults) -> Value {
         representation.get(id, from: userDefaults) ?? defaultValue
@@ -135,11 +103,11 @@ extension PersistentKey: PersistentKeyProtocol {
     
     /// Gets the value of the key from the given `NSUbiquitousKeyValueStore`.
     ///
-    /// The default value is returned if the key has not been set.
+    /// The default value is returned if the key is not present.
     ///
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from.
-    /// - Returns: The value of the key in the given `NSUbiquitousKeyValueStore`, or the default value if the key has 
-    ///   not been set.
+    /// - Returns: The value of the key in the given `NSUbiquitousKeyValueStore`, or the default value if the key is not
+    ///   present.
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         representation.get(id, from: ubiquitousStore) ?? defaultValue
@@ -163,4 +131,27 @@ extension PersistentKey: PersistentKeyProtocol {
     }
     
     #endif
+}
+
+// MARK: - Conditional Equatable Extension
+
+extension PersistentKey: Equatable where Value: Equatable {
+    // MARK: Public Static Interface
+    
+    @inlinable
+    public static func == (lhs: PersistentKey<Value>, rhs: PersistentKey<Value>) -> Bool {
+        lhs.defaultValue == rhs.defaultValue && lhs.id == rhs.id
+    }
+}
+
+// MARK: - Conditional Hashable Extension
+
+extension PersistentKey: Hashable where Value: Hashable {
+    // MARK: Public Instance Interface
+    
+    @inlinable
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(defaultValue)
+        hasher.combine(id)
+    }
 }

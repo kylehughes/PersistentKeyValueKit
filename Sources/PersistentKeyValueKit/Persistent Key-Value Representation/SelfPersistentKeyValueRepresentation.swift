@@ -10,6 +10,7 @@ import Foundation
 public struct SelfPersistentKeyValueRepresentation<Value> where Value: StaticPersistentKeyValueRepresentation {
     // MARK: Public Initialization
     
+    @inlinable
     public init() {}
 }
 
