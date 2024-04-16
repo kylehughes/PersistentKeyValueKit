@@ -8,6 +8,10 @@
 import Combine
 import Foundation
 
+// TODO: can I leverage the fact that this is a specific prxoy version?
+// functions aren't good cause they're not discoverable, having this be a proper type is good
+// but ugh I don't watnt o make the proxy thing also a protocol that everything can implement…
+
 public struct CodablePersistentKeyValueRepresentation<Value, Encoder, Decoder>
 where
     Value: Decodable & Encodable & KeyValuePersistible,

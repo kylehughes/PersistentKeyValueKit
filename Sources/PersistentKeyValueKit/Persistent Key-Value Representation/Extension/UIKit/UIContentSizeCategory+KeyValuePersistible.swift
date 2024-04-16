@@ -14,7 +14,9 @@ import UIKit
 extension UIContentSizeCategory: KeyValuePersistible {
     // MARK: Public Static Interface
     
-    public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation<Self, RawValue>.rawValue
+    public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
+        RawValuePersistentKeyValueRepresentation()
+    }
 }
 
 #endif
