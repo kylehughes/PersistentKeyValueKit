@@ -7,25 +7,19 @@
 
 import Foundation
 
-public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: KeyValuePersistible {
-    public let deserializing: (Proxy) -> Value?
-    public let proxyRepresentation: Proxy.PersistentKeyValueRepresentation
-    public let serializing: (Value) -> Proxy
+public protocol ProxyablePersistentKeyValueRepresentation<Value, Proxy>: PersistentKeyValueRepresentation {
+    associatedtype Proxy: KeyValuePersistible
+    associatedtype Value
     
-    // MARK: Public Initialization
+    var proxyRepresentation: Proxy.PersistentKeyValueRepresentation { get }
     
-    @inlinable
-    public init(serializing: @escaping (Value) -> Proxy, deserializing: @escaping (Proxy) -> Value?) {
-        self.serializing = serializing
-        self.deserializing = deserializing
-        
-        proxyRepresentation = Proxy.persistentKeyValueRepresentation
-    }
+    func deserializing(_ proxy: Proxy) -> Value?
+    func serializing(_ value: Value) -> Proxy
 }
 
 // MARK: - PersistentKeyValueRepresentation Extension
 
-extension ProxyPersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
+extension ProxyablePersistentKeyValueRepresentation {
     // MARK: Interface with User Defaults
     
     @inlinable
@@ -58,5 +52,40 @@ extension ProxyPersistentKeyValueRepresentation: PersistentKeyValueRepresentatio
     @inlinable
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         proxyRepresentation.set(ubiquitousStoreKey, to: serializing(value), in: ubiquitousStore)
+    }
+}
+
+// TODO: I had some thought about… do I just need to pass through a representation or something? instead of a
+// representation or value? maybe at the generic level? I don't remmemer.
+
+public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: KeyValuePersistible {
+    public let deserializing: (Proxy) -> Value?
+    public let proxyRepresentation: Proxy.PersistentKeyValueRepresentation
+    public let serializing: (Value) -> Proxy
+    
+    // MARK: Public Initialization
+    
+    @inlinable
+    public init(serializing: @escaping (Value) -> Proxy, deserializing: @escaping (Proxy) -> Value?) {
+        self.serializing = serializing
+        self.deserializing = deserializing
+        
+        proxyRepresentation = Proxy.persistentKeyValueRepresentation
+    }
+}
+
+// MARK: - ProxyablePersistentKeyValueRepresentation Extension
+
+extension ProxyPersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepresentation {
+    // MARK: Public Instnace Interface
+    
+    @inlinable
+    public func deserializing(_ proxy: Proxy) -> Value? {
+        deserializing(proxy)
+    }
+    
+    @inlinable
+    public func serializing(_ value: Value) -> Proxy {
+        serializing(value)
     }
 }
