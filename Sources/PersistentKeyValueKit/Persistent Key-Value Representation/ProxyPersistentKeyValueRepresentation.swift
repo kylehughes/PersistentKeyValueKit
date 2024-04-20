@@ -7,70 +7,30 @@
 
 import Foundation
 
-public protocol ProxyablePersistentKeyValueRepresentation<Value, Proxy>: PersistentKeyValueRepresentation {
-    associatedtype Proxy: KeyValuePersistible
-    associatedtype Value
-    
-    var proxyRepresentation: Proxy.PersistentKeyValueRepresentation { get }
-    
-    func deserializing(_ proxy: Proxy) -> Value?
-    func serializing(_ value: Value) -> Proxy
-}
-
-// MARK: - PersistentKeyValueRepresentation Extension
-
-extension ProxyablePersistentKeyValueRepresentation {
-    // MARK: Interface with User Defaults
-    
-    @inlinable
-    public func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Value? {
-        guard let proxyValue = proxyRepresentation.get(userDefaultsKey, from: userDefaults) else {
-            return nil
-        }
-        
-        return deserializing(proxyValue)
-    }
-    
-    @inlinable
-    public func set(_ userDefaultsKey: String, to value: Value, in userDefaults: UserDefaults) {
-        proxyRepresentation.set(userDefaultsKey, to: serializing(value), in: userDefaults)
-    }
-    
-    // MARK: Interface with Ubiquitous Key-Value Store
-    
-    @inlinable
-    public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
-        guard
-            let proxyValue = proxyRepresentation.get(ubiquitousStoreKey, from: ubiquitousStore)
-        else {
-            return nil
-        }
-        
-        return deserializing(proxyValue)
-    }
-    
-    @inlinable
-    public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        proxyRepresentation.set(ubiquitousStoreKey, to: serializing(value), in: ubiquitousStore)
-    }
-}
-
 // TODO: I had some thought about… do I just need to pass through a representation or something? instead of a
 // representation or value? maybe at the generic level? I don't remmemer.
 
-public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: KeyValuePersistible {
-    public let deserializing: (Proxy) -> Value?
-    public let proxyRepresentation: Proxy.PersistentKeyValueRepresentation
-    public let serializing: (Value) -> Proxy
+// TODO: ok i did it was it worth it?
+
+public struct ProxyPersistentKeyValueRepresentation<Value, ProxyRepresentation>
+where
+    ProxyRepresentation: PersistentKeyValueRepresentation
+{
+    public let deserializing: (ProxyRepresentation.Value) -> Value?
+    public let proxyRepresentation: ProxyRepresentation
+    public let serializing: (Value) -> ProxyRepresentation.Value
     
     // MARK: Public Initialization
     
     @inlinable
-    public init(serializing: @escaping (Value) -> Proxy, deserializing: @escaping (Proxy) -> Value?) {
+    public init(
+        proxyRepresentation: ProxyRepresentation,
+        serializing: @escaping (Value) -> ProxyRepresentation.Value,
+        deserializing: @escaping (ProxyRepresentation.Value) -> Value?
+    ) {
+        self.proxyRepresentation = proxyRepresentation
         self.serializing = serializing
         self.deserializing = deserializing
-        
-        proxyRepresentation = Proxy.persistentKeyValueRepresentation
     }
 }
 
@@ -80,12 +40,32 @@ extension ProxyPersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepr
     // MARK: Public Instnace Interface
     
     @inlinable
-    public func deserializing(_ proxy: Proxy) -> Value? {
+    public func deserializing(_ proxy: ProxyRepresentation.Value) -> Value? {
         deserializing(proxy)
     }
     
     @inlinable
-    public func serializing(_ value: Value) -> Proxy {
+    public func serializing(_ value: Value) -> ProxyRepresentation.Value {
         serializing(value)
+    }
+}
+
+// MARK: - Implementation for Persistible Proxy Representation Values
+
+extension ProxyPersistentKeyValueRepresentation where
+    ProxyRepresentation.Value: KeyValuePersistible,
+    ProxyRepresentation.Value.PersistentKeyValueRepresentation == ProxyRepresentation
+{
+    // MARK: Public Initialization
+    
+    @inlinable
+    public init(
+        serializing: @escaping (Value) -> ProxyRepresentation.Value,
+        deserializing: @escaping (ProxyRepresentation.Value) -> Value?
+    ) {
+        self.serializing = serializing
+        self.deserializing = deserializing
+        
+        proxyRepresentation = ProxyRepresentation.Value.persistentKeyValueRepresentation
     }
 }
