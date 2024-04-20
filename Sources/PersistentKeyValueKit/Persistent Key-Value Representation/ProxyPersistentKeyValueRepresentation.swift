@@ -55,9 +55,6 @@ extension ProxyablePersistentKeyValueRepresentation {
     }
 }
 
-// TODO: I had some thought about… do I just need to pass through a representation or something? instead of a
-// representation or value? maybe at the generic level? I don't remmemer.
-
 public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: KeyValuePersistible {
     public let deserializing: (Proxy) -> Value?
     public let proxyRepresentation: Proxy.PersistentKeyValueRepresentation
