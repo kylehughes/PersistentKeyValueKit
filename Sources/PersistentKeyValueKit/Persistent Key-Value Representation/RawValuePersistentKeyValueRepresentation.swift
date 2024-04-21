@@ -7,27 +7,28 @@
 
 import Foundation
 
-@inlinable
-public func RawValuePersistentKeyValueRepresentation<Value>(
-) -> ProxyPersistentKeyValueRepresentation<Value, Value.RawValue> where Value: RawRepresentable {
-    ProxyPersistentKeyValueRepresentation(
-        serializing: \.rawValue,
-        deserializing: Value.init(rawValue:)
-    )
-}
-
-// MARK: - Extension for Proxy Representation for RawRepresentable Values
-
-extension ProxyPersistentKeyValueRepresentation
+public struct RawValuePersistentKeyValueRepresentation<Value>
 where
     Value: RawRepresentable,
-    Value.RawValue: KeyValuePersistible,
-    Proxy == Value.RawValue
-{
-    // MARK: Public Static Interface
+    Value.RawValue: KeyValuePersistible
+{}
+
+// MARK: - ProxyablePersistentKeyValueRepresentation Extension
+
+extension RawValuePersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepresentation {
+    // MARK: Public Typealiases
+    
+    public typealias Proxy = Value.RawValue
+    
+    // MARK: Public Instance Interface
     
     @inlinable
-    public static var rawValue: ProxyPersistentKeyValueRepresentation<Value, Value.RawValue> {
-        RawValuePersistentKeyValueRepresentation()
+    public func deserializing(_ proxy: Proxy) -> Value? {
+        Value(rawValue: proxy)
+    }
+    
+    @inlinable
+    public func serializing(_ value: Value) -> Proxy? {
+        value.rawValue
     }
 }

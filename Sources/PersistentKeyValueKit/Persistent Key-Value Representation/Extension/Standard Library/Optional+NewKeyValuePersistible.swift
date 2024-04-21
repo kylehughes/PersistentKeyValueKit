@@ -21,12 +21,3 @@ extension Optional: KeyValuePersistible where Wrapped: KeyValuePersistible {
         }
     }
 }
-
-// TODO: This never gets run :(
-extension Optional<String> {
-    public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation<Self, Self> {
-        $0
-    } deserializing: {
-        $0
-    }
-}

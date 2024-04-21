@@ -8,10 +8,6 @@
 import Combine
 import Foundation
 
-// TODO: can I leverage the fact that this is a specific prxoy version?
-// functions aren't good cause they're not discoverable, having this be a proper type is good
-// but ugh I don't watnt o make the proxy thing also a protocol that everything can implement…
-
 public struct CodablePersistentKeyValueRepresentation<Value, Encoder, Decoder>
 where
     Value: Decodable & Encodable & KeyValuePersistible,
@@ -22,7 +18,6 @@ where
 {
     public let decoder: Decoder
     public let encoder: Encoder
-    public let representation: Encoder.Output.PersistentKeyValueRepresentation
     
     // MARK: Public Initialization
     
@@ -30,52 +25,26 @@ where
     public init(encoder: Encoder, decoder: Decoder) {
         self.encoder = encoder
         self.decoder = decoder
-        
-        representation = Encoder.Output.persistentKeyValueRepresentation
     }
 }
 
 // MARK: - PersistentKeyValueRepresentation Extension
 
-extension CodablePersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
-    // MARK: Interfacing with User Defaults
+extension CodablePersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepresentation {
+    // MARK: Public Typealiases
+    
+    public typealias Proxy = Encoder.Output
+    
+    // MARK: Public Instance Interface
     
     @inlinable
-    public func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Value? {
-        guard let encodedValue = representation.get(userDefaultsKey, from: userDefaults) else {
-            return nil
-        }
-        
-        return try? decoder.decode(Value.self, from: encodedValue)
+    public func deserializing(_ proxy: Proxy) -> Value? {
+        try? decoder.decode(Value.self, from: proxy)
     }
     
     @inlinable
-    public func set(_ userDefaultsKey: String, to value: Value, in userDefaults: UserDefaults) {
-        guard let encodedValue = try? encoder.encode(value) else {
-            return
-        }
-        
-        representation.set(userDefaultsKey, to: encodedValue, in: userDefaults)
-    }
-    
-    // MARK: Interfacing with Ubiquitous Key-Value Store
-    
-    @inlinable
-    public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
-        guard let encodedValue = representation.get(ubiquitousStoreKey, from: ubiquitousStore) else {
-            return nil
-        }
-        
-        return try? decoder.decode(Value.self, from: encodedValue)
-    }
-    
-    @inlinable
-    public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        guard let encodedValue = try? encoder.encode(value) else {
-            return
-        }
-        
-        representation.set(ubiquitousStoreKey, to: encodedValue, in: ubiquitousStore)
+    public func serializing(_ value: Value) -> Proxy? {
+        try? encoder.encode(value)
     }
 }
 
@@ -88,6 +57,5 @@ extension CodablePersistentKeyValueRepresentation where Encoder == JSONEncoder, 
     public init() {
         decoder = JSONDecoder()
         encoder = JSONEncoder()
-        representation = Encoder.Output.persistentKeyValueRepresentation
     }
 }

@@ -2,65 +2,35 @@
 //  ProxyPersistentKeyValueRepresentation.swift
 //  PersistentKeyValueKit
 //
-//  Created by Kyle Hughes on 4/13/24.
+//  Created by Kyle Hughes on 4/20/24.
 //
-
-import Foundation
-
-public protocol ProxyablePersistentKeyValueRepresentation<Value, Proxy>: PersistentKeyValueRepresentation {
-    associatedtype Proxy: KeyValuePersistible
-    associatedtype Value
-    
-    func deserializing(_ proxy: Proxy) -> Value?
-    func serializing(_ value: Value) -> Proxy
-}
-
-// MARK: - PersistentKeyValueRepresentation Extension
-
-extension ProxyablePersistentKeyValueRepresentation {
-    // MARK: Interface with User Defaults
-    
-    @inlinable
-    public func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Value? {
-        guard let proxyValue = Proxy.persistentKeyValueRepresentation.get(userDefaultsKey, from: userDefaults) else {
-            return nil
-        }
-        
-        return deserializing(proxyValue)
-    }
-    
-    @inlinable
-    public func set(_ userDefaultsKey: String, to value: Value, in userDefaults: UserDefaults) {
-        Proxy.persistentKeyValueRepresentation.set(userDefaultsKey, to: serializing(value), in: userDefaults)
-    }
-    
-    // MARK: Interface with Ubiquitous Key-Value Store
-    
-    @inlinable
-    public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
-        guard
-            let proxyValue = Proxy.persistentKeyValueRepresentation.get(ubiquitousStoreKey, from: ubiquitousStore)
-        else {
-            return nil
-        }
-        
-        return deserializing(proxyValue)
-    }
-    
-    @inlinable
-    public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        Proxy.persistentKeyValueRepresentation.set(ubiquitousStoreKey, to: serializing(value), in: ubiquitousStore)
-    }
-}
 
 public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: KeyValuePersistible {
     public let deserializing: (Proxy) -> Value?
-    public let serializing: (Value) -> Proxy
+    public let serializing: (Value) -> Proxy?
     
     // MARK: Public Initialization
     
     @inlinable
+    public init(serializing: @escaping (Value) -> Proxy, deserializing: @escaping (Proxy) -> Value) {
+        self.serializing = serializing
+        self.deserializing = deserializing
+    }
+    
+    @inlinable
+    public init(serializing: @escaping (Value) -> Proxy?, deserializing: @escaping (Proxy) -> Value) {
+        self.serializing = serializing
+        self.deserializing = deserializing
+    }
+    
+    @inlinable
     public init(serializing: @escaping (Value) -> Proxy, deserializing: @escaping (Proxy) -> Value?) {
+        self.serializing = serializing
+        self.deserializing = deserializing
+    }
+    
+    @inlinable
+    public init(serializing: @escaping (Value) -> Proxy?, deserializing: @escaping (Proxy) -> Value?) {
         self.serializing = serializing
         self.deserializing = deserializing
     }
@@ -77,7 +47,7 @@ extension ProxyPersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepr
     }
     
     @inlinable
-    public func serializing(_ value: Value) -> Proxy {
+    public func serializing(_ value: Value) -> Proxy? {
         serializing(value)
     }
 }
