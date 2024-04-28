@@ -9,15 +9,15 @@ import Foundation
 
 // MARK: - KeyValuePersistible Extension
 
-extension URL: KeyValuePersistible {
+extension URL {
     // MARK: Public Static Interface
     
-    public static let persistentKeyValueRepresentation = SelfPersistentKeyValueRepresentation<Self>()
+    public static let persistentKeyValueRepresentation = DirectPersistentKeyValueRepresentation<Self>()
 }
 
-// MARK: - StaticPersistentKeyValueRepresentation Extension
+// MARK: - DirectPersistentKeyValueRepresentationProtocol Extension
 
-extension URL: StaticPersistentKeyValueRepresentation {
+extension URL: DirectPersistentKeyValueRepresentationProtocol {
     // MARK: Interfacing with User Defaults
     
     @inlinable

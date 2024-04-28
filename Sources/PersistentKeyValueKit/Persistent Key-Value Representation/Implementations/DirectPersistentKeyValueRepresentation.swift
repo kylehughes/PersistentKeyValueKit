@@ -1,5 +1,5 @@
 //
-//  SelfPersistentKeyValueRepresentation.swift
+//  DirrectPersistentKeyValueRepresentation.swift
 //  PersistentKeyValueKit
 //
 //  Created by Kyle Hughes on 4/13/24.
@@ -7,7 +7,10 @@
 
 import Foundation
 
-public struct SelfPersistentKeyValueRepresentation<Value> where Value: StaticPersistentKeyValueRepresentation {
+public struct DirectPersistentKeyValueRepresentation<Value>
+where
+    Value: DirectPersistentKeyValueRepresentationProtocol
+{
     // MARK: Public Initialization
     
     @inlinable
@@ -16,7 +19,7 @@ public struct SelfPersistentKeyValueRepresentation<Value> where Value: StaticPer
 
 // MARK: - PersistentKeyValueRepresentation Extension
 
-extension SelfPersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
+extension DirectPersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
     // MARK: Interfacing with User Defaults
     
     @inlinable

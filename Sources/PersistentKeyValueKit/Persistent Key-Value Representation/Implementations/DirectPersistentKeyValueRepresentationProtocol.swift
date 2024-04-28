@@ -1,5 +1,5 @@
 //
-//  NativePersistentKeyValueRepresentation.swift
+//  DirectPersistentKeyValueRepresentationProtocol.swift
 //  PersistentKeyValueKit
 //
 //  Created by Kyle Hughes on 4/13/24.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol StaticPersistentKeyValueRepresentation: KeyValuePersistible {
+public protocol DirectPersistentKeyValueRepresentationProtocol: KeyValuePersistible {
     // MARK: Interfacing with User Defaults
     
     /// Get the value, as `Storage`, at the given key from the given `UserDefaults`.
