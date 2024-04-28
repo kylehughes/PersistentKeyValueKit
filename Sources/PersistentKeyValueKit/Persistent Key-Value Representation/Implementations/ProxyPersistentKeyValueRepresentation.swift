@@ -16,7 +16,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         other: Other,
         serializing: @escaping (Value) -> Other.Value,
         deserializing: @escaping (Other.Value) -> Value
-    ) where Other: ProxyablePersistentKeyValueRepresentation, Other.Proxy == Proxy {
+    ) where Other: ProxyPersistentKeyValueRepresentationProtocol, Other.Proxy == Proxy {
         self.serializing = {
             other.serializing(serializing($0))
         }
@@ -55,9 +55,9 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
     }
 }
 
-// MARK: - ProxyablePersistentKeyValueRepresentation Extension
+// MARK: - ProxyPersistentKeyValueRepresentationProtocol Extension
 
-extension ProxyPersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepresentation {
+extension ProxyPersistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentationProtocol {
     // MARK: Public Instnace Interface
     
     @inlinable

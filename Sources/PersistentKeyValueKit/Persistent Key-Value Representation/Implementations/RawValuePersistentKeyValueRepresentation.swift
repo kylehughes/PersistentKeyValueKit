@@ -13,9 +13,9 @@ where
     Value.RawValue: KeyValuePersistible
 {}
 
-// MARK: - ProxyablePersistentKeyValueRepresentation Extension
+// MARK: - ProxyPersistentKeyValueRepresentationProtocol Extension
 
-extension RawValuePersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepresentation {
+extension RawValuePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentationProtocol {
     // MARK: Public Typealiases
     
     public typealias Proxy = Value.RawValue

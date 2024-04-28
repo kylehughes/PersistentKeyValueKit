@@ -1,5 +1,5 @@
 //
-//  ProxyablePersistentKeyValueRepresentation.swift
+//  ProxyPersistentKeyValueRepresentationProtocol.swift
 //  PersistentKeyValueKit
 //
 //  Created by Kyle Hughes on 4/13/24.
@@ -7,7 +7,7 @@
 
 import Foundation
 
-public protocol ProxyablePersistentKeyValueRepresentation<Value, Proxy>: PersistentKeyValueRepresentation {
+public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: PersistentKeyValueRepresentation {
     // MARK: Associated Types
     
     associatedtype Proxy: KeyValuePersistible
@@ -21,7 +21,7 @@ public protocol ProxyablePersistentKeyValueRepresentation<Value, Proxy>: Persist
 
 // MARK: - PersistentKeyValueRepresentation Extension
 
-extension ProxyablePersistentKeyValueRepresentation {
+extension ProxyPersistentKeyValueRepresentationProtocol {
     // MARK: Interface with User Defaults
     
     @inlinable

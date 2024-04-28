@@ -30,7 +30,7 @@ where
 
 // MARK: - PersistentKeyValueRepresentation Extension
 
-extension CodablePersistentKeyValueRepresentation: ProxyablePersistentKeyValueRepresentation {
+extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentationProtocol {
     // MARK: Public Typealiases
     
     public typealias Proxy = Encoder.Output
