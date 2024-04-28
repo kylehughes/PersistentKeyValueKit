@@ -13,7 +13,7 @@ extension Optional: KeyValuePersistible where Wrapped: KeyValuePersistible {
     // MARK: Public Static Interface
     
     @inlinable
-    public static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, Self> {
+    public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         ProxyPersistentKeyValueRepresentation {
             $0
         } deserializing: {

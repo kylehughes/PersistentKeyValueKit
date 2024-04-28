@@ -12,7 +12,7 @@ import Foundation
 extension UUID: KeyValuePersistible {
     // MARK: Public Static Interface
     
-    public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation<UUID, String>(
+    public static let persistentKeyValueRepresentation = ProxyPersistentKeyValueRepresentation(
         serializing: \.uuidString,
         deserializing: UUID.init(uuidString:)
     )
