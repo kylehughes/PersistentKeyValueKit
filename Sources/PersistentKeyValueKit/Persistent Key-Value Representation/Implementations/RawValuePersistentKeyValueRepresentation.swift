@@ -7,11 +7,21 @@
 
 import Foundation
 
+/// A representation of a value in a ``PersistentKeyValueStore`` for types that can be associated as raw values.
+///
+/// This is a proxy representation. The ``Value`` type will be persisted as its `RawValue`, which must itself be
+/// persistible.
 public struct RawValuePersistentKeyValueRepresentation<Value>
 where
     Value: RawRepresentable,
     Value.RawValue: KeyValuePersistible
-{}
+{
+    // MARK: Public Initialization
+
+    /// Creates a new representation.
+    @inlinable
+    public init() {}
+}
 
 // MARK: - ProxyPersistentKeyValueRepresentationProtocol Extension
 

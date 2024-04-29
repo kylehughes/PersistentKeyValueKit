@@ -8,8 +8,6 @@
 import Foundation
 
 /// A key for a value in a ``PersistentKeyValueStore``.
-///
-/// It is encouraged to use static accessors for keys because our APIs are designed for static member lookup.
 /// 
 /// e.g.
 ///
@@ -33,10 +31,17 @@ public struct PersistentKey<Value>: Identifiable where Value: KeyValuePersistibl
     /// This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     public let id: String
     
+    /// The representation of the key-value pair in the ``PersistentKeyValueStore``.
     public let representation: any PersistentKeyValueRepresentation<Value>
     
     // MARK: Public Initialization
     
+    /// Creates a new key with the given identifier and default value.
+    ///
+    /// The key-value pair is represented by the default representation for ``Value``.
+    ///
+    /// - Parameter id: The unique identifier for the key.
+    /// - Parameter defaultValue: The default value for the key.
     @inlinable
     public init(
         id: String,

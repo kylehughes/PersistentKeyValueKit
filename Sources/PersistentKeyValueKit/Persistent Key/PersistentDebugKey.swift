@@ -11,8 +11,6 @@ import Foundation
 ///
 /// In production builds, the default value is always returned and setting the value has no effect.
 ///
-/// It is encouraged to use static accessors for keys because our APIs are designed for static member lookup.
-///
 /// e.g.
 ///
 /// ```swift
@@ -36,10 +34,17 @@ public struct PersistentDebugKey<Value>: Identifiable, PersistentKeyProtocol whe
     /// This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     public let id: String
     
+    /// The representation of the key-value pair in the ``PersistentKeyValueStore``.
     public let representation: any PersistentKeyValueRepresentation<Value>
     
     // MARK: Public Initialization
     
+    /// Creates a new key with the given identifier and default value.
+    ///
+    /// The key-value pair is represented by the default representation for ``Value``.
+    ///
+    /// - Parameter id: The unique identifier for the key.
+    /// - Parameter defaultValue: The default value for the key.
     @inlinable
     public init(
         id: String,
@@ -121,10 +126,10 @@ extension PersistentDebugKey {
 
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    /// In debug builds, gets the value of the key from the given `NSUbiquitousKeyValueStore`.
+    /// In debug builds, gets the value of the key from the given `NSUbiquitousKeyValueStore`. The default value is 
+    /// returned if the key has not been set. 
     ///
-    /// In debug builds, the default value is returned if the key has not been set. In production builds, the default
-    /// value is always returned.
+    /// In production builds, the default value is always returned.
     ///
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from.
     /// - Returns: In debug builds, the value of the key in the given `NSUbiquitousKeyValueStore`, or the default value

@@ -1,5 +1,5 @@
 //
-//  DirrectPersistentKeyValueRepresentation.swift
+//  DirectPersistentKeyValueRepresentation.swift
 //  PersistentKeyValueKit
 //
 //  Created by Kyle Hughes on 4/13/24.
@@ -7,12 +7,15 @@
 
 import Foundation
 
+/// A representation of a value in a ``PersistentKeyValueStore`` that is itself a persistible type and defines
+/// explicitly how to interface with `UserDefaults` and `NSUbiquitousKeyValueStore`.
 public struct DirectPersistentKeyValueRepresentation<Value>
 where
     Value: DirectPersistentKeyValueRepresentationProtocol
 {
     // MARK: Public Initialization
     
+    /// Creates a new representation.
     @inlinable
     public init() {}
 }

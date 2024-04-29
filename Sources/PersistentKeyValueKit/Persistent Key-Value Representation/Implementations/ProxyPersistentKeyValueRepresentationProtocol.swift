@@ -7,15 +7,31 @@
 
 import Foundation
 
+/// A protocol for a representation of a value in a ``PersistentKeyValueStore`` that is proxied through another
+/// persistible type.
+///
+/// This protocol is useful to build other representations that proxy a type in a specific way, like 
+/// ``CodablePersistentKeyValueRepresentation`` which proxies a type through its `Codable` implementation, or
+/// ``RawRepresentablePersistentKeyValueRepresentation`` which proxies a type through its `RawRepresentable`
+/// implementation.
+///
+/// To create a one-off representation to conform a type to ``KeyValuePersistible``, one should use
+/// ``ProxyPersistentKeyValueRepresentation``, which is a concrete implementation of this protocol.
 public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: PersistentKeyValueRepresentation {
     // MARK: Associated Types
     
+    /// The persistible type used as proxy.
     associatedtype Proxy: KeyValuePersistible
+
+    /// The type of value that is represented in a ``PersistentKeyValueStore``.
     associatedtype Value
     
     // MARK: Instance Interface
     
+    /// Deserializes a value from its proxy.
     func deserializing(_ proxy: Proxy) -> Value?
+
+    /// Serializes a value into its proxy.
     func serializing(_ value: Value) -> Proxy?
 }
 

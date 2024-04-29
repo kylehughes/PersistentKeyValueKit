@@ -8,6 +8,11 @@
 import Combine
 import Foundation
 
+/// A representation of a value in a ``PersistentKeyValueStore`` for types that participate in Swift's protocols for 
+/// encoding and decoding.
+///
+/// This is a proxy representation. The ``Value`` type will be persisted as the `Input`/`Output` of the given 
+/// ``Encoder`` and ``Decoder``, which must itself be persistible.
 public struct CodablePersistentKeyValueRepresentation<Value, Encoder, Decoder>
 where
     Value: Decodable & Encodable & KeyValuePersistible,
@@ -16,11 +21,18 @@ where
     Encoder.Output: KeyValuePersistible,
     Encoder.Output == Decoder.Input
 {
+    /// The decoder used to deserialize values from a ``PersistentKeyValueStore``.
     public let decoder: Decoder
+
+    /// The encoder used to serialize values for a ``PersistentKeyValueStore``.
     public let encoder: Encoder
     
     // MARK: Public Initialization
     
+    /// Creates a new representation with the given encoder and decoder.
+    ///
+    /// - Parameter encoder: The encoder used to serialize values for a ``PersistentKeyValueStore``.
+    /// - Parameter decoder: The decoder used to deserialize values from a ``PersistentKeyValueStore``.
     @inlinable
     public init(encoder: Encoder, decoder: Decoder) {
         self.encoder = encoder
@@ -53,6 +65,7 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
 extension CodablePersistentKeyValueRepresentation where Encoder == JSONEncoder, Decoder == JSONDecoder {
     // MARK: Public Initialization
     
+    /// Creates a new representation with the default `JSONEncoder` and `JSONDecoder`.
     @inlinable
     public init() {
         decoder = JSONDecoder()

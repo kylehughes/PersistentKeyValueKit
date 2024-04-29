@@ -22,6 +22,7 @@ public class PersistentKeyObserver<Key>: NSObject, ObservableObject where Key: P
     /// The store that the key is being observed in.
     public let storage: any PersistentKeyValueStore
     
+    /// The context for the key-value observation.
     private var context: Int
     
     // MARK: Public Initialization
@@ -75,6 +76,7 @@ public class PersistentKeyObserver<Key>: NSObject, ObservableObject where Key: P
     
     // MARK: Private Instance Interface
     
+    /// Sends the `objectWillChange` signal on the main actor.
     private func objectWillChange() {
         Task {
             await MainActor.run {
