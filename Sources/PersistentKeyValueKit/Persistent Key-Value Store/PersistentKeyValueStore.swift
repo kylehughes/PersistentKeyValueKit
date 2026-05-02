@@ -9,9 +9,17 @@ import Foundation
 
 /// A protocol for a key-value store that persists data across app launches.
 ///
-/// This interface is molded to the two persistent key-value stores provided by Apple platforms: `UserDefaults` and 
+/// This interface is molded to the two persistent key-value stores provided by Apple platforms: `UserDefaults` and
 /// `NSUbiquitousKeyValueStore`. It takes necessary liberties by being fully aware of these implementations. It is not
 /// intended to support a generic key-value store implementation.
+///
+/// ## Thread Safety
+///
+/// Conforming types are expected to be thread-safe. `UserDefaults` and `NSUbiquitousKeyValueStore` are documented by
+/// Apple as thread-safe. This protocol is not marked `Sendable` because those classes are `open` and cannot be
+/// retroactively conformed—subclasses could theoretically violate thread-safety. In practice, subclassing is
+/// uncommon.
+/// Implementations that are not thread-safe will exhibit undefined behavior or crash when used with observation APIs.
 public protocol PersistentKeyValueStore {
     // MARK: Getting Values
     
@@ -42,7 +50,6 @@ public protocol PersistentKeyValueStore {
     
     /// Removes an observer for the given key.
     ///
-    /// - Important: This is a `NO-OP`, and not a concern, for `NSUbiquitousKeyValueStore`.
     /// - Parameter observer: The object to remove as an observer.
     /// - Parameter key: The key to stop observing.
     /// - Parameter context: Arbitrary data that more specifically identifies the observer to be removed.
@@ -64,8 +71,7 @@ public protocol PersistentKeyValueStore {
     /// `selector`.
     ///
     /// For `UserDefaults`, neither the object receiving this message, nor observer, are retained. An object that calls
-    /// this method must also eventually call either the ``deregister(_:forKeyPath:context:)`` method to unregister the
-    /// observer.
+    /// this method must also eventually call ``deregister(_:for:context:)`` to unregister the observer.
     ///
     /// - Parameter observer: The observer to register.
     /// - Parameter key: The key to observe.

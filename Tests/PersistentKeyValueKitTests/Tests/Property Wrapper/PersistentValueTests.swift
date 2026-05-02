@@ -437,7 +437,6 @@ extension PersistentValueTests {
     
     @MainActor
     func test_explicit_nil_defaultViewModifier_default() async {
-        let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let userDefaults = UserDefaults.standard
         let viewController = ViewController()
         let defaultValue = "defaultValue"
@@ -606,7 +605,7 @@ extension TestView: View {
             .onAppear {
                 output.send(persistentValue)
             }
-            .onChange(of: persistentValue) { newValue in
+            .onPersistentValueChange(of: persistentValue) { newValue in
                 output.send(newValue)
             }
             .onReceive(input) { newValue in
@@ -615,6 +614,28 @@ extension TestView: View {
             .onReceive(binding) { newValue in
                 $persistentValue.wrappedValue = newValue
             }
+    }
+}
+
+// MARK: - View Compatibility Extension
+
+extension View {
+    // MARK: Fileprivate Instance Interface
+    
+    @ViewBuilder
+    fileprivate func onPersistentValueChange<Value: Equatable>(
+        of value: Value,
+        perform action: @escaping (Value) -> Void
+    ) -> some View {
+        if #available(iOS 17.0, macOS 14.0, tvOS 17.0, watchOS 10.0, visionOS 1.0, *) {
+            onChange(of: value) { _, newValue in
+                action(newValue)
+            }
+        } else {
+            onChange(of: value) { newValue in
+                action(newValue)
+            }
+        }
     }
 }
 

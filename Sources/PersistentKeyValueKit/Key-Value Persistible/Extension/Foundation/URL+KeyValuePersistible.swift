@@ -26,7 +26,7 @@ extension URL: PrimitiveKeyValuePersistible {
     public static func get(from propertyListArray: [Any]) -> [Self]? {
         var originalArray: [Self] = []
         
-        originalArray.reserveCapacity(propertyListArray.capacity)
+        originalArray.reserveCapacity(propertyListArray.count)
         
         for value in propertyListArray {
             guard let storedValue = value as? String, let value = URL(string: storedValue) else {
@@ -41,6 +41,8 @@ extension URL: PrimitiveKeyValuePersistible {
     
     @inlinable
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
+        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
+
         for value in values {
             propertyListArray.append(value.absoluteString)
         }
@@ -69,7 +71,23 @@ extension URL: PrimitiveKeyValuePersistible {
     
     @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
-        userDefaults.url(forKey: userDefaultsKey)
+        let object = userDefaults.object(forKey: userDefaultsKey)
+
+        // Launch arguments live in `UserDefaults.argumentDomain` as strings, even when the key models a typed value.
+        // Scope parsing to that domain and require a scheme so ordinary persisted strings do not become URLs, and so
+        // `url(forKey:)` keeps Foundation's file URL behavior for stored values.
+        if let stringValue = userDefaults.argumentDomainString(forKey: userDefaultsKey, visibleObject: object) {
+            guard
+                let value = URL(string: stringValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+                value.scheme != nil
+            else {
+                return nil
+            }
+
+            return value
+        }
+
+        return userDefaults.url(forKey: userDefaultsKey)
     }
     
     @inlinable

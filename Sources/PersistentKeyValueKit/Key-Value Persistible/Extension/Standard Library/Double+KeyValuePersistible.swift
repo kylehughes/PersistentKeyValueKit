@@ -25,9 +25,20 @@ extension Double: PrimitiveKeyValuePersistible {
     
     @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a 0 value.
-        userDefaults.object(forKey: userDefaultsKey) as? Self
+        let object = userDefaults.object(forKey: userDefaultsKey)
+
+        // We use `object(forKey:)` so that we can differentiate a `nil` value from a 0 value.
+        if let value = object as? Self {
+            return value
+        }
+
+        // Launch arguments live in `UserDefaults.argumentDomain` as strings, even when the key models a typed value.
+        // Scope this coercion to that domain so ordinary persisted strings do not become numbers by accident.
+        if let stringValue = userDefaults.argumentDomainString(forKey: userDefaultsKey, visibleObject: object) {
+            return Self(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        return nil
     }
     
     @inlinable

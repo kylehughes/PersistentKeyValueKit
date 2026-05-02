@@ -28,7 +28,7 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         
         var originalArray: [Self] = []
         
-        originalArray.reserveCapacity(originalArray.capacity)
+        originalArray.reserveCapacity(propertyListArray.count)
         
         for primitiveElement in propertyListArray {
             guard
@@ -46,11 +46,13 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         let representation = Element.persistentKeyValueRepresentation
+
+        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
         
         for value in values {
             var childPropertyListArray: [Any] = []
             
-            childPropertyListArray.reserveCapacity(value.capacity)
+            childPropertyListArray.reserveCapacity(value.count)
             
             representation.set(value, to: &childPropertyListArray)
             
@@ -73,7 +75,7 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
         var propertyListArray: [Any] = []
         
-        propertyListArray.reserveCapacity(value.capacity)
+        propertyListArray.reserveCapacity(value.count)
         
         Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
         
@@ -95,7 +97,7 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
         var propertyListArray: [Any] = []
         
-        propertyListArray.reserveCapacity(value.capacity)
+        propertyListArray.reserveCapacity(value.count)
         
         Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
         
@@ -126,7 +128,7 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     ) {
         var propertyListArray: [Any] = []
         
-        propertyListArray.reserveCapacity(value.capacity)
+        propertyListArray.reserveCapacity(value.count)
         
         Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
         

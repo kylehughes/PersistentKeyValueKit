@@ -49,7 +49,17 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
         for key: Key,
         context: UnsafeMutableRawPointer?
     ) where Key : PersistentKeyProtocol {
-        // We use selector-based notification APIs that do not need to perform manual observation deregistration.
+        NotificationCenter.default.removeObserver(
+            observer,
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: self
+        )
+
+        NotificationCenter.default.removeObserver(
+            observer,
+            name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
+            object: self
+        )
     }
     
     @inlinable
@@ -77,11 +87,6 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     // MARK: Internal Static Interface
     
     @usableFromInline
-    internal static var changedKeysKey: AnyHashable {
-        AnyHashable(NSUbiquitousKeyValueStoreChangedKeysKey)
-    }
-    
-    @usableFromInline
     internal static func postInternalChangeNotification<Key>(
         for key: Key,
         from ubiquitousKeyValueStore: NSUbiquitousKeyValueStore
@@ -98,7 +103,7 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
             name: didChangeInternallyNotification,
             object: ubiquitousKeyValueStore,
             userInfo: [
-                changedKeysKey: [
+                NSUbiquitousKeyValueStoreChangedKeysKey: [
                     keyID,
                 ],
             ]

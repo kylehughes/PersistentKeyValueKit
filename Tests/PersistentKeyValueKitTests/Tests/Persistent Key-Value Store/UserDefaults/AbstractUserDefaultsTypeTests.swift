@@ -25,6 +25,9 @@ where
     
     override public func tearDown() {
         store.dictionaryRepresentation().keys.forEach(store.removeObject)
+        // The argument domain is volatile process state. Clear it so launch-argument overrides from one test do not
+        // leak into the next `UserDefaults` instance.
+        store.setVolatileDomain([:], forName: UserDefaults.argumentDomain)
         store.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
     }
     

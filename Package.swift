@@ -6,7 +6,7 @@ let package = Package(
     name: "PersistentKeyValueKit",
     platforms: [
         .iOS(.v15),
-        .macOS(.v12),
+        .macOS(.v13),
         .tvOS(.v15),
         .visionOS(.v1),
         .watchOS(.v8),

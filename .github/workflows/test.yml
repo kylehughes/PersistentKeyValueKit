@@ -16,8 +16,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-15
-            xcode: '16.0'
+          - os: macos-26
+            xcode: '26.4'
     name: Get Environment Details (Xcode ${{ matrix.xcode }})
     runs-on: ${{ matrix.os }}
     steps:
@@ -37,34 +37,34 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-15
-            xcode: '16.0'
+          - os: macos-26
+            xcode: '26.4'
             platform: iOS
-            destination: "name=iPhone 16 Pro"
+            destination: "name=iPhone 17 Pro"
             sdk: iphonesimulator
-          - os: macos-15
-            xcode: '16.0'
+          - os: macos-26
+            xcode: '26.4'
             platform: tvOS
             destination: "name=Apple TV 4K (3rd generation)"
             sdk: appletvsimulator
-          - os: macos-15
-            xcode: '16.0'
+          - os: macos-26
+            xcode: '26.4'
             platform: visionOS
             destination: "name=Apple Vision Pro"
             sdk: xrsimulator
-          - os: macos-15
-            xcode: '16.0'
+          - os: macos-26
+            xcode: '26.4'
             platform: watchOS
-            destination: "name=Apple Watch Ultra 2 (49mm)"
+            destination: "name=Apple Watch Ultra 3 (49mm)"
             sdk: watchsimulator
-          - os: macos-15
-            xcode: '16.0'
+          - os: macos-26
+            xcode: '26.4'
             platform: macOS
     name: Test ${{ matrix.platform }} (Xcode ${{ matrix.xcode }})
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout project
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app

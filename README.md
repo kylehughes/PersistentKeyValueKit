@@ -33,6 +33,7 @@ PersistentKeyValueKit is backed by a robust test suite.
 - [x] Persistence for any type that conforms to `KeyValuePersistible`.
 - [x] Universal interface for `UserDefaults` and `NSUbiquitousKeyValueStore`.
 - [x] Type-safe property wrapper and view modifier for SwiftUI.
+- [x] AsyncSequence for observing key changes in any context.
 - [x] Built-in support for all primitive (i.e. property list) types.
 - [x] Built-in representations for all common ways to persist values.
 - [x] Keys that are only mutable in Debug builds.
@@ -45,11 +46,10 @@ PersistentKeyValueKit is backed by a robust test suite.
 - tvOS 15.0+
 - visionOS 1.0+
 - watchOS 8.0+
-    - `NSUbiquitousKeyValueStore` requires watchOS 9.0+.
 
 ## Requirements
 
-- Xcode 16.0+
+- Xcode 26.0+
 
 ## Documentation
 
@@ -61,7 +61,7 @@ PersistentKeyValueKit is backed by a robust test suite.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kylehughes/PersistentKeyValueKit.git", .upToNextMajor(from: "1.0.0")),
+    .package(url: "https://github.com/kylehughes/PersistentKeyValueKit.git", .upToNextMajor(from: "1.1.0")),
 ]
 ```
 
@@ -116,6 +116,14 @@ userDefaults.get(.runtimeColorScheme)
 
 ```swift
 userDefaults.set(.runtimeColorScheme, to: .dark)
+```
+
+Observe the same key from async code.
+
+```swift
+for await runtimeColorScheme in userDefaults.values(for: .runtimeColorScheme) {
+    apply(runtimeColorScheme)
+}
 ```
 
 ## Usage
@@ -415,6 +423,51 @@ extension App: SwiftUI.App {
 }
 ```
 
+### `AsyncSequence`
+
+`PersistentKeyValues` observes a persistent key as an `AsyncSequence`. Use it outside SwiftUI when you want key changes
+without writing KVO or `NotificationCenter` code.
+
+The same sequence is available from the store.
+
+```swift
+for await username in UserDefaults.standard.values(for: .username) {
+    usernameLabel.text = username
+}
+```
+
+It is also available from the key.
+
+```swift
+let usernameKey: PersistentKey<String> = .username
+
+for await username in usernameKey.values(in: UserDefaults.standard) {
+    usernameLabel.text = username
+}
+```
+
+By default, `values(for:)` and `values(in:)` emit the current value first, then later changes.
+
+Use `changes(for:)` or `changes(in:)` to skip the current value and observe only later changes.
+
+```swift
+for await username in UserDefaults.standard.changes(for: .username) {
+    handleChange(username: username)
+}
+```
+
+Pending changes use `.bufferingNewest(1)` by default. If the consumer falls behind, it receives the latest pending
+value instead of an unbounded backlog of intermediate values. Pass `.unbounded` to receive every observed value.
+
+```swift
+for await username in UserDefaults.standard.changes(for: .username, bufferingPolicy: .unbounded) {
+    recordChange(username: username)
+}
+```
+
+Each iterator registers with the store. It deregisters when iteration ends, the iterator is released, or the task is
+cancelled. Iterate from a cancellable task and cancel it when the owner no longer needs updates.
+
 ### `UserDefaults` Registration
 
 PersistentKeyValueKit supports traditional `UserDefaults` registration. The default value of the key will be registered
@@ -512,9 +565,10 @@ affordances for property list safety or proxy representations—but it is availa
 
 There is no platform support for observing changes to keys in `NSUbiquitousKeyValueStore`. The only affordance is
 listening for external changes from other devices. PersistentKeyValueKit implements observability for all mutations
-made through the framework: any `@PersistentValue` using `NSUbiquitousKeyValueStore` will automatically update with any
-changes made by PersistentKeyValueKit anywhere, on any device. However, any changes to `NSUbiquitousKeyValueStore` made 
-outside of the framework will not be automatically reflected in `@PersistentValue` properties.
+made through the framework: any `@PersistentValue` or `AsyncSequence` using `NSUbiquitousKeyValueStore` will
+automatically update with any changes made by PersistentKeyValueKit anywhere, on any device. However, any changes to
+`NSUbiquitousKeyValueStore` made outside of the framework will not be automatically reflected in `@PersistentValue`
+properties or `AsyncSequence` iterations.
 
 ## Contributions
 

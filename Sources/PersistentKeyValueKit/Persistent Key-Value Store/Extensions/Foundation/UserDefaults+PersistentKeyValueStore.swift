@@ -70,13 +70,24 @@ extension UserDefaults {
     ///
     /// - Parameter keys: The keys to register.
     public func register(_ keys: [any PersistentKeyProtocol]) {
-        var defaults: [String: Any] = Dictionary(minimumCapacity: keys.capacity)
+        var defaults: [String: Any] = Dictionary(minimumCapacity: keys.count)
         
         for key in keys {
             key.registerDefault(in: &defaults)
         }
         
         register(defaults: defaults)
+    }
+
+    @inlinable
+    internal func argumentDomainString(forKey key: String, visibleObject: Any?) -> String? {
+        // `volatileDomain(forName:)` materializes the whole domain. First check the effective object so typed
+        // stored values avoid that work on every read.
+        guard visibleObject is String else {
+            return nil
+        }
+
+        return volatileDomain(forName: UserDefaults.argumentDomain)[key] as? String
     }
 }
 

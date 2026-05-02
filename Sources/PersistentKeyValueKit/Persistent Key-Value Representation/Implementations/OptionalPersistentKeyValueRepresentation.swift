@@ -49,7 +49,7 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     public func set(_ values: [Value], to propertyListArray: inout [Any]) {
         var nonOptionalValues: [Base.Value] = []
         
-        nonOptionalValues.reserveCapacity(values.capacity)
+        nonOptionalValues.reserveCapacity(values.count)
         
         for value in values {
             guard let value else {

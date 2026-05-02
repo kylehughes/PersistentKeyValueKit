@@ -22,6 +22,14 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
     override var storedValue: String {
         "storedValue"
     }
+
+    override var supportsStoredValues: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
     
     override var target: PersistentDebugKey<String> {
         PersistentDebugKey(id, defaultValue: defaultValue)

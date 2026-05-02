@@ -131,7 +131,7 @@ extension PersistentKeyObserverTests {
         let key = PersistentKey("testKey", defaultValue: "defaultValue")
         var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: userDefaults, key: key)
         
-        weak var weakObserver = observer
+        weak let weakObserver = observer
         observer = nil
         
         XCTAssertNil(weakObserver, "Observer should be deallocated")

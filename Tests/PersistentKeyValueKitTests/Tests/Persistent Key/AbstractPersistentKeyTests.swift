@@ -24,6 +24,10 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
     public var storedValue: Key.Value {
         fatalError("`storedValue` needs to be implemented in a concrete subclass.")
     }
+
+    public var supportsStoredValues: Bool {
+        true
+    }
     
     public var target: Key {
         fatalError("`target` needs to be implemented in a concrete subclass.")
@@ -75,7 +79,11 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         
         ubiquitousKeyValueStore.set(storedValue, forKey: id)
         
-        XCTAssertEqual(target.get(from: ubiquitousKeyValueStore), storedValue)
+        if supportsStoredValues {
+            XCTAssertEqual(target.get(from: ubiquitousKeyValueStore), storedValue)
+        } else {
+            XCTAssertEqual(target.get(from: ubiquitousKeyValueStore), defaultValue)
+        }
     }
 
     @available(watchOS 9.0, *)
@@ -97,7 +105,11 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         
         target.remove(from: ubiquitousKeyValueStore)
         
-        XCTAssertNil(ubiquitousKeyValueStore.dictionaryRepresentation[id])
+        if supportsStoredValues {
+            XCTAssertNil(ubiquitousKeyValueStore.dictionaryRepresentation[id])
+        } else {
+            XCTAssertEqual(ubiquitousKeyValueStore.dictionaryRepresentation[id] as? Key.Value, storedValue)
+        }
     }
     
     @available(watchOS 9.0, *)
@@ -107,7 +119,11 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         
         target.set(to: storedValue, in: ubiquitousKeyValueStore)
         
-        XCTAssertEqual(ubiquitousKeyValueStore.dictionaryRepresentation[id] as? Key.Value, storedValue)
+        if supportsStoredValues {
+            XCTAssertEqual(ubiquitousKeyValueStore.dictionaryRepresentation[id] as? Key.Value, storedValue)
+        } else {
+            XCTAssertNil(ubiquitousKeyValueStore.dictionaryRepresentation[id])
+        }
     }
 
     @MainActor
@@ -119,7 +135,11 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
     func test_persistentKey_userDefaults_get_storedValue() {
         userDefaults.set(storedValue, forKey: id)
         
-        XCTAssertEqual(target.get(from: userDefaults), storedValue)
+        if supportsStoredValues {
+            XCTAssertEqual(target.get(from: userDefaults), storedValue)
+        } else {
+            XCTAssertEqual(target.get(from: userDefaults), defaultValue)
+        }
     }
     
     @MainActor
@@ -134,14 +154,22 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         userDefaults.set(storedValue, forKey: id)
         target.remove(from: userDefaults)
         
-        XCTAssertNil(userDefaults.dictionaryRepresentation()[id])
+        if supportsStoredValues {
+            XCTAssertNil(userDefaults.dictionaryRepresentation()[id])
+        } else {
+            XCTAssertEqual(userDefaults.dictionaryRepresentation()[id] as? Key.Value, storedValue)
+        }
     }
     
     @MainActor
     func test_persistentKey_userDefaults_set() {
         target.set(to: storedValue, in: userDefaults)
         
-        XCTAssertEqual(userDefaults.dictionaryRepresentation()[id] as? Key.Value, storedValue)
+        if supportsStoredValues {
+            XCTAssertEqual(userDefaults.dictionaryRepresentation()[id] as? Key.Value, storedValue)
+        } else {
+            XCTAssertNil(userDefaults.dictionaryRepresentation()[id])
+        }
     }
     
     // MARK: Internal Instance Interface

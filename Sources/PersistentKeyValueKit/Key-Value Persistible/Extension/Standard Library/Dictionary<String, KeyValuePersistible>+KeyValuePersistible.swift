@@ -32,7 +32,7 @@ where
         
         var originalArray: [Self] = []
         
-        originalArray.reserveCapacity(propertyListArray.capacity)
+        originalArray.reserveCapacity(propertyListArray.count)
         
         for propertyListElement in propertyListArray {
             guard let propertyListDictionary = propertyListElement as? [String: Any] else {
@@ -48,6 +48,8 @@ where
     @inlinable
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         let representation = Value.persistentKeyValueRepresentation
+
+        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
         
         for value in values {
             propertyListArray.append(transformToPropertyListDictionary(value, using: representation))
@@ -115,7 +117,7 @@ where
         _ propertyListDictionary: [String: Any],
         using representation: Value.PersistentKeyValueRepresentation = Value.persistentKeyValueRepresentation
     ) -> [String: Value] {
-        var originalDictionary: [String: Value] = Dictionary(minimumCapacity: propertyListDictionary.capacity)
+        var originalDictionary: [String: Value] = Dictionary(minimumCapacity: propertyListDictionary.count)
         
         for (key, _) in propertyListDictionary {
             originalDictionary[key] = representation.get(key, from: propertyListDictionary)
@@ -129,7 +131,7 @@ where
         _ originalDictionary: Self,
         using representation: Value.PersistentKeyValueRepresentation = Value.persistentKeyValueRepresentation
     ) -> [String: Any] {
-        var propertyListDictionary: [String: Any] = Dictionary(minimumCapacity: originalDictionary.capacity)
+        var propertyListDictionary: [String: Any] = Dictionary(minimumCapacity: originalDictionary.count)
         
         for (key, value) in originalDictionary {
             representation.set(key, to: value, in: &propertyListDictionary)

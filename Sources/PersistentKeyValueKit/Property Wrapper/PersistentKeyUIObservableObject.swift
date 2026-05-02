@@ -143,6 +143,10 @@ private final class Observer<Key>: NSObject, ObservableObject where Key: Persist
         change: [NSKeyValueChangeKey: Any]?,
         context: UnsafeMutableRawPointer?
     ) {
+        guard keyPath == nil || keyPath == keyID else {
+            return
+        }
+
         performOnMainIfNecessary(objectWillChange)
     }
     
@@ -153,14 +157,12 @@ private final class Observer<Key>: NSObject, ObservableObject where Key: Persist
     internal nonisolated func didReceive(_ notification: Notification) {
         guard
             #available(watchOS 9.0, *),
-            let changedKeyIDs = notification.userInfo?[NSUbiquitousKeyValueStore.changedKeysKey] as? [String]
+            let changedKeyIDs = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String]
         else {
             return
         }
                 
-        let changedKeyIDsSet = Set(changedKeyIDs)
-        
-        guard changedKeyIDsSet.contains(keyID) else {
+        guard changedKeyIDs.contains(keyID) else {
             return
         }
                 

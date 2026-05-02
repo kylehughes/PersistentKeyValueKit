@@ -47,7 +47,7 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
         
         var originalArray: [Value] = []
         
-        originalArray.reserveCapacity(proxyValues.capacity)
+        originalArray.reserveCapacity(proxyValues.count)
         
         for proxyValue in proxyValues {
             guard let originalValue = from(proxyValue) else {
@@ -63,7 +63,7 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
     public func set(_ values: [Value], to propertyListArray: inout [Any]) {
         var proxyValues: [Proxy] = []
         
-        proxyValues.reserveCapacity(values.capacity)
+        proxyValues.reserveCapacity(values.count)
         
         for value in values {
             guard let serialization = to(value) else {
