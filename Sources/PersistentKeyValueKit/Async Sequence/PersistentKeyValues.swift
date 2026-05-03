@@ -148,10 +148,9 @@ extension PersistentKeyValues {
 ///
 /// - SeeAlso: ``PersistentKeyValueStore`` for thread-safety requirements.
 /// - SeeAlso: https://forums.swift.org/t/crash-when-running-in-swift-6-language-mode/72431/2
-/// - Important: This type is manually `Sendable` because `PersistentKeyValueStore` cannot require `Sendable`
-///   conformance from `UserDefaults` or `NSUbiquitousKeyValueStore`. Access to mutable observer state is protected by
-///   `state`, and conforming stores are required to be thread-safe.
-private final class Observer<Key>: NSObject, @unchecked Sendable where Key: PersistentKeyProtocol {
+/// - Important: Access to mutable observer state is protected by `state`, and conforming stores are required to be
+///   thread-safe.
+private final class Observer<Key>: NSObject, Sendable where Key: PersistentKeyProtocol {
     private let key: Key
     private let keyID: String
     private let state: State

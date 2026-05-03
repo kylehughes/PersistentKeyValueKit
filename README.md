@@ -61,7 +61,7 @@ PersistentKeyValueKit is backed by a robust test suite.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kylehughes/PersistentKeyValueKit.git", .upToNextMajor(from: "1.1.0")),
+    .package(url: "https://github.com/kylehughes/PersistentKeyValueKit.git", .upToNextMajor(from: "1.2.1")),
 ]
 ```
 
