@@ -33,7 +33,7 @@ PersistentKeyValueKit is backed by a robust test suite.
 - [x] Persistence for any type that conforms to `KeyValuePersistible`.
 - [x] Universal interface for `UserDefaults` and `NSUbiquitousKeyValueStore`.
 - [x] Type-safe property wrapper and view modifier for SwiftUI.
-- [x] AsyncSequence for observing key changes in any context.
+- [x] AsyncSequence and Combine publishers for observing key changes in any context.
 - [x] Built-in support for all primitive (i.e. property list) types.
 - [x] Built-in representations for all common ways to persist values.
 - [x] Keys that are only mutable in Debug builds.
@@ -124,6 +124,15 @@ Observe the same key from async code.
 for await runtimeColorScheme in userDefaults.values(for: .runtimeColorScheme) {
     apply(runtimeColorScheme)
 }
+```
+
+Observe it from Combine.
+
+```swift
+let cancellable = userDefaults.publisher(for: .runtimeColorScheme)
+    .sink { runtimeColorScheme in
+        apply(runtimeColorScheme)
+    }
 ```
 
 ## Usage
@@ -384,9 +393,12 @@ extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
 }
 ```
 
-### SwiftUI
+### Observation
 
-#### Property Wrapper
+PersistentKeyValueKit exposes store observation in three forms: a SwiftUI property wrapper, an `AsyncSequence`, and a
+Combine publisher. Pick the one that matches the code that owns cancellation.
+
+#### SwiftUI State
 
 `PersistentValue` is a property wrapper that provides a type-safe way to access and modify values from `UserDefaults` or 
 `NSUbiquitousKeyValueStore` in SwiftUI views. It supports automatic observation and updates whenever the value changes
@@ -407,10 +419,10 @@ var isAppStoreRatingEnabled: Bool
 var isAppStoreRatingEnabled: Bool
 ```
 
-##### View Modifier
+##### Default Store
 
-A view modifier is provided to set the default store used by any `@PersistentValue` property wrapper in the view (or 
-its descendants). The default store can be overridden by supplying one directly in the `@PersistentValue` declaration.
+Use `.defaultPersistentKeyValueStore(_:)` to set the default store for any `@PersistentValue` property wrapper in the
+view or its descendants. Passing a store directly to `@PersistentValue` still takes precedence.
 
 e.g.
 
@@ -423,10 +435,9 @@ extension App: SwiftUI.App {
 }
 ```
 
-### `AsyncSequence`
+#### Async Tasks
 
-`PersistentKeyValues` observes a persistent key as an `AsyncSequence`. Use it outside SwiftUI when you want key changes
-without writing KVO or `NotificationCenter` code.
+`PersistentKeyValues` is an `AsyncSequence` for one persistent key. Use it when an async task owns cancellation.
 
 The same sequence is available from the store.
 
@@ -467,6 +478,48 @@ for await username in UserDefaults.standard.changes(for: .username, bufferingPol
 
 Each iterator registers with the store. It deregisters when iteration ends, the iterator is released, or the task is
 cancelled. Iterate from a cancellable task and cancel it when the owner no longer needs updates.
+
+#### Combine Pipelines
+
+`PersistentKeyValuePublisher` is a Combine `Publisher` for one persistent key. Use it when a Combine subscription owns
+cancellation.
+
+The same publisher is available from the store.
+
+```swift
+let cancellable = UserDefaults.standard.publisher(for: .username)
+    .sink { username in
+        usernameLabel.text = username
+    }
+```
+
+It is also available from the key.
+
+```swift
+let usernameKey: PersistentKey<String> = .username
+
+let cancellable = usernameKey.publisher(in: UserDefaults.standard)
+    .sink { username in
+        usernameLabel.text = username
+    }
+```
+
+By default, `publisher(for:)` and `publisher(in:)` emit the current value when demand is requested, then later changes.
+
+Use `changesPublisher(for:)` or `changesPublisher(in:)` to skip the current value and observe only later changes.
+
+```swift
+let cancellable = UserDefaults.standard.changesPublisher(for: .username)
+    .sink { username in
+        handleChange(username: username)
+    }
+```
+
+When downstream demand is exhausted, later changes are coalesced. The next demand receives the latest current value
+instead of an unbounded backlog of intermediate values.
+
+Each subscription registers with the store. It deregisters when the subscription is cancelled or released. Use Combine
+operators such as `receive(on:)` when a subscriber needs delivery on a specific scheduler.
 
 ### `UserDefaults` Registration
 
@@ -563,12 +616,11 @@ affordances for property list safety or proxy representations—but it is availa
 
 ### Limited `NSUbiquitousKeyValueStore` Observability
 
-There is no platform support for observing changes to keys in `NSUbiquitousKeyValueStore`. The only affordance is
-listening for external changes from other devices. PersistentKeyValueKit implements observability for all mutations
-made through the framework: any `@PersistentValue` or `AsyncSequence` using `NSUbiquitousKeyValueStore` will
-automatically update with any changes made by PersistentKeyValueKit anywhere, on any device. However, any changes to
-`NSUbiquitousKeyValueStore` made outside of the framework will not be automatically reflected in `@PersistentValue`
-properties or `AsyncSequence` iterations.
+There is no platform support for observing individual keys in `NSUbiquitousKeyValueStore`. The only affordance is
+listening for external changes from other devices. PersistentKeyValueKit observes mutations made through the package:
+`@PersistentValue`, `PersistentKeyValues`, and `PersistentKeyValuePublisher` receive changes made by
+PersistentKeyValueKit on any device. They do not receive mutations written directly to `NSUbiquitousKeyValueStore`
+outside this package.
 
 ## Contributions
 
