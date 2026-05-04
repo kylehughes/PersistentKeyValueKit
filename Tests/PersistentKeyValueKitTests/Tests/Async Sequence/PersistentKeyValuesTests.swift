@@ -34,6 +34,15 @@ final class PersistentKeyValuesTests: XCTestCase {
 
         XCTAssertFalse(values.emitsInitialValue)
     }
+
+    func test_values_isSendableWhenValueIsSendable() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = key.values(in: store)
+
+        assertSendableAsyncSequence(values)
+    }
 }
 
 // MARK: - Iterator Tests
@@ -418,6 +427,10 @@ extension PersistentKeyValuesTests {
 // MARK: - Test Utilities
 
 extension PersistentKeyValuesTests {
+    private func assertSendableAsyncSequence<Sequence>(
+        _ sequence: Sequence
+    ) where Sequence: AsyncSequence & Sendable, Sequence.Element: Sendable {}
+
     private func makeUserDefaults() throws -> (userDefaults: UserDefaults, suiteName: String) {
         let suiteName = "PersistentKeyValuesTests.\(UUID().uuidString)"
         let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

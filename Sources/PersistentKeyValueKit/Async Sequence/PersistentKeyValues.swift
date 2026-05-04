@@ -99,6 +99,13 @@ extension PersistentKeyValues: AsyncSequence {
     public typealias Element = Key.Value
 }
 
+// MARK: - Sendable Extension
+
+/// - Important: This type is manually `Sendable` because `PersistentKeyValueStore` cannot require `Sendable`.
+///   `PersistentKeyValues` is immutable, and conforming stores are required to be safe for concurrent use by
+///   observation APIs.
+extension PersistentKeyValues: @unchecked Sendable where Key.Value: Sendable {}
+
 // MARK: - Iterator Definition
 
 extension PersistentKeyValues {
