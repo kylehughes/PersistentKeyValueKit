@@ -28,6 +28,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
 
     /// The store that the key is being observed in.
     private var _store: (any PersistentKeyValueStore)?
+
+    /// The registration lifetime for the current store.
+    private var observation: StoreObservation<Key>?
     
     /// The object used for key-value and `NotificationCenter` observation.
     private var observer: Observer<Key>!
@@ -45,8 +48,6 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         
         observer = Observer(keyID: key.id) { [weak self] in
             self?.objectWillChange.send()
-        } deregister: { @MainActor [weak self] in
-            self?.deregisterObserver(on: store)
         }
 
         registerObserver(on: store)
@@ -60,13 +61,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
             _store
         }
         set {
-            deregisterObserver(on: _store)
+            observation = nil
             
             _store = newValue
-            
-            observer.deregister = { @MainActor [weak self] in
-                self?.deregisterObserver(on: newValue)
-            }
             
             registerObserver(on: newValue)
         }
@@ -94,17 +91,49 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         assert(store != nil, "Store should always be set on initialization or immediately after.")
     }
     
-    private func deregisterObserver(on store: (any PersistentKeyValueStore)?) {
-        store?.deregister(observer, for: key, context: nil)
-    }
-    
     private func registerObserver(on store: (any PersistentKeyValueStore)?) {
-        store?.register(
+        guard let store else {
+            return
+        }
+
+        observation = StoreObservation(
+            store: store,
+            key: key,
+            observer: observer
+        )
+    }
+}
+
+// MARK: - StoreObservation Definition
+
+private final class StoreObservation<Key> where Key: PersistentKeyProtocol {
+    private let key: Key
+    private let observer: Observer<Key>
+    private let store: any PersistentKeyValueStore
+
+    // MARK: Internal Initialization
+
+    internal init(
+        store: any PersistentKeyValueStore,
+        key: Key,
+        observer: Observer<Key>
+    ) {
+        self.key = key
+        self.observer = observer
+        self.store = store
+
+        store.register(
             observer: observer,
             for: key,
             with: nil,
             and: #selector(Observer<Key>.didReceive(_:))
         )
+    }
+
+    // MARK: Deinitialization
+
+    deinit {
+        store.deregister(observer, for: key, context: nil)
     }
 }
 
@@ -114,24 +143,14 @@ private final class Observer<Key>: NSObject, ObservableObject where Key: Persist
     internal let keyID: String
     internal let objectWillChange: @MainActor () -> Void
     
-    internal var deregister: @MainActor () -> Void
-    
     // MARK: Internal Initialization
     
     internal init(
         keyID: String,
-        objectWillChange: @escaping @MainActor () -> Void,
-        deregister: @escaping @MainActor () -> Void
+        objectWillChange: @escaping @MainActor () -> Void
     ) {
         self.keyID = keyID
         self.objectWillChange = objectWillChange
-        self.deregister = deregister
-    }
-    
-    // MARK: Deinitialization
-    
-    deinit {
-        performOnMainIfNecessary(deregister)
     }
     
     // MARK: NSObject Implementation

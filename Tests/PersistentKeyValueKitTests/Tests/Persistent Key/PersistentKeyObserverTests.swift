@@ -136,4 +136,93 @@ extension PersistentKeyObserverTests {
         
         XCTAssertNil(weakObserver, "Observer should be deallocated")
     }
+
+    @MainActor
+    func test_deinitialization_deregistersFromStore() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: store, key: key)
+
+        XCTAssertEqual(store.registrationCount, 1)
+
+        weak let weakObserver = observer
+        observer = nil
+
+        XCTAssertNil(weakObserver)
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    @MainActor
+    func test_deinitialization_deregistersCurrentStoreAfterStoreChange() {
+        let oldStore = ObservablePersistentKeyValueStore()
+        let newStore = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: oldStore, key: key)
+
+        XCTAssertEqual(oldStore.registrationCount, 1)
+        XCTAssertEqual(newStore.registrationCount, 0)
+
+        observer?.store = newStore
+
+        XCTAssertEqual(oldStore.deregistrationCount, 1)
+        XCTAssertEqual(newStore.registrationCount, 1)
+
+        observer = nil
+
+        XCTAssertEqual(oldStore.deregistrationCount, 1)
+        XCTAssertEqual(newStore.deregistrationCount, 1)
+    }
+
+    @MainActor
+    func test_deinitialization_deregistersStoreSetAfterNilInitialization() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: nil, key: key)
+
+        XCTAssertEqual(store.registrationCount, 0)
+
+        observer?.store = store
+
+        XCTAssertEqual(store.registrationCount, 1)
+        XCTAssertEqual(store.deregistrationCount, 0)
+
+        observer = nil
+
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    @MainActor
+    func test_deinitialization_doesNotDeregisterOldStoreAgainAfterStoreChangesToNil() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: store, key: key)
+
+        XCTAssertEqual(store.registrationCount, 1)
+
+        observer?.store = nil
+
+        XCTAssertEqual(store.deregistrationCount, 1)
+
+        observer = nil
+
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    @MainActor
+    func test_deinitialization_deregistersCurrentRegistrationAfterStoreChangesToSameStore() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: store, key: key)
+
+        XCTAssertEqual(store.registrationCount, 1)
+
+        observer?.store = store
+
+        XCTAssertEqual(store.registrationCount, 2)
+        XCTAssertEqual(store.deregistrationCount, 1)
+
+        observer = nil
+
+        XCTAssertEqual(store.deregistrationCount, 2)
+    }
 }
