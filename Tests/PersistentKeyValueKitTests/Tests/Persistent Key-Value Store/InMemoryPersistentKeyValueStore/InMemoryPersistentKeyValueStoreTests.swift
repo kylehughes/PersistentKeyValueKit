@@ -22,6 +22,17 @@ final class InMemoryPersistentKeyValueStoreTests: AbstractPersistentKeyValueStor
 // MARK: - Observation Tests
 
 extension InMemoryPersistentKeyValueStoreTests {
+    func test_ephemeralCreatesIndependentUsableStores() {
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let first: InMemoryPersistentKeyValueStore = .ephemeral
+        let second: InMemoryPersistentKeyValueStore = .ephemeral
+
+        first.set(key, to: "storedValue")
+
+        XCTAssertEqual(first.get(key), "storedValue")
+        XCTAssertEqual(second.get(key), "defaultValue")
+    }
+
     func test_persistentKeyValueStore_deregister_stopsObservation() {
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         let observer = PersistentKeyValueStoreObservationRecorder()

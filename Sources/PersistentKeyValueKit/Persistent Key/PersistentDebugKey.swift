@@ -192,6 +192,14 @@ where
 // MARK: - PersistentKeyProtocol Extension
 
 extension PersistentDebugKey {
+    public var isMigrationEnabled: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+
     // MARK: Interfacing with User Defaults
     
     /// In debug builds, gets the value of the key from the given `UserDefaults`.

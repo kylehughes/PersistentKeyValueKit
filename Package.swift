@@ -29,5 +29,12 @@ let package = Package(
                 "PersistentKeyValueKit",
             ]
         ),
+        .testTarget(
+            name: "PersistentKeyValueKitPublicAPITests",
+            dependencies: [
+                "PersistentKeyValueKit",
+            ],
+            path: "Tests/PersistentKeyValueKitPublicAPITests"
+        ),
     ]
 )

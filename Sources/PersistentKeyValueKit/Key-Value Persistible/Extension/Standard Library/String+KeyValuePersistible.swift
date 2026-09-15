@@ -21,6 +21,14 @@ extension String: KeyValuePersistible {
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension String: PrimitiveKeyValuePersistible {
+    // MARK: Checked Conversion
+
+    public static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> String {
+        try checkedStorageValue(from: storageObject)
+    }
+
+    public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? { self }
+
     // MARK: Interfacing with User Defaults
     
     @inlinable

@@ -9,7 +9,7 @@ import Foundation
 import PersistentKeyValueKit
 import XCTest
 
-final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, String, URL, URL> {
+final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, String, String, URL> {
     // MARK: AbstractKeyValuePersistibleTests Implementation
     
     override public var expectations: [Expectation] {
@@ -17,7 +17,7 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
             Expectation(
                 target: $0,
                 propertyListRepresentation: \.absoluteString,
-                ubiquitousStoreRepresentation: \.self,
+                ubiquitousStoreRepresentation: \.absoluteString,
                 userDefaultsRepresentation: \.self
             )
         }
@@ -29,5 +29,28 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
         [
             URL(string: "https://kylehugh.es")!
         ]
+    }
+
+    @available(watchOS 9.0, *)
+    @MainActor
+    func testUbiquitousStoreReadsLegacyURLObject() {
+        let store = MockUbiquitousKeyValueStore()
+        let value = URL(string: "https://kylehugh.es/legacy")!
+        store.set(value, forKey: "url")
+
+        XCTAssertEqual(URL.get("url", from: store), value)
+    }
+
+    @available(watchOS 9.0, *)
+    @MainActor
+    func testUbiquitousStoreSetterStoresAbsoluteString() {
+        let store = MockUbiquitousKeyValueStore()
+        let webURL = URL(string: "https://kylehugh.es/web")!
+        URL.set("web", to: webURL, in: store)
+        XCTAssertEqual(store.object(forKey: "web") as? String, webURL.absoluteString)
+
+        let fileURL = URL(fileURLWithPath: "/tmp/file")
+        URL.set("file", to: fileURL, in: store)
+        XCTAssertEqual(store.object(forKey: "file") as? String, fileURL.absoluteString)
     }
 }

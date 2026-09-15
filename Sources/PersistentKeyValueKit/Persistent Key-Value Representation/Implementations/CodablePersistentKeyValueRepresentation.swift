@@ -14,8 +14,9 @@ import Foundation
 /// This is a proxy representation. The ``Value`` type will be persisted as the `Input`/`Output` of the given 
 /// ``Encoder`` and ``Decoder``, which must itself be persistible.
 ///
-/// Errors are not reported. Failure to encode the value with the given ``Encoder`` will result in no value being
-/// stored. Failure to decode the value with the given ``Decoder`` will return `nil`.
+/// Ordinary store access preserves the existing non-throwing behavior: failure to encode results in no value being
+/// stored and failure to decode returns `nil`. The checked representation interface reports the underlying encoder
+/// and decoder errors.
 public struct CodablePersistentKeyValueRepresentation<Value, Encoder, Decoder>
 where
     Value: Decodable & Encodable,
@@ -60,6 +61,18 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
     @inlinable
     public func to(_ value: Value) -> Proxy? {
         try? encoder.encode(value)
+    }
+
+    public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
+        let proxy = try decodeStorageRepresentation(
+            Encoder.Output.persistentKeyValueRepresentation, object: storageObject, format: format)
+        return try decoder.decode(Value.self, from: proxy)
+    }
+
+    public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        let proxy = try encoder.encode(value)
+        return try encodeStorageRepresentation(
+            Encoder.Output.persistentKeyValueRepresentation, value: proxy, format: format)
     }
 }
 

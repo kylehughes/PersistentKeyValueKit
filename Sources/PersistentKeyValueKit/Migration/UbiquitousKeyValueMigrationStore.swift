@@ -1,0 +1,149 @@
+import Foundation
+
+/// A migration adapter for an iCloud key-value store.
+///
+/// The wrapped store and identity are immutable after initialization. Subclasses and test doubles must preserve the
+/// thread-safety expected from NSUbiquitousKeyValueStore. A successful local write does not establish cloud delivery
+/// or durability.
+@available(watchOS 9.0, *)
+public final class UbiquitousKeyValueMigrationStore: @unchecked Sendable {
+    /// The underlying store for ordinary Foundation access.
+    public let ubiquitousStore: NSUbiquitousKeyValueStore
+    let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
+
+    /// Creates an adapter over the supplied iCloud key-value store.
+    ///
+    /// Instances use the canonical ubiquitous-store identity because Foundation instances share one backing store.
+    public init(_ store: NSUbiquitousKeyValueStore = .default) {
+        ubiquitousStore = store
+        migrationIdentity = PersistentKeyValueMigrationStoreIdentity(
+            namespace: "NSUbiquitousKeyValueStore", identifier: "default")
+    }
+
+    internal init(store: NSUbiquitousKeyValueStore, identity: PersistentKeyValueMigrationStoreIdentity) {
+        ubiquitousStore = store
+        migrationIdentity = identity
+    }
+
+    struct MigrationSnapshot {
+        let identity: PersistentKeyValueMigrationStoreIdentity
+        let keyID: String
+        let object: Any
+    }
+    struct MigrationWrite {
+        let identity: PersistentKeyValueMigrationStoreIdentity
+        let keyID: String
+        let object: Any?
+    }
+
+    private func validate(_ keyID: String) throws {
+        guard keyID.utf16.count <= 128 else { throw PersistentKeyMigrationError.invalidStoreIdentifier }
+    }
+
+    func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
+        try validate(keyID)
+        guard let object = ubiquitousStore.object(forKey: keyID) else { return nil }
+        let frozen = try PropertyListMigrationStorage.freeze(object, allowingLegacyURL: true)
+        return MigrationSnapshot(identity: migrationIdentity, keyID: keyID, object: frozen)
+    }
+
+    func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
+        guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
+            throw PersistentKeyMigrationError.invalidSnapshot
+        }
+        let current = try migrationSnapshot(for: keyID)
+        return PropertyListMigrationStorage.equal(snapshot.object, current?.object)
+    }
+
+    func migrationValue<Key>(for key: Key, in snapshot: MigrationSnapshot) throws -> Key.Value
+    where Key: PersistentKeyProtocol {
+        guard snapshot.identity == migrationIdentity, snapshot.keyID == key.id else {
+            throw PersistentKeyMigrationError.invalidSnapshot
+        }
+        return try decodeStorageValue(for: key, object: snapshot.object, format: .ubiquitousKeyValueStore)
+    }
+
+    func prepareMigrationWrite<Key>(_ value: Key.Value, for key: Key) throws -> MigrationWrite
+    where Key: PersistentKeyProtocol {
+        try validate(key.id)
+        let object = try encodeStorageValue(value, for: key, format: .ubiquitousKeyValueStore)
+        if let object {
+            let frozen = try PropertyListMigrationStorage.freeze(object)
+            if try PropertyListMigrationStorage.byteCount(frozen) > 1_048_576 {
+                throw PersistentKeyValueConversionError.invalidStorageValue
+            }
+            return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: frozen)
+        }
+        return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: nil)
+    }
+
+    func commitMigrationWrite(_ write: MigrationWrite, replacing snapshot: MigrationSnapshot?) throws
+        -> MigrationSnapshot?
+    {
+        guard write.identity == migrationIdentity else { throw PersistentKeyMigrationError.invalidSnapshot }
+        if let snapshot, !(try migrationSnapshotIsCurrent(snapshot, for: write.keyID)) {
+            throw PersistentKeyMigrationError.destinationChanged
+        }
+        if snapshot == nil, try migrationSnapshot(for: write.keyID) != nil {
+            throw PersistentKeyMigrationError.destinationChanged
+        }
+        if let object = write.object {
+            ubiquitousStore.set(object, forKey: write.keyID)
+        } else {
+            ubiquitousStore.removeObject(forKey: write.keyID)
+        }
+        NSUbiquitousKeyValueStore.postInternalChangeNotification(for: write.keyID, from: ubiquitousStore)
+        let committed = try migrationSnapshot(for: write.keyID)
+        guard PropertyListMigrationStorage.equal(write.object, committed?.object) else {
+            throw PersistentKeyMigrationError.writeVerificationFailed
+        }
+        return committed
+    }
+
+    func removeMigrationValue(for keyID: String, matching snapshot: MigrationSnapshot) throws {
+        guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
+            throw PersistentKeyMigrationError.invalidSnapshot
+        }
+        guard try migrationSnapshotIsCurrent(snapshot, for: keyID) else {
+            throw PersistentKeyMigrationError.sourceChanged
+        }
+        ubiquitousStore.removeObject(forKey: keyID)
+        NSUbiquitousKeyValueStore.postInternalChangeNotification(for: keyID, from: ubiquitousStore)
+        guard try migrationSnapshot(for: keyID) == nil else {
+            throw PersistentKeyMigrationError.removalVerificationFailed
+        }
+    }
+}
+
+@available(watchOS 9.0, *)
+extension UbiquitousKeyValueMigrationStore: PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend {
+    public var migrationEndpoint: PersistentKeyValueMigrationEndpoint { PersistentKeyValueMigrationEndpoint(backend: self) }
+}
+
+@available(watchOS 9.0, *)
+extension UbiquitousKeyValueMigrationStore: PersistentKeyValueStore {
+    public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        ubiquitousStore.get(key)
+    }
+    public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        ubiquitousStore.set(key, to: value)
+    }
+    public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
+        ubiquitousStore.remove(key)
+    }
+    public func deregister<Key>(
+        _ observer: NSObject,
+        for key: Key,
+        context: UnsafeMutableRawPointer?
+    ) where Key: PersistentKeyProtocol {
+        ubiquitousStore.deregister(observer, for: key, context: context)
+    }
+    public func register<Key>(
+        observer target: NSObject,
+        for key: Key,
+        with context: UnsafeMutableRawPointer?,
+        and selector: Selector
+    ) where Key: PersistentKeyProtocol {
+        ubiquitousStore.register(observer: target, for: key, with: context, and: selector)
+    }
+}

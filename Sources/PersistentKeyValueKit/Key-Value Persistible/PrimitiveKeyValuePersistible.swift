@@ -25,13 +25,18 @@ import Foundation
 /// - `Double`
 /// - `Float`
 /// - `Int`
-/// - `Optional<Wrapped> where Wrapped: KeyValuePersistible`
 /// - `String`
 /// - `URL`
 ///
 /// It is intended, but not required, that conforming types' representations are of type 
 /// ``PrimitivePersistentKeyValueRepresentation``.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
+    /// Decodes a value from store-native data.
+    static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Self
+
+    /// Encodes a value as store-native data. A `nil` result removes the key.
+    func encode(format: PersistentKeyValueStorageFormat) throws -> Any?
+
     // MARK: Interfacing with Property List Array
     
     /// Get the values from the given property-list-compatible array, if they exist and if they can all be represented

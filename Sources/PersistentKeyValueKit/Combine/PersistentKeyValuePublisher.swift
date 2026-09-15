@@ -240,26 +240,13 @@ extension PersistentKeyValuePublisher {
             isEmitting = true
             lock.unlock()
 
-            while true {
-                while let emission = nextEmission() {
-                    let additionalDemand = emission.downstream.receive(emission.value)
-
-                    lock.lock()
-
-                    if !isCancelled {
-                        demand += additionalDemand
-                    }
-
-                    lock.unlock()
-                }
+            while let emission = nextEmission() {
+                let additionalDemand = emission.downstream.receive(emission.value)
 
                 lock.lock()
 
-                guard canEmit() else {
-                    isEmitting = false
-                    lock.unlock()
-
-                    return
+                if !isCancelled {
+                    demand += additionalDemand
                 }
 
                 lock.unlock()
@@ -292,6 +279,10 @@ extension PersistentKeyValuePublisher {
             }
 
             guard canEmit(), let downstream else {
+                // Release emitter ownership while holding the state lock so a concurrent callback cannot queue a
+                // change between the final emission check and ownership release.
+                isEmitting = false
+
                 return nil
             }
 

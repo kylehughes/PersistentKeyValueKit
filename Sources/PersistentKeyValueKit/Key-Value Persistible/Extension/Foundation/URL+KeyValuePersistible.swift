@@ -21,6 +21,38 @@ extension URL {
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension URL: PrimitiveKeyValuePersistible {
+    public static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> URL {
+        if format == .ubiquitousKeyValueStore, let value = storageObject as? URL { return value }
+        if format == .userDefaults {
+            if let value = storageObject as? URL { return value }
+            if let data = storageObject as? Data {
+                let unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
+                unarchiver.decodingFailurePolicy = .setErrorAndReturn
+                defer { unarchiver.finishDecoding() }
+                guard let value = unarchiver.decodeObject(of: NSURL.self, forKey: NSKeyedArchiveRootObjectKey)
+                else { throw PersistentKeyValueConversionError.invalidStorageValue }
+                return value as URL
+            }
+            guard let path = storageObject as? String else {
+                throw PersistentKeyValueConversionError.invalidStorageValue
+            }
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        }
+        guard let string = storageObject as? String, let value = URL(string: string) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+        return value
+    }
+
+    public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
+        switch format {
+        case .propertyList, .ubiquitousKeyValueStore: return absoluteString
+        case .userDefaults:
+            if isFileURL { return (path as NSString).abbreviatingWithTildeInPath }
+            return try NSKeyedArchiver.archivedData(withRootObject: self, requiringSecureCoding: true)
+        }
+    }
+
     // MARK: Interfacing with Property List Array
     
     public static func get(from propertyListArray: [Any]) -> [Self]? {
@@ -103,7 +135,14 @@ extension URL: PrimitiveKeyValuePersistible {
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Self? {
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Self
+        let object = ubiquitousStore.object(forKey: ubiquitousStoreKey)
+        if let value = object as? Self {
+            return value
+        }
+        guard let string = object as? String else {
+            return nil
+        }
+        return URL(string: string)
     }
     
     @available(watchOS 9.0, *)
@@ -113,6 +152,6 @@ extension URL: PrimitiveKeyValuePersistible {
         to value: Self,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
+        ubiquitousStore.set(value.absoluteString, forKey: ubiquitousStoreKey)
     }
 }

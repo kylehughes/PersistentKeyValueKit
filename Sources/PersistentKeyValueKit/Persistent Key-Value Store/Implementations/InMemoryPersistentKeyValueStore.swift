@@ -19,9 +19,17 @@ import Foundation
 /// - Important: Storage access is protected by a lock so this type can satisfy
 ///   ``PersistentKeyValueStore``'s thread-safety requirement.
 public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
+    /// The stable identity of this in-memory store for migration operations.
+    let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
+
     private let lock: NSLock
     private var observations: [Observation]
-    private var storage: [String: Any]
+    private struct StoredValue {
+        let object: Any
+        let revision: UInt64
+    }
+    private var storage: [String: StoredValue]
+    private var nextRevision: UInt64
     
     // MARK: Public Initialization
     
@@ -30,18 +38,23 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
         lock = NSLock()
         observations = []
         storage = [:]
+        nextRevision = 0
+        migrationIdentity = PersistentKeyValueMigrationStoreIdentity(
+            namespace: "InMemoryPersistentKeyValueStore",
+            identifier: UUID().uuidString
+        )
     }
     
     // MARK: Private Instance Interface
 
     @discardableResult
-    private func withLock<Result>(_ body: () -> Result) -> Result {
+    private func withLock<Result>(_ body: () throws -> Result) rethrows -> Result {
         lock.lock()
         defer {
             lock.unlock()
         }
 
-        return body()
+        return try body()
     }
 }
 
@@ -52,7 +65,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     
     public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
         let value = withLock {
-            storage[key.id]
+            storage[key.id]?.object
         }
 
         return value as? Key.Value ?? key.defaultValue
@@ -62,19 +75,11 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     
     public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
         let keyID = key.id
-        let storedValue: Any
-
-        // We loosely try to replicate property list behavior of not representing `nil` values in storage.
-        if let array = value as? [Any?] {
-            storedValue = array.compactMap(\.self)
-        } else if let dict = value as? [String: Any?] {
-            storedValue = dict.compactMapValues(\.self)
-        } else {
-            storedValue = value
-        }
+        let storedValue = Self.normalizedValue(value)
 
         let observations = withLock {
-            storage[keyID] = storedValue
+            nextRevision &+= 1
+            storage[keyID] = StoredValue(object: storedValue, revision: nextRevision)
 
             return liveObservations(for: keyID)
         }
@@ -153,6 +158,119 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
                 context: observation.context
             )
         }
+    }
+}
+
+// MARK: - PersistentKeyValueMigrationStore Extension
+
+extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend {
+    struct MigrationSnapshot {
+        /// The store and key this snapshot belongs to.
+        let identity: PersistentKeyValueMigrationStoreIdentity
+        let keyID: String
+        /// Monotonically increasing revision used for conditional writes and removals.
+        let revision: UInt64
+        /// The captured value. Reference values are retained, not deep-copied; callers must keep them stable.
+        let object: Any
+    }
+
+    struct MigrationWrite {
+        /// The store and key this prepared write belongs to.
+        let identity: PersistentKeyValueMigrationStoreIdentity
+        let keyID: String
+        /// The normalized value that will be committed.
+        let object: Any
+    }
+
+    /// Captures the persisted value and revision for a key, or `nil` when the key is absent.
+    func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
+        withLock {
+            guard let storedValue = storage[keyID] else { return nil }
+            return MigrationSnapshot(
+                identity: migrationIdentity, keyID: keyID, revision: storedValue.revision, object: storedValue.object)
+        }
+    }
+
+    func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
+        guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
+            throw PersistentKeyMigrationError.invalidSnapshot
+        }
+        return withLock { storage[keyID]?.revision == snapshot.revision }
+    }
+
+    /// Decodes a captured value for the requested typed key.
+    func migrationValue<Key>(for key: Key, in snapshot: MigrationSnapshot) throws -> Key.Value
+    where Key: PersistentKeyProtocol {
+        guard snapshot.identity == migrationIdentity, snapshot.keyID == key.id else {
+            throw PersistentKeyMigrationError.invalidSnapshot
+        }
+        let object = snapshot.object
+        guard let value = object as? Key.Value else { throw PersistentKeyValueConversionError.invalidValue }
+        return value
+    }
+
+    func prepareMigrationWrite<Key>(_ value: Key.Value, for key: Key) throws -> MigrationWrite
+    where Key: PersistentKeyProtocol {
+        let object = Self.normalizedValue(value)
+        guard object is Key.Value else { throw PersistentKeyValueConversionError.encodingFailed }
+        return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: object)
+    }
+
+    /// Commits a prepared write only when the replacement snapshot is still current.
+    func commitMigrationWrite(_ write: MigrationWrite, replacing snapshot: MigrationSnapshot?) throws
+        -> MigrationSnapshot?
+    {
+        let result: (MigrationSnapshot, [Observation]) = try withLock {
+            guard write.identity == migrationIdentity else { throw PersistentKeyMigrationError.invalidSnapshot }
+            if let snapshot, snapshot.identity != migrationIdentity || snapshot.keyID != write.keyID {
+                throw PersistentKeyMigrationError.invalidSnapshot
+            }
+            if let snapshot, storage[write.keyID]?.revision != snapshot.revision {
+                throw PersistentKeyMigrationError.destinationChanged
+            }
+            if snapshot == nil, storage[write.keyID] != nil { throw PersistentKeyMigrationError.destinationChanged }
+            nextRevision &+= 1
+            storage[write.keyID] = StoredValue(object: write.object, revision: nextRevision)
+            let committed = MigrationSnapshot(
+                identity: migrationIdentity, keyID: write.keyID, revision: nextRevision, object: write.object)
+            return (committed, liveObservations(for: write.keyID))
+        }
+        notify(result.1, keyPath: write.keyID)
+        guard try migrationSnapshotIsCurrent(result.0, for: write.keyID) else {
+            throw PersistentKeyMigrationError.writeVerificationFailed
+        }
+        return result.0
+    }
+
+    func removeMigrationValue(for keyID: String, matching snapshot: MigrationSnapshot) throws {
+        guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
+            throw PersistentKeyMigrationError.invalidSnapshot
+        }
+        let observations = try withLock { () -> [Observation] in
+            guard storage[keyID]?.revision == snapshot.revision else {
+                throw PersistentKeyMigrationError.sourceChanged
+            }
+            storage.removeValue(forKey: keyID)
+            return liveObservations(for: keyID)
+        }
+        notify(observations, keyPath: keyID)
+        guard try migrationSnapshot(for: keyID) == nil else {
+            throw PersistentKeyMigrationError.removalVerificationFailed
+        }
+    }
+}
+
+extension InMemoryPersistentKeyValueStore {
+    public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        PersistentKeyValueMigrationEndpoint(backend: self)
+    }
+}
+
+private extension InMemoryPersistentKeyValueStore {
+    static func normalizedValue<T>(_ value: T) -> Any {
+        if let array = value as? [Any?] { return array.compactMap(\.self) }
+        if let dictionary = value as? [String: Any?] { return dictionary.compactMapValues(\.self) }
+        return value
     }
 }
 

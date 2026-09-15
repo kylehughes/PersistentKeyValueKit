@@ -75,6 +75,19 @@ jobs:
           set -o pipefail
           xcodebuild clean test -scheme PersistentKeyValueKit -sdk ${{ matrix.sdk }} -destination "${{ matrix.destination }}" -configuration Debug -enableCodeCoverage YES | xcpretty -c
 
+      - name: Check public API diagnostics
+        if: matrix.platform == 'macOS'
+        run: bash Scripts/check-public-api.sh
+
       - name: Run tests (Swift)
         if: matrix.platform == 'macOS'
-        run: swift test
+        run: |
+          swift test --enable-code-coverage
+          swift test -c release --enable-code-coverage
+
+      - name: Check code coverage
+        if: matrix.platform == 'macOS'
+        run: |
+          debug_json="$(swift build --show-bin-path)/codecov/PersistentKeyValueKit.json"
+          release_json="$(swift build -c release --show-bin-path)/codecov/PersistentKeyValueKit.json"
+          ruby Scripts/check-swift-coverage.rb "$debug_json" "$release_json"

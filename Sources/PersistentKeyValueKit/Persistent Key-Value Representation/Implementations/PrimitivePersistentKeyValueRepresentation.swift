@@ -29,6 +29,14 @@ where
 // MARK: - PersistentKeyValueRepresentation Extension
 
 extension PrimitivePersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
+    public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
+        try Value.decode(storageObject: storageObject, format: format)
+    }
+
+    public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        try value.encode(format: format)
+    }
+
     // MARK: Interfacing with Property List Array
     
     @inlinable

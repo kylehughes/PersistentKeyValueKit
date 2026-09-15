@@ -38,6 +38,19 @@ public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: Per
 // MARK: - PersistentKeyValueRepresentation Extension
 
 extension ProxyPersistentKeyValueRepresentationProtocol {
+    public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
+        let proxy = try decodeStorageRepresentation(
+            Proxy.persistentKeyValueRepresentation, object: storageObject, format: format)
+        guard let value = from(proxy) else { throw PersistentKeyValueConversionError.invalidValue }
+        return value
+    }
+
+    public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        guard let proxy = to(value) else { throw PersistentKeyValueConversionError.encodingFailed }
+        return try encodeStorageRepresentation(
+            Proxy.persistentKeyValueRepresentation, value: proxy, format: format)
+    }
+
     // MARK: Interfacing with Property List Array
     
     public func get(from propertyListArray: [Any]) -> [Value]? {

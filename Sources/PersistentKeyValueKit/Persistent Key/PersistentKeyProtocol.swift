@@ -16,8 +16,12 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     
     /// The type of the value for the key.
     associatedtype Value
+
     
     // MARK: Instance Interface
+
+    /// Whether this key participates in migration operations. The default implementation returns `true`.
+    var isMigrationEnabled: Bool { get }
     
     /// The default value for the key.
     ///
@@ -94,5 +98,17 @@ extension PersistentKeyProtocol {
     @inlinable
     public func registerDefault(in propertyListDictionary: inout [String: Any]) {
         representation.set(id, to: defaultValue, in: &propertyListDictionary)
+    }
+
+    public var isMigrationEnabled: Bool { true }
+}
+
+extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
+    /// The persistent completion marker for a migration identifier.
+    public static func isMigrationCompleted(id: String) -> Self {
+        Self("PersistentKeyValueKit.MigrationCompleted." +
+            Data(id.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: ""),
+            defaultValue: false)
     }
 }

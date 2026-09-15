@@ -78,6 +78,55 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
         
         XCTAssert(baseRepresentation.base === representation)
     }
+
+    @MainActor
+    func test_init_debugAndReleaseDefaultValues_otherRepresentation() throws {
+        try skipIfNotiOS16OrLaterOrEquivalent()
+        let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
+            serializing: \.self,
+            deserializing: \.self
+        )
+        let key = PersistentDebugKey(
+            id,
+            debugDefaultValue: "debug",
+            releaseDefaultValue: "release",
+            representation: representation
+        )
+
+        #if DEBUG
+        XCTAssertEqual(key.defaultValue, "debug")
+        #else
+        XCTAssertEqual(key.defaultValue, "release")
+        #endif
+        XCTAssert(key.representation as? ReferenceProxyPersistentKeyValueRepresentation<String, String> === representation)
+    }
+
+    @MainActor
+    func test_init_debugAndReleaseDefaultValues_optionalOtherRepresentation() throws {
+        try skipIfNotiOS16OrLaterOrEquivalent()
+        let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
+            serializing: \.self,
+            deserializing: \.self
+        )
+        let key = PersistentDebugKey<String?>(
+            id,
+            debugDefaultValue: "debug",
+            releaseDefaultValue: "release",
+            representation: representation
+        )
+
+        #if DEBUG
+        XCTAssertEqual(key.defaultValue, "debug")
+        #else
+        XCTAssertEqual(key.defaultValue, "release")
+        #endif
+        let optionalRepresentation = try XCTUnwrap(
+            key.representation as? OptionalPersistentKeyValueRepresentation<
+                ReferenceProxyPersistentKeyValueRepresentation<String, String>
+            >
+        )
+        XCTAssert(optionalRepresentation.base === representation)
+    }
     
     // MARK: Equatable Tests
     

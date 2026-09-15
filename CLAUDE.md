@@ -17,9 +17,15 @@ This file is operating guidance for agents and contributors working in `Persiste
 
 ## Core Rules
 
-Keep call sites typed. Consumers define a key once, then use that key to read, write, bind, or observe values. Store internals stay inside the package.
+Keep call sites typed and generic. Consumers define a key once, then use that key to read, write, bind, observe, or migrate values. The library's purpose is to let consumers build abstractions whose code does not branch on whether a value lives in `UserDefaults`, `NSUbiquitousKeyValueStore`, or an in-memory store. Do not close a generic API merely to simplify an implementation.
+
+Representations are the ownership boundary for converting between a Swift value and a store's storage object. Higher-level features, including migration, consume the existing representation and proxy mechanisms; they must not introduce parallel, feature-specific conversion protocols. Custom proxy representations should work through their existing `from` and `to` conversions, including consumer-provided closures. Conversion may be repeated for validation, so do not promise purity or exact callback counts unless an API explicitly provides that guarantee.
+
+We own the supported Apple store integrations and may encode knowledge of their native formats, domains, identities, observation, and other platform behavior in those implementations. `InMemoryPersistentKeyValueStore` exists for convenience and testing. That implementation knowledge does not make arbitrary third-party storage engines a required extension point, and it does not justify exposing Foundation details to callers.
 
 Treat public API changes as release decisions. Before adding requirements, changing defaults, renaming symbols, or raising platform minimums, identify the compatibility impact and document the reason.
+
+Prefer required type contracts when core behavior must be checked and correct; representation conversion is one such contract. Do not use default "unsupported" implementations to avoid requiring a core capability. A breaking release can be the right way to establish such a contract, but a major-version boundary is not permission to break source compatibility without a concrete reason.
 
 Do not leak Foundation storage quirks into user-facing APIs. Handle normalization, launch-argument coercion, observation filtering, cancellation, and deregistration inside the package.
 
@@ -46,7 +52,9 @@ Source folders are grouped by feature area. Put new code beside the feature it e
 
 `PersistentKeyProtocol` models typed keys. `PersistentKeyValueStore` defines storage operations. `KeyValuePersistible` and `PersistentKeyValueRepresentation` define conversion between Swift values and property-list-compatible storage.
 
-Concrete stores stay thin:
+Public abstractions should remain composable while implementation mechanics stay private. For example, a consumer's generic store abstraction can forward a migration endpoint without knowing backend identities, revision tokens, or storage bookkeeping. Endpoint forwarding selects the backing store; it does not intercept a wrapper's ordinary `get` and `set` methods or replace the representation's conversion contract. Preserve ordinary storage behavior when adding higher-level operations.
+
+Concrete stores stay close to their backing APIs. They may contain platform-specific knowledge, while shared typed behavior remains in the store and representation abstractions:
 
 - `UserDefaults`: Foundation defaults plus KVO observation.
 - `NSUbiquitousKeyValueStore`: iCloud key-value storage plus notification observation.
@@ -93,6 +101,10 @@ Use comments for nonobvious whys only. Public documentation comments should desc
 Add focused XCTest coverage for every behavior change. Use unique keys such as `key:\(#function)` to avoid cross-test state leakage.
 
 For store behavior, test each affected store. For async observation, cover initial emission, change-only streams, buffering, unrelated keys, cancellation, iterator deinitialization, deregistration, and concurrent cancellation/change races.
+
+Exercise public APIs from a normal importing client, including generic and existential use where supported. Use compile-fail fixtures for boundaries that must remain inaccessible or required.
+
+Maintain 100% line and region coverage across all production code. Coverage is not limited to new or changed code, and it is not a substitute for behavioral assertions.
 
 ## Contributing
 

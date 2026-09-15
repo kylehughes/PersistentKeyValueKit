@@ -34,6 +34,15 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     // MARK: Public Typealiases
     
     public typealias Value = Optional<Base.Value>
+
+    public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
+        try base.decode(storageObject: storageObject, format: format)
+    }
+
+    public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        guard let value else { return nil }
+        return try base.encode(value, format: format)
+    }
     
     // MARK: Interfacing with Property List Array
     
