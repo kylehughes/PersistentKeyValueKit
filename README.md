@@ -20,7 +20,7 @@ PersistentKeyValueKit is heavy with opinions, concepts, and types, but the imple
 sit right on top of the familiar storage APIs.
 
 All constraints of [`UserDefaults`][user-defaults-docs] and [`NSUbiquitousKeyValueStore`][ubiquitous-store-docs] apply. 
-Familiarity with these storage systems is recommended. Data is not migrated between stores unless you request it.
+Familiarity with these storage systems is recommended. Data is not automatically migrated between stores.
 
 PersistentKeyValueKit is backed by a robust test suite.
 
@@ -36,7 +36,7 @@ PersistentKeyValueKit is backed by a robust test suite.
 - [x] AsyncSequence and Combine publishers for observing key changes in any context.
 - [x] Built-in support for all primitive (i.e. property list) types.
 - [x] Built-in representations for all common ways to persist values.
-- [x] Checked migration of typed keys between migration-capable stores.
+- [x] Migration of key-value pairs between stores.
 - [x] Keys that are only mutable in Debug builds.
 - [x] Swift 6 language mode support.
 
@@ -235,19 +235,6 @@ Many common representations are provided and it is easy to build custom ones ins
 implementation. The primitive types for the stores are natively represented, so your responsibility is to transform your 
 type to-and-from a primitive one.
 
-Every `PersistentKeyValueRepresentation` also implements checked storage conversion:
-
-```swift
-func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value
-func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any?
-```
-
-The `format` identifies property-list storage, `UserDefaults`, or `NSUbiquitousKeyValueStore`. A successful `encode`
-that returns `nil` means that the key should be removed. Built-in conversion failures use
-`PersistentKeyValueConversionError`; throwing encoders and decoders preserve their underlying errors.
-Existing `get` and `set` methods retain their non-throwing behavior and native
-storage formats; checked conversion is used when a caller needs to distinguish invalid data from an absent value.
-
 e.g.
 
 ```swift
@@ -407,20 +394,36 @@ extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
 }
 ```
 
-Custom representations that conform directly to `PersistentKeyValueRepresentation` must implement both checked
-conversion methods in version 2.0.0. Proxy representations receive checked conversion by composing the proxy's
-representation with their existing `from` and `to` methods. Custom primitive types must additionally implement the
-required primitive `decode(storageObject:format:)` and `encode(format:)` methods. Checked conversion can run more than
-once while a migration validates a write. There is no guaranteed invocation count, and callers must account for any
-side effects in their conversion code.
+#### Implement a Representation
+
+Every `PersistentKeyValueRepresentation` implements checked storage conversion:
+
+```swift
+func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value
+func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any?
+```
+
+The `format` identifies property-list storage, `UserDefaults`, or `NSUbiquitousKeyValueStore`. A successful `encode`
+that returns `nil` means that the key should be removed. Built-in conversion failures use
+`PersistentKeyValueConversionError`; throwing encoders and decoders preserve their underlying errors. Existing `get`
+and `set` methods retain their non-throwing behavior and native storage formats.
+
+Proxy representations get checked conversion from their existing `from` and `to` methods. Custom representations that
+conform directly to `PersistentKeyValueRepresentation` must implement both methods. Custom primitive types must also
+implement the required primitive `decode(storageObject:format:)` and `encode(format:)` methods. This is a breaking API
+change in version 2.0.0. Checked conversion can run more than once while a migration validates a write.
+
+URLs use absolute strings in property-list and ubiquitous storage. User defaults retain Foundation's native URL format:
+file URLs use paths and other URLs use secure archived data. Legacy ubiquitous URL objects remain readable.
 
 ### Migrate Values Between Stores
 
-`UserDefaultsMigrationStore` and `UbiquitousKeyValueMigrationStore` provide checked migration adapters. They conform to
-both `PersistentKeyValueStore` for ordinary access and `PersistentKeyValueMigrationStore` for migration. A migration
-uses the key's typed representation, so one key or a batch of keys can move between `UserDefaults.standard`, an app-group
-suite, and iCloud. The UserDefaults adapter must be created for the explicit persistent domain being migrated; use the
-named-suite initializer for an app-group domain rather than relying on UserDefaults' search hierarchy.
+Key-value pairs can be copied or moved between `UserDefaults.standard`, an app-group suite, and iCloud using the same
+typed keys.
+
+e.g.
+
+The runtime color scheme is copied from standard user defaults to an app-group suite.
 
 ```swift
 let source = try UserDefaultsMigrationStore.standard()
@@ -433,9 +436,14 @@ let report = try source.copy(
 )
 ```
 
-Every call requires a conflict policy. The returned report contains one outcome for each key, including conversion,
-write, and source-removal failures. Setup errors, such as duplicate keys or using the same store, are thrown before
-mutation. A batch can contain keys with different value types and continues after individual failures.
+`UserDefaultsMigrationStore` and `UbiquitousKeyValueMigrationStore` conform to `PersistentKeyValueStore` for ordinary
+access and to `PersistentKeyValueMigrationStore` for migration. The UserDefaults adapter must be created for the explicit
+persistent domain being migrated; use the named-suite initializer for an app-group domain rather than relying on
+UserDefaults' search hierarchy. `InMemoryPersistentKeyValueStore` also supports migration for tests and ephemeral data.
+
+Every call requires a conflict policy. When a migration runs, its report contains one outcome for each key, including
+conversion, write, and source-removal failures. Setup errors, such as duplicate keys or using the same store, are
+thrown before mutation. A batch can contain keys with different value types and continues after individual failures.
 
 | Operation | Conflict policy | Existing destination value |
 | --- | --- | --- |
@@ -446,23 +454,26 @@ mutation. A batch can contain keys with different value types and continues afte
 | Move | `.keepDestinationAndRemoveSource` | Retain the destination and discard the source. |
 
 Migration reads persisted values only. Registered defaults, launch arguments, and other implicit defaults do not become
-source values or destination conflicts. Built-in primitive, collection, optional, and proxy representations use the
-checked conversion methods on `PersistentKeyValueRepresentation`. The public migration endpoint keeps backend mechanics
-opaque while allowing generic consumer abstractions to forward migration operations without knowing the concrete store
-type. Custom consumer abstractions may forward that endpoint when they wrap a supported store; they do not need to
-reimplement snapshot or write coordination.
-Optional `nil` values remove the destination key in Foundation stores, and collection encoding follows the existing
-normalization rules. `InMemoryPersistentKeyValueStore` also supports migration and retains its typed-value semantics,
-including stored `nil` values and values without a Foundation-compatible representation.
+source values or destination conflicts. Primitive, collection, optional, and proxy representations use their checked
+conversion methods. Optional `nil` values remove the destination key in Foundation stores, and collection encoding
+follows the existing normalization rules. The in-memory store retains its typed-value semantics, including stored `nil`
+values and values without a Foundation-compatible representation.
+
+Generic store abstractions can forward their migration endpoint when they wrap a supported store. This lets code that
+uses the abstraction remain independent of the concrete store type. The endpoint does not change ordinary `get` and
+`set` behavior.
+
+Migrations do not provide rollback. A failed move can already have copied a value to the destination. Coordinate other
+writers and processes while migrating. The caller controls iCloud readiness; a successful local write does not guarantee
+disk durability or cloud delivery, and removing a value from an iCloud store affects its other devices.
+
+#### Track a Migration
 
 Completion tracking is optional. Pass `.once(id:recordedIn:)` with a local migration adapter when a migration should be
 recorded after all keys resolve. Absent sources, disabled keys, and retained conflicts count as resolved. The marker is
-the key returned by `PersistentKeyProtocol.isMigrationCompleted(id:)`;
-remove it from the tracking adapter's underlying `userDefaults` to reset it. Version the identifier when changing the
-migration's meaning. The caller controls iCloud readiness, and a retry runs the whole batch again with the same policy.
-Tracking does not schedule work, provide rollback, or provide an exactly-once guarantee. A successful local write does
-not guarantee disk durability or cloud delivery. Coordinate other writers and processes while migrating. A failed move
-can already have copied a value to the destination, and removing a value from an iCloud store affects its other devices.
+the key returned by `PersistentKeyProtocol.isMigrationCompleted(id:)`; remove it from the tracking adapter's underlying
+`userDefaults` to reset it. Once the marker is recorded, subsequent calls with the same identifier skip the migration and
+return a report with no outcomes. Version the identifier when changing the migration's meaning.
 
 ```swift
 let report = try source.move(
@@ -477,12 +488,8 @@ if !report.isComplete {
 }
 ```
 
-URLs use absolute strings in property-list and ubiquitous storage. User defaults retain Foundation's native URL format:
-file URLs use paths and other URLs use secure archived data. Legacy ubiquitous URL objects remain readable.
-
-Version 2.0.0 intentionally makes checked conversion part of the representation contract. Consumers with direct custom
-`PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible` conformances must add the required methods. Existing
-stored values and ordinary `get`/`set` behavior remain compatible.
+Tracking does not schedule work or provide an exactly-once guarantee. Until completion is recorded, a retry runs the
+whole batch again with the same policy.
 
 ### Observation
 
