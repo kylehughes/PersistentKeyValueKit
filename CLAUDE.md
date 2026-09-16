@@ -29,6 +29,10 @@ Prefer required type contracts when core behavior must be checked and correct; r
 
 Do not leak Foundation storage quirks into user-facing APIs. Handle normalization, launch-argument coercion, observation filtering, cancellation, and deregistration inside the package.
 
+Preserve the distinction between missing values and valid values such as `false` or `0`, so typed keys can apply their declared defaults. An unconditional `bool(forKey:)` loses that distinction; a bare `object(forKey:) as? Bool` rejects string-valued launch overrides.
+
+UserDefaults launch arguments can contain strings for typed values. Keep their parsing scoped to `UserDefaults.argumentDomain`; do not extend it to arbitrary persisted strings. Optional and proxy representations must inherit this behavior without requiring consumer workarounds.
+
 ## Repository Structure
 
 ```text
