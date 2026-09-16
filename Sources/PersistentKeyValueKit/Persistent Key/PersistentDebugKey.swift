@@ -60,7 +60,7 @@ where
     
     /// Creates a new key with the given identifier and default value.
     ///
-    /// The key-value pair is represented by the default representation for ``Value``.
+    /// The key-value pair is represented by the default representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -77,7 +77,7 @@ where
     
     /// Creates a new key with the given identifier and separate default values for debug and release builds.
     ///
-    /// The key-value pair is represented by the default representation for ``Value``.
+    /// The key-value pair is represented by the default representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter debugDefaultValue: The default value to use in debug builds.
@@ -101,7 +101,7 @@ where
     /// Creates a new key with the given identifier, default value, and representation.
     ///
     /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value``.
+    /// representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -121,7 +121,7 @@ where
     /// representation.
     ///
     /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value``.
+    /// representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter debugDefaultValue: The default value to use in debug builds.
@@ -146,7 +146,7 @@ where
     /// Creates a new key with the given identifier, default value, and representation.
     ///
     /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value?``.
+    /// representation for `Value?`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -166,7 +166,7 @@ where
     /// representation.
     ///
     /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value?``.
+    /// representation for `Value?`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter debugDefaultValue: The default value to use in debug builds.
@@ -238,6 +238,7 @@ extension PersistentDebugKey {
     /// In production builds, this method has no effect.
     ///
     /// - Parameter newValue: The new value for the key.
+    /// - Parameter userDefaults: The `UserDefaults` to set the value in.
     @inlinable
     public func set(to newValue: Value, in userDefaults: UserDefaults) {
         #if DEBUG

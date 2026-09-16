@@ -73,7 +73,8 @@ jobs:
         if: matrix.platform != 'macOS'
         run: |
           set -o pipefail
-          xcodebuild clean test -scheme PersistentKeyValueKit -sdk ${{ matrix.sdk }} -destination "${{ matrix.destination }}" -configuration Debug -enableCodeCoverage YES | xcpretty -c
+          # These test bundles have no App Intents metadata to extract.
+          xcodebuild clean test -scheme PersistentKeyValueKit -sdk ${{ matrix.sdk }} -destination "${{ matrix.destination }}" -configuration Debug -enableCodeCoverage YES LM_SKIP_METADATA_EXTRACTION=YES | xcpretty -c
 
       - name: Check public API diagnostics
         if: matrix.platform == 'macOS'

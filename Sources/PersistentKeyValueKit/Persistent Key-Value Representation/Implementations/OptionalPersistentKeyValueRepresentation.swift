@@ -8,7 +8,7 @@
 import Foundation
 
 /// A persistent key-value representation that can represent the `Optional` variant of another representation's
-/// ``Value``. All non-optional operations are deferred to the base representation.
+/// `Value`. All non-optional operations are deferred to the base representation.
 /// 
 /// - Important: Consumers of this library should not have to interact with this type directly in happy-path scenarios.
 public struct OptionalPersistentKeyValueRepresentation<Base>
@@ -145,7 +145,7 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
 extension PersistentKeyValueRepresentation {
     // MARK: Public Static Interface
     
-    /// Returns a wrapped representation of the receiver that can represent ``Value?``.
+    /// Returns a wrapped representation of the receiver that can represent `Value?`.
     @inlinable
     public var optionalRepresentation: OptionalPersistentKeyValueRepresentation<Self> {
         OptionalPersistentKeyValueRepresentation(self)

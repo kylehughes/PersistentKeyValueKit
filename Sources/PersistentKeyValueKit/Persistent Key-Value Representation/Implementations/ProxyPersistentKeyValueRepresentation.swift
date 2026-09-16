@@ -19,7 +19,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
     
     /// Creates a new representation that proxies a value through another explicit representation.
     ///
-    /// This is useful for composing representations together. The value of ``Proxy`` is inferred from the
+    /// This is useful for composing representations together. The value of `Proxy` is inferred from the
     /// proxied representation, not vice versa.
     ///
     /// - Parameter other: The other representation to proxy through.

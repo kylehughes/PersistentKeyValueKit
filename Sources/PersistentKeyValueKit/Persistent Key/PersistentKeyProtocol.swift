@@ -92,7 +92,7 @@ extension PersistentKeyProtocol {
     
     /// Registers the default value for the key in the given property-list-compatible dictionary.
     ///
-    /// This is intended for use by ``UserDefaults/register(_:)`` to register the default values for the keys.
+    /// This is intended for use by `UserDefaults.register(_:)` to register the default values for the keys.
     ///
     /// - Parameter propertyListDictionary: The dictionary to register the default value in.
     @inlinable

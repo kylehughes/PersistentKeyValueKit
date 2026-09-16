@@ -44,7 +44,7 @@ public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     
     /// Creates a new key with the given identifier and default value.
     ///
-    /// The key-value pair is represented by the default representation for ``Value``.
+    /// The key-value pair is represented by the default representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -62,7 +62,7 @@ public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     /// Creates a new key with the given identifier, default value, and representation.
     /// 
     /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value``.
+    /// representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -81,7 +81,7 @@ public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     /// Creates a new key with the given identifier, default value, and representation.
     ///
     /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value?``.
+    /// representation for `Value?`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.

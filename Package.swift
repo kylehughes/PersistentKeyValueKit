@@ -21,12 +21,18 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "PersistentKeyValueKit"
+            name: "PersistentKeyValueKit",
+            swiftSettings: [
+                .treatAllWarnings(as: .error),
+            ]
         ),
         .testTarget(
             name: "PersistentKeyValueKitTests",
             dependencies: [
                 "PersistentKeyValueKit",
+            ],
+            swiftSettings: [
+                .treatAllWarnings(as: .error),
             ]
         ),
         .testTarget(
@@ -34,7 +40,10 @@ let package = Package(
             dependencies: [
                 "PersistentKeyValueKit",
             ],
-            path: "Tests/PersistentKeyValueKitPublicAPITests"
+            path: "Tests/PersistentKeyValueKitPublicAPITests",
+            swiftSettings: [
+                .treatAllWarnings(as: .error),
+            ]
         ),
     ]
 )

@@ -10,7 +10,7 @@ import Foundation
 /// A representation of a value in a ``PersistentKeyValueStore`` that is itself a persistible type and defines
 /// explicitly how to interface with `UserDefaults` and `NSUbiquitousKeyValueStore`.
 ///
-/// ``Value`` is required to conform to ``PrimitiveKeyValuePersistible``. All applicable standard library & Foundation
+/// `Value` is required to conform to ``PrimitiveKeyValuePersistible``. All applicable standard library & Foundation
 /// types already conform. It is unlikely that you need to use this representation, unless you have built an
 /// especially-custom representation for your custom type and made it conform to ``PrimitiveKeyValuePersistible``.
 ///

@@ -70,6 +70,7 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Set the value at the given key in the given property-list-compatible dictionary.
     ///
     /// - Parameter dictionaryKey: The key to set the value at.
+    /// - Parameter value: The value to set.
     /// - Parameter propertyListDictionary: The dictionary to set the value in at `dictionaryKey`.
     static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any])
     
@@ -87,6 +88,7 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Set the value at the given key in the given `UserDefaults`.
     ///
     /// - Parameter userDefaultsKey: The key to set the value at.
+    /// - Parameter value: The value to set.
     /// - Parameter userDefaults: The `UserDefaults` to set the value in at `userDefaultsKey`.
     static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults)
     
@@ -106,6 +108,7 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Set the value at the given key in the given `NSUbiquitousKeyValueStore`.
     ///
     /// - Parameter ubiquitousStoreKey: The key to set the value at.
+    /// - Parameter value: The value to set.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in at
     ///   `ubiquitousStoreKey`.
     @available(watchOS 9.0, *)

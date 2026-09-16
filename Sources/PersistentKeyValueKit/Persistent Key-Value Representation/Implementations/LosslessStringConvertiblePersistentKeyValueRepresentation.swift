@@ -10,7 +10,7 @@ import Foundation
 /// A representation of a value in a ``PersistentKeyValueStore`` for types that can be converted to and from a `String`
 /// without losing information.
 ///
-/// This is a proxy representation. The ``Value`` type will be persisted as a `String`, which is itself persistible.
+/// This is a proxy representation. The `Value` type will be persisted as a `String`, which is itself persistible.
 public struct LosslessStringConvertiblePersistentKeyValueRepresentation<Value>
 where
     Value: LosslessStringConvertible

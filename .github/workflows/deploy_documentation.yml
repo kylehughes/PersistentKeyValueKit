@@ -35,6 +35,7 @@ jobs:
         run: |
           xcodebuild docbuild \
             -scheme PersistentKeyValueKit \
+            OTHER_DOCC_FLAGS="--warnings-as-errors" \
             -derivedDataPath /tmp/DerivedData \
             -destination 'generic/platform=iOS';
           mkdir _site;
