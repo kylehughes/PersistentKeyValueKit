@@ -25,14 +25,19 @@ where
     Key == String,
     Value: KeyValuePersistible
 {
-    public static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> [String: Value] {
+    public static func decode(
+        storageObject: Any,
+        format: PersistentKeyValueStorageFormat
+    ) throws -> [String: Value] {
         guard let objects = storageObject as? [String: Any] else {
             throw PersistentKeyValueConversionError.invalidStorageValue
         }
         var values: [String: Value] = [:]
         for (key, object) in objects {
-            values[key] = try decodeStorageRepresentation(
-                Value.persistentKeyValueRepresentation, object: object, format: .propertyList)
+            values[key] = try Value.persistentKeyValueRepresentation.decode(
+                storageObject: object,
+                format: .propertyList
+            )
         }
         return values
     }
@@ -41,7 +46,10 @@ where
         var objects: [String: Any] = [:]
         for (key, value) in self {
             if let object = try encodeStorageRepresentation(
-                Value.persistentKeyValueRepresentation, value: value, format: .propertyList)
+                Value.persistentKeyValueRepresentation,
+                value: value,
+                format: .propertyList
+            )
             {
                 objects[key] = object
             }

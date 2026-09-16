@@ -27,7 +27,9 @@ extension Data: PrimitiveKeyValuePersistible {
         try checkedStorageValue(from: storageObject)
     }
 
-    public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? { self }
+    public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
+        self
+    }
 
     // MARK: Interfacing with User Defaults
     

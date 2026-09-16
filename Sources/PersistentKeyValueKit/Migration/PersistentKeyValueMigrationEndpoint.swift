@@ -1,5 +1,7 @@
 import Foundation
 
+// MARK: - Public Interface
+
 /// An opaque capability used by the migration engine.
 ///
 /// The endpoint keeps storage mechanics private while allowing generic client abstractions to forward migration
@@ -14,6 +16,8 @@ public struct PersistentKeyValueMigrationEndpoint {
     }
 }
 
+// MARK: - Internal Interface
+
 /// The backend contract used by the migration engine.
 ///
 /// This is intentionally internal: the public API describes what clients can do, while the library retains knowledge
@@ -23,20 +27,39 @@ protocol PersistentKeyValueMigrationBackend {
     associatedtype MigrationWrite
 
     var migrationIdentity: PersistentKeyValueMigrationStoreIdentity { get }
+
+    func commitMigrationWrite(
+        _ write: MigrationWrite,
+        replacing snapshot: MigrationSnapshot?
+    ) throws -> MigrationSnapshot?
+
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot?
-    func migrationValue<Key>(for key: Key, in snapshot: MigrationSnapshot) throws -> Key.Value
-    where Key: PersistentKeyProtocol
-    func prepareMigrationWrite<Key>(_ value: Key.Value, for key: Key) throws -> MigrationWrite
-    where Key: PersistentKeyProtocol
-    func commitMigrationWrite(_ write: MigrationWrite, replacing snapshot: MigrationSnapshot?) throws
-        -> MigrationSnapshot?
-    func removeMigrationValue(for keyID: String, matching snapshot: MigrationSnapshot) throws
+
     func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool
+
+    func migrationValue<Key>(
+        for key: Key,
+        in snapshot: MigrationSnapshot
+    ) throws -> Key.Value
+    where Key: PersistentKeyProtocol
+
+    func prepareMigrationWrite<Key>(
+        _ value: Key.Value,
+        for key: Key
+    ) throws -> MigrationWrite
+    where Key: PersistentKeyProtocol
+
+    func removeMigrationValue(
+        for keyID: String,
+        matching snapshot: MigrationSnapshot
+    ) throws
 }
 
+// MARK: - Internal Identity
+
 struct PersistentKeyValueMigrationStoreIdentity: Hashable, Sendable {
-    let namespace: String
     let identifier: String
+    let namespace: String
 
     init(namespace: String, identifier: String) {
         self.namespace = namespace

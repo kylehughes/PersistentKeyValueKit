@@ -64,15 +64,20 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
     }
 
     public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
-        let proxy = try decodeStorageRepresentation(
-            Encoder.Output.persistentKeyValueRepresentation, object: storageObject, format: format)
+        let proxy = try Encoder.Output.persistentKeyValueRepresentation.decode(
+            storageObject: storageObject,
+            format: format
+        )
         return try decoder.decode(Value.self, from: proxy)
     }
 
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
         let proxy = try encoder.encode(value)
         return try encodeStorageRepresentation(
-            Encoder.Output.persistentKeyValueRepresentation, value: proxy, format: format)
+            Encoder.Output.persistentKeyValueRepresentation,
+            value: proxy,
+            format: format
+        )
     }
 }
 

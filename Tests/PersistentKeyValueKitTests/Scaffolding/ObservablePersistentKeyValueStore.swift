@@ -17,7 +17,9 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     private var storage: [String: Any]
 
     var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
-        get throws { throw PersistentKeyMigrationError.missingMigrationDomain }
+        get throws {
+            throw PersistentKeyMigrationError.missingMigrationDomain
+        }
     }
 
     init() {

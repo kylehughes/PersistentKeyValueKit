@@ -55,12 +55,18 @@ extension ProxyPersistentKeyValueRepresentationTests {
     @MainActor
     func test_init_otherRepresentation_returnsNilWhenInnerRepresentationCannotDeserialize() {
         let inner = ProxyPersistentKeyValueRepresentation<TimeInterval, String>(
-            to: { String($0) },
-            from: { _ in nil }
+            to: {
+                String($0)
+            },
+            from: { _ in
+                nil
+            }
         )
         let representation = ProxyPersistentKeyValueRepresentation<Date, String>(
             other: inner,
-            to: { $0.timeIntervalSince1970 },
+            to: {
+                $0.timeIntervalSince1970
+            },
             from: Date.init(timeIntervalSince1970:)
         )
 
@@ -106,20 +112,14 @@ extension ProxyPersistentKeyValueRepresentationTests {
     }
 
     @MainActor
-    func test_protocol_getArrayReturnsNilWhenProxyCannotDeserialize() {
-        let representation = ProxyPersistentKeyValueRepresentation<Int, String>(
-            to: { String($0) },
-            from: { Int($0) }
-        )
-
-        XCTAssertNil(representation.get(from: ["1", "invalid"]))
-    }
-
-    @MainActor
     func test_protocol_failedSerializationLeavesPropertyListArrayUnchanged() {
         let representation = ProxyPersistentKeyValueRepresentation<Int, String>(
-            to: { _ in nil },
-            from: { Int($0) }
+            to: { _ in
+                nil
+            },
+            from: {
+                Int($0)
+            }
         )
         var propertyListArray: [Any] = ["existing"]
 
@@ -131,8 +131,12 @@ extension ProxyPersistentKeyValueRepresentationTests {
     @MainActor
     func test_protocol_failedSerializationLeavesPropertyListDictionaryUnchanged() {
         let representation = ProxyPersistentKeyValueRepresentation<Int, String>(
-            to: { _ in nil },
-            from: { Int($0) }
+            to: { _ in
+                nil
+            },
+            from: {
+                Int($0)
+            }
         )
         var propertyListDictionary: [String: Any] = ["key": "existing"]
 
@@ -141,16 +145,48 @@ extension ProxyPersistentKeyValueRepresentationTests {
         XCTAssertEqual(propertyListDictionary["key"] as? String, "existing")
     }
 
+    @available(watchOS 9.0, *)
+    @MainActor
+    func test_protocol_failedSerializationLeavesUbiquitousStoreUnchanged() {
+        let representation = ProxyPersistentKeyValueRepresentation<Int, String>(
+            to: { _ in
+                nil
+            },
+            from: {
+                Int($0)
+            }
+        )
+        let key = "key:\(#function)"
+        let ubiquitousStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore.mockDefault
+        ubiquitousStore.set("existing", forKey: key)
+
+        defer {
+            ubiquitousStore.removeObject(forKey: key)
+        }
+
+        representation.set(key, to: 1, in: ubiquitousStore)
+
+        XCTAssertEqual(ubiquitousStore.object(forKey: key) as? String, "existing")
+    }
+
     @MainActor
     func test_protocol_failedSerializationLeavesUserDefaultsUnchanged() {
         let representation = ProxyPersistentKeyValueRepresentation<Int, String>(
-            to: { _ in nil },
-            from: { Int($0) }
+            to: { _ in
+                nil
+            },
+            from: {
+                Int($0)
+            }
         )
         let suiteName = "PersistentKeyValueKit.ProxyRepresentation.\(UUID().uuidString)"
         let key = "key:\(#function)"
         let userDefaults = UserDefaults(suiteName: suiteName)!
-        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
         userDefaults.set("existing", forKey: key)
 
         representation.set(key, to: 1, in: userDefaults)
@@ -158,20 +194,17 @@ extension ProxyPersistentKeyValueRepresentationTests {
         XCTAssertEqual(userDefaults.string(forKey: key), "existing")
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
-    func test_protocol_failedSerializationLeavesUbiquitousStoreUnchanged() {
+    func test_protocol_getArrayReturnsNilWhenProxyCannotDeserialize() {
         let representation = ProxyPersistentKeyValueRepresentation<Int, String>(
-            to: { _ in nil },
-            from: { Int($0) }
+            to: {
+                String($0)
+            },
+            from: {
+                Int($0)
+            }
         )
-        let key = "key:\(#function)"
-        let ubiquitousStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore.mockDefault
-        ubiquitousStore.set("existing", forKey: key)
-        defer { ubiquitousStore.removeObject(forKey: key) }
 
-        representation.set(key, to: 1, in: ubiquitousStore)
-
-        XCTAssertEqual(ubiquitousStore.object(forKey: key) as? String, "existing")
+        XCTAssertNil(representation.get(from: ["1", "invalid"]))
     }
 }

@@ -106,9 +106,12 @@ extension PersistentKeyProtocol {
 extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
     /// The persistent completion marker for a migration identifier.
     public static func isMigrationCompleted(id: String) -> Self {
-        Self("PersistentKeyValueKit.MigrationCompleted." +
-            Data(id.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: ""),
-            defaultValue: false)
+        Self(
+            "PersistentKeyValueKit.MigrationCompleted."
+            + Data(id.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-")
+                    .replacingOccurrences(of: "/", with: "_")
+                    .replacingOccurrences(of: "=", with: ""),
+            defaultValue: false
+        )
     }
 }

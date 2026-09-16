@@ -17,7 +17,9 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     )
 
     public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
-        PersistentKeyValueMigrationEndpoint(backend: UbiquitousKeyValueMigrationBackend(self))
+        PersistentKeyValueMigrationEndpoint(
+            backend: UbiquitousKeyValueMigrationBackend(self)
+        )
     }
     
     // MARK: Getting Values

@@ -10,6 +10,8 @@ import PersistentKeyValueKit
 import XCTest
 
 final class PersistentKeyUIObservableObjectAssertionTests: XCTestCase {
+    // MARK: Tests
+
     @MainActor
     func test_nilStoreAccessAssertsInDebug() throws {
         if ProcessInfo.processInfo.environment["PKVK_ASSERTION_CHILD"] == "1" {
@@ -23,7 +25,9 @@ final class PersistentKeyUIObservableObjectAssertionTests: XCTestCase {
         let fileManager = FileManager.default
         let temporaryDirectory = fileManager.temporaryDirectory
             .appendingPathComponent("PersistentKeyValueKit-Assertion-\(UUID().uuidString)")
+
         try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+
         defer {
             try? fileManager.removeItem(at: temporaryDirectory)
         }
@@ -44,17 +48,27 @@ final class PersistentKeyUIObservableObjectAssertionTests: XCTestCase {
 
         var environment = ProcessInfo.processInfo.environment
         environment["PKVK_ASSERTION_CHILD"] = "1"
+
         if let profilePath = environment["LLVM_PROFILE_FILE"] {
             let profileDirectory = URL(fileURLWithPath: profilePath).deletingLastPathComponent()
             environment["LLVM_PROFILE_FILE"] = profileDirectory
                 .appendingPathComponent("assertion-%p%c.profraw")
                 .path
         }
+
         process.environment = environment
         let stdout = try FileHandle(forWritingTo: stdoutURL)
-        defer { try? stdout.close() }
+
+        defer {
+            try? stdout.close()
+        }
+
         let stderrHandle = try FileHandle(forWritingTo: stderrURL)
-        defer { try? stderrHandle.close() }
+
+        defer {
+            try? stderrHandle.close()
+        }
+
         process.standardOutput = stdout
         process.standardError = stderrHandle
 
@@ -65,12 +79,14 @@ final class PersistentKeyUIObservableObjectAssertionTests: XCTestCase {
 
         try process.run()
         wait(for: [terminationExpectation], timeout: 10)
+
         if process.isRunning {
             process.terminate()
             process.waitUntilExit()
         }
 
         let stderr = try String(contentsOf: stderrURL, encoding: .utf8)
+
         XCTAssertEqual(process.terminationReason, .uncaughtSignal)
         XCTAssertTrue(stderr.contains("Store should always be set on initialization or immediately after."))
     }

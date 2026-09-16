@@ -29,7 +29,11 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         other: Other,
         to: @Sendable @escaping (Value) -> Other.Value,
         from: @Sendable @escaping (Other.Value) -> Value
-    ) where Other: ProxyPersistentKeyValueRepresentationProtocol & SendableMetatype, Other.Proxy == Proxy, Proxy: SendableMetatype {
+    ) where
+        Other: ProxyPersistentKeyValueRepresentationProtocol & SendableMetatype,
+        Other.Proxy == Proxy,
+        Proxy: SendableMetatype
+    {
         self.to = { @Sendable in
             other.to(to($0))
         }

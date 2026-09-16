@@ -605,9 +605,9 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 }
 
-private final class ReentrantSubscriber<Input>: Subscriber where Input: Sendable {
-    typealias Failure = Never
+// MARK: - Reentrant Subscriber Definition
 
+private final class ReentrantSubscriber<Input> where Input: Sendable {
     var onFirstReceive: (() -> Void)?
 
     private(set) var maximumReceiveDepth = 0
@@ -615,6 +615,24 @@ private final class ReentrantSubscriber<Input>: Subscriber where Input: Sendable
 
     private var receiveDepth = 0
     private var subscription: Subscription?
+
+    // MARK: Internal Instance Interface
+
+    func cancel() {
+        let subscription = self.subscription
+        self.subscription = nil
+        subscription?.cancel()
+    }
+
+    func request(_ demand: Subscribers.Demand) {
+        subscription?.request(demand)
+    }
+}
+
+// MARK: - Subscriber Extension
+
+extension ReentrantSubscriber: Subscriber {
+    typealias Failure = Never
 
     func receive(_ input: Input) -> Subscribers.Demand {
         receiveDepth += 1
@@ -638,66 +656,25 @@ private final class ReentrantSubscriber<Input>: Subscriber where Input: Sendable
     func receive(subscription: Subscription) {
         self.subscription = subscription
     }
-
-    func request(_ demand: Subscribers.Demand) {
-        subscription?.request(demand)
-    }
-
-    func cancel() {
-        let subscription = self.subscription
-        self.subscription = nil
-        subscription?.cancel()
-    }
 }
 
-private final class CallbackRetainingPersistentKeyValueStore: PersistentKeyValueStore {
+// MARK: - Callback Retaining Persistent Key-Value Store Definition
+
+private final class CallbackRetainingPersistentKeyValueStore {
     private var capturedObserver: NSObject?
     private var deregistrations = 0
     private var storage: [String: Any] = [:]
 
     private(set) var getCount = 0
 
-    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
-        get throws { throw PersistentKeyMigrationError.missingMigrationDomain }
-    }
-
-    var hasCapturedObserver: Bool {
-        capturedObserver != nil
-    }
+    // MARK: Internal Instance Interface
 
     var deregistrationCount: Int {
         deregistrations
     }
 
-    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        getCount += 1
-
-        return storage[key.id] as? Key.Value ?? key.defaultValue
-    }
-
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        storage[key.id] = value
-    }
-
-    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        storage.removeValue(forKey: key.id)
-    }
-
-    func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        deregistrations += 1
-    }
-
-    func register<Key>(
-        observer: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        capturedObserver = observer
+    var hasCapturedObserver: Bool {
+        capturedObserver != nil
     }
 
     func notifyCapturedObserver(for keyID: String) {
@@ -710,5 +687,46 @@ private final class CallbackRetainingPersistentKeyValueStore: PersistentKeyValue
             change: nil,
             context: nil
         )
+    }
+}
+
+// MARK: - PersistentKeyValueStore Extension
+
+extension CallbackRetainingPersistentKeyValueStore: PersistentKeyValueStore {
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        get throws {
+            throw PersistentKeyMigrationError.missingMigrationDomain
+        }
+    }
+
+    func deregister<Key>(
+        _ observer: NSObject,
+        for key: Key,
+        context: UnsafeMutableRawPointer?
+    ) where Key: PersistentKeyProtocol {
+        deregistrations += 1
+    }
+
+    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        getCount += 1
+
+        return storage[key.id] as? Key.Value ?? key.defaultValue
+    }
+
+    func register<Key>(
+        observer: NSObject,
+        for key: Key,
+        with context: UnsafeMutableRawPointer?,
+        and selector: Selector
+    ) where Key: PersistentKeyProtocol {
+        capturedObserver = observer
+    }
+
+    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
+        storage.removeValue(forKey: key.id)
+    }
+
+    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        storage[key.id] = value
     }
 }

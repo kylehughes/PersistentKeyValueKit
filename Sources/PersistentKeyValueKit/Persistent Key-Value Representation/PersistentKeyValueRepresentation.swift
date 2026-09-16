@@ -103,8 +103,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 /// The native storage format used to represent a persistent value.
 public enum PersistentKeyValueStorageFormat: Sendable {
     case propertyList
-    case userDefaults
     case ubiquitousKeyValueStore
+    case userDefaults
 }
 
 /// A failure encountered while converting a value to or from store-native data.
@@ -115,34 +115,37 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 }
 
 internal func checkedStorageValue<Value>(from object: Any, as type: Value.Type = Value.self) throws -> Value {
-    guard let value = object as? Value else { throw PersistentKeyValueConversionError.invalidStorageValue }
+    guard let value = object as? Value else {
+        throw PersistentKeyValueConversionError.invalidStorageValue
+    }
     return value
 }
 
 internal func decodeStorageValue<Key: PersistentKeyProtocol>(
-    for key: Key, object: Any, format: PersistentKeyValueStorageFormat
+    for key: Key,
+    object: Any,
+    format: PersistentKeyValueStorageFormat
 ) throws -> Key.Value {
-    try decodeStorageRepresentation(key.representation, object: object, format: format)
-}
-
-internal func encodeStorageValue<Key: PersistentKeyProtocol>(
-    _ value: Key.Value, for key: Key, format: PersistentKeyValueStorageFormat
-) throws -> Any? {
-    try encodeStorageRepresentation(key.representation, value: value, format: format)
-}
-
-internal func decodeStorageRepresentation<Value, Representation: PersistentKeyValueRepresentation>(
-    _ representation: Representation, object: Any, format: PersistentKeyValueStorageFormat
-) throws -> Value where Representation.Value == Value {
-    try representation.decode(storageObject: object, format: format)
+    try key.representation.decode(storageObject: object, format: format)
 }
 
 internal func encodeStorageRepresentation<Value, Representation: PersistentKeyValueRepresentation>(
-    _ representation: Representation, value: Value, format: PersistentKeyValueStorageFormat
-) throws -> Any? where Representation.Value == Value {
+    _ representation: Representation,
+    value: Value,
+    format: PersistentKeyValueStorageFormat
+) throws -> Any?
+where Representation.Value == Value {
     let object = try representation.encode(value, format: format)
     if let object {
         _ = try representation.decode(storageObject: object, format: format)
     }
     return object
+}
+
+internal func encodeStorageValue<Key: PersistentKeyProtocol>(
+    _ value: Key.Value,
+    for key: Key,
+    format: PersistentKeyValueStorageFormat
+) throws -> Any? {
+    try encodeStorageRepresentation(key.representation, value: value, format: format)
 }

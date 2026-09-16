@@ -21,16 +21,27 @@ extension URL {
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension URL: PrimitiveKeyValuePersistible {
-    public static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> URL {
-        if format == .ubiquitousKeyValueStore, let value = storageObject as? URL { return value }
+    public static func decode(
+        storageObject: Any,
+        format: PersistentKeyValueStorageFormat
+    ) throws -> URL {
+        if format == .ubiquitousKeyValueStore, let value = storageObject as? URL {
+            return value
+        }
         if format == .userDefaults {
-            if let value = storageObject as? URL { return value }
+            if let value = storageObject as? URL {
+                return value
+            }
             if let data = storageObject as? Data {
                 let unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
                 unarchiver.decodingFailurePolicy = .setErrorAndReturn
-                defer { unarchiver.finishDecoding() }
+                defer {
+                    unarchiver.finishDecoding()
+                }
                 guard let value = unarchiver.decodeObject(of: NSURL.self, forKey: NSKeyedArchiveRootObjectKey)
-                else { throw PersistentKeyValueConversionError.invalidStorageValue }
+                else {
+                    throw PersistentKeyValueConversionError.invalidStorageValue
+                }
                 return value as URL
             }
             guard let path = storageObject as? String else {
@@ -46,9 +57,12 @@ extension URL: PrimitiveKeyValuePersistible {
 
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         switch format {
-        case .propertyList, .ubiquitousKeyValueStore: return absoluteString
+        case .propertyList, .ubiquitousKeyValueStore:
+            return absoluteString
         case .userDefaults:
-            if isFileURL { return (path as NSString).abbreviatingWithTildeInPath }
+            if isFileURL {
+                return (path as NSString).abbreviatingWithTildeInPath
+            }
             return try NSKeyedArchiver.archivedData(withRootObject: self, requiringSecureCoding: true)
         }
     }

@@ -29,6 +29,8 @@ where
 // MARK: - PersistentKeyValueRepresentation Extension
 
 extension PrimitivePersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
+    // MARK: Checked Conversion
+
     public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
         try Value.decode(storageObject: storageObject, format: format)
     }

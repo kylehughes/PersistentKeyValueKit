@@ -14,7 +14,10 @@ extension UserDefaults: PersistentKeyValueStore {
     public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         get throws {
             let domainName = try UserDefaults.migrationDomainName(
-                for: self, applicationIdentifier: Bundle.main.bundleIdentifier)
+                for: self,
+                applicationIdentifier: Bundle.main.bundleIdentifier
+            )
+
             return PersistentKeyValueMigrationEndpoint(
                 backend: UserDefaultsMigrationBackend(userDefaults: self, domainName: domainName)
             )
@@ -123,11 +126,17 @@ extension PersistentKeyValueStore where Self == UserDefaults {
     /// ``PersistentKeyMigrationError/invalidStoreIdentifier``; unavailable native stores throw
     /// ``PersistentKeyMigrationError/storeUnavailable``.
     public static func migratable(suiteName: String) throws -> Self {
-        try Self.migratable(suiteName: suiteName, makeUserDefaults: { UserDefaults(suiteName: $0) })
+        try Self.migratable(
+            suiteName: suiteName,
+            makeUserDefaults: {
+                UserDefaults(suiteName: $0)
+            }
+        )
     }
 }
 
-private final class UserDefaultsMigrationDomainAssociationKey: Sendable {}
+private final class UserDefaultsMigrationDomainAssociationKey: Sendable {
+}
 
 final class UserDefaultsMigrationDomain: Sendable {
     let name: String
@@ -138,6 +147,8 @@ final class UserDefaultsMigrationDomain: Sendable {
 }
 
 extension UserDefaults {
+    // MARK: Fileprivate Static Interface
+
     // A stable object address gives Objective-C associations an immutable process-local key without a mutable global.
     fileprivate static let migrationDomainAssociationToken = UserDefaultsMigrationDomainAssociationKey()
 
@@ -145,9 +156,7 @@ extension UserDefaults {
         UnsafeRawPointer(Unmanaged.passUnretained(migrationDomainAssociationToken).toOpaque())
     }
 
-    internal static func migrationDomainMetadata(for defaults: UserDefaults) -> UserDefaultsMigrationDomain? {
-        objc_getAssociatedObject(defaults, migrationDomainAssociationAddress) as? UserDefaultsMigrationDomain
-    }
+    // MARK: Internal Static Interface
 
     internal static func isValidMigrationDomain(
         _ name: String,
@@ -156,6 +165,7 @@ extension UserDefaults {
         guard !name.isEmpty, name != argumentDomain, name != registrationDomain, name != globalDomain else {
             return false
         }
+
         return name != applicationIdentifier
     }
 
@@ -166,9 +176,11 @@ extension UserDefaults {
         guard isValidMigrationDomain(suiteName) else {
             throw PersistentKeyMigrationError.invalidStoreIdentifier
         }
+
         guard let defaults = makeUserDefaults(suiteName) else {
             throw PersistentKeyMigrationError.storeUnavailable
         }
+
         objc_setAssociatedObject(
             defaults,
             migrationDomainAssociationAddress,
@@ -176,7 +188,12 @@ extension UserDefaults {
             UserDefaultsMigrationDomain(name: suiteName),
             .OBJC_ASSOCIATION_RETAIN
         )
+
         return defaults
+    }
+
+    internal static func migrationDomainMetadata(for defaults: UserDefaults) -> UserDefaultsMigrationDomain? {
+        objc_getAssociatedObject(defaults, migrationDomainAssociationAddress) as? UserDefaultsMigrationDomain
     }
 
     internal static func migrationDomainName(
@@ -187,11 +204,14 @@ extension UserDefaults {
             guard let applicationIdentifier, !applicationIdentifier.isEmpty else {
                 throw PersistentKeyMigrationError.missingApplicationIdentifier
             }
+
             return applicationIdentifier
         }
+
         guard let metadata = migrationDomainMetadata(for: defaults) else {
             throw PersistentKeyMigrationError.missingMigrationDomain
         }
+
         return metadata.name
     }
 }

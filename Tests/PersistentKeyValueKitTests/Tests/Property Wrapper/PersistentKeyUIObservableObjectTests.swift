@@ -9,23 +9,29 @@ import PersistentKeyValueKit
 import XCTest
 
 final class PersistentKeyUIObservableObjectTests: XCTestCase {
+    // MARK: Tests
+
     @MainActor
-    func test_observer_ignoresUnrelatedKeyValueObservation() {
+    func test_observer_deliversBackgroundCallbackOnMainActor() async {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         let observer = PersistentKeyUIObservableObject(store: store, key: key)
-        var changeCount = 0
+        let callbackExpectation = expectation(description: "Change delivered on the main thread")
+        let backgroundExpectation = expectation(description: "Background notification completed")
+        var callbackOnMainThread = false
         let cancellable = observer.objectWillChange.sink {
-            changeCount += 1
+            callbackOnMainThread = Thread.isMainThread
+            callbackExpectation.fulfill()
         }
 
-        store.notifyObservers(keyPath: "unrelatedKey:\(#function)")
+        DispatchQueue.global().async {
+            store.notifyObservers(keyPath: key.id)
+            backgroundExpectation.fulfill()
+        }
 
-        XCTAssertEqual(changeCount, 0)
+        await fulfillment(of: [callbackExpectation, backgroundExpectation], timeout: 1)
 
-        store.notifyObservers(keyPath: key.id)
-
-        XCTAssertEqual(changeCount, 1)
+        XCTAssertTrue(callbackOnMainThread)
         cancellable.cancel()
     }
 
@@ -72,26 +78,22 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
     }
 
     @MainActor
-    func test_observer_deliversBackgroundCallbackOnMainActor() async {
+    func test_observer_ignoresUnrelatedKeyValueObservation() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         let observer = PersistentKeyUIObservableObject(store: store, key: key)
-        let callbackExpectation = expectation(description: "Change delivered on the main thread")
-        let backgroundExpectation = expectation(description: "Background notification completed")
-        var callbackOnMainThread = false
+        var changeCount = 0
         let cancellable = observer.objectWillChange.sink {
-            callbackOnMainThread = Thread.isMainThread
-            callbackExpectation.fulfill()
+            changeCount += 1
         }
 
-        DispatchQueue.global().async {
-            store.notifyObservers(keyPath: key.id)
-            backgroundExpectation.fulfill()
-        }
+        store.notifyObservers(keyPath: "unrelatedKey:\(#function)")
 
-        await fulfillment(of: [callbackExpectation, backgroundExpectation], timeout: 1)
+        XCTAssertEqual(changeCount, 0)
 
-        XCTAssertTrue(callbackOnMainThread)
+        store.notifyObservers(keyPath: key.id)
+
+        XCTAssertEqual(changeCount, 1)
         cancellable.cancel()
     }
 

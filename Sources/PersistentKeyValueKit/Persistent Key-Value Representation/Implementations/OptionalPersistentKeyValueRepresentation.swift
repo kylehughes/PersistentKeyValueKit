@@ -40,7 +40,9 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     }
 
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
-        guard let value else { return nil }
+        guard let value else {
+            return nil
+        }
         return try base.encode(value, format: format)
     }
     

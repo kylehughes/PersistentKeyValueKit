@@ -7,10 +7,6 @@ cd "$repo_root"
 swift build
 build_path=$(swift build --show-bin-path)
 module_path="$build_path/Modules"
-if [[ -z "$module_path" ]]; then
-    echo "Unable to locate the SwiftPM debug module directory" >&2
-    exit 1
-fi
 
 check_fixture() {
     local fixture="$1"
