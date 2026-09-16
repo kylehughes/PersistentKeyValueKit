@@ -168,20 +168,16 @@ final class MigrationAdapterCoverageTests: XCTestCase {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingApplicationIdentifier)
         }
 
-        XCTAssertThrowsError(try UserDefaults.migratable(suiteName: "")) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidStoreIdentifier)
-        }
+        XCTAssertNil(UserDefaults.migratable(suiteName: ""))
 
-        XCTAssertThrowsError(
-            try UserDefaults.migratable(
+        XCTAssertNil(
+            UserDefaults.migratable(
                 suiteName: "coverage",
                 makeUserDefaults: { _ in
                     nil
                 }
             )
-        ) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .storeUnavailable)
-        }
+        )
     }
 
     @available(watchOS 9.0, *)
@@ -272,7 +268,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
 
     func testUserDefaultsConstructorsAndNilWrite() throws {
         let suite = "MigrationAdapterCoverageTests.\(UUID().uuidString)"
-        let defaults = try UserDefaults.migratable(suiteName: suite)
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suite))
         let store = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite)
 
         defer {
@@ -321,11 +317,11 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         let firstName = "MigrationAdapterCoverageTests.first.\(UUID().uuidString)"
         let secondName = "MigrationAdapterCoverageTests.second.\(UUID().uuidString)"
         let first = UserDefaultsMigrationBackend(
-            userDefaults: try UserDefaults.migratable(suiteName: firstName),
+            userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: firstName)),
             domainName: firstName
         )
         let second = UserDefaultsMigrationBackend(
-            userDefaults: try UserDefaults.migratable(suiteName: secondName),
+            userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: secondName)),
             domainName: secondName
         )
 
@@ -347,7 +343,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     func testUserDefaultsStaleSnapshotAndAbsentInsertion() throws {
         let name = "MigrationAdapterCoverageTests.stale.\(UUID().uuidString)"
         let store = UserDefaultsMigrationBackend(
-            userDefaults: try UserDefaults.migratable(suiteName: name),
+            userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: name)),
             domainName: name
         )
 

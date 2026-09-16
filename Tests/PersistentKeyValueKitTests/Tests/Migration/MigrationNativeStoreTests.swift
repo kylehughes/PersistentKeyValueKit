@@ -20,7 +20,7 @@ final class MigrationNativeStoreTests: XCTestCase {
 
                 do {
                     let suiteName = "MigrationNativeStoreTests.concurrent.\(index).\(UUID().uuidString)"
-                    let defaults = try UserDefaults.migratable(suiteName: suiteName)
+                    let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
 
                     _ = try defaults.migrationEndpoint
                     defaults.removePersistentDomain(forName: suiteName)
@@ -42,7 +42,7 @@ final class MigrationNativeStoreTests: XCTestCase {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         }
 
-        let shared = SharedNativeStore(try UserDefaults.migratable(suiteName: suiteName))
+        let shared = SharedNativeStore(try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName)))
         let sharedGroup = DispatchGroup()
 
         for _ in 0..<32 {
@@ -84,7 +84,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         raw.set("existing", forKey: "value")
         let before = raw.persistentDomain(forName: suiteName)
 
-        let configured = try UserDefaults.migratable(suiteName: suiteName)
+        let configured = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
 
         XCTAssertEqual(configured.persistentDomain(forName: suiteName) as NSDictionary?, before as NSDictionary?)
     }
@@ -96,8 +96,8 @@ final class MigrationNativeStoreTests: XCTestCase {
 
         var called = false
 
-        XCTAssertThrowsError(
-            try UserDefaults.migratable(
+        XCTAssertNil(
+            UserDefaults.migratable(
                 suiteName: identifier,
                 makeUserDefaults: { _ in
                     called = true
@@ -105,9 +105,7 @@ final class MigrationNativeStoreTests: XCTestCase {
                     return UserDefaults()
                 }
             )
-        ) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidStoreIdentifier)
-        }
+        )
 
         XCTAssertFalse(called)
     }
@@ -115,13 +113,15 @@ final class MigrationNativeStoreTests: XCTestCase {
     func testMigratableFactoryPassesNameVerbatimAndReturnsInjectedInstance() throws {
         let suiteName = "MigrationNativeStoreTests.verbatim.\(UUID().uuidString)"
         let injected = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        let result = try UserDefaults.migratable(
-            suiteName: suiteName,
-            makeUserDefaults: { name in
-                XCTAssertEqual(name, suiteName)
+        let result = try XCTUnwrap(
+            UserDefaults.migratable(
+                suiteName: suiteName,
+                makeUserDefaults: { name in
+                    XCTAssertEqual(name, suiteName)
 
-                return injected
-            }
+                    return injected
+                }
+            )
         )
 
         XCTAssertIdentical(result, injected)
@@ -140,8 +140,8 @@ final class MigrationNativeStoreTests: XCTestCase {
         for name in names {
             var called = false
 
-            XCTAssertThrowsError(
-                try UserDefaults.migratable(
+            XCTAssertNil(
+                UserDefaults.migratable(
                     suiteName: name,
                     makeUserDefaults: { _ in
                         called = true
@@ -149,31 +149,25 @@ final class MigrationNativeStoreTests: XCTestCase {
                         return UserDefaults()
                     }
                 )
-            ) {
-                XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidStoreIdentifier)
-            }
+            )
 
             XCTAssertFalse(called)
         }
 
         if let bundleIdentifier = Bundle.main.bundleIdentifier {
-            XCTAssertThrowsError(try UserDefaults.migratable(suiteName: bundleIdentifier)) {
-                XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidStoreIdentifier)
-            }
+            XCTAssertNil(UserDefaults.migratable(suiteName: bundleIdentifier))
         }
     }
 
     func testMigratableFactoryReportsFoundationInitializationFailure() {
-        XCTAssertThrowsError(
-            try UserDefaults.migratable(
+        XCTAssertNil(
+            UserDefaults.migratable(
                 suiteName: "MigrationNativeStoreTests.invalid.\(UUID().uuidString)",
                 makeUserDefaults: { _ in
                     nil
                 }
             )
-        ) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .storeUnavailable)
-        }
+        )
     }
 
     func testMigratableFactoryReturnsNativeObjectAndAssociatesDomain() throws {
@@ -183,7 +177,7 @@ final class MigrationNativeStoreTests: XCTestCase {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         }
 
-        let defaults = try UserDefaults.migratable(suiteName: suiteName)
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let objectAlias: AnyObject = defaults
         let alias: any PersistentKeyValueStore = defaults
 
@@ -212,7 +206,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         weak var weakDefaults: UserDefaults?
         weak var weakMetadata: UserDefaultsMigrationDomain?
         try autoreleasepool {
-            let defaults = try UserDefaults.migratable(suiteName: suiteName)
+            let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
 
             weakDefaults = defaults
             weakMetadata = UserDefaults.migrationDomainMetadata(for: defaults)
@@ -241,7 +235,7 @@ final class MigrationNativeStoreTests: XCTestCase {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         }
 
-        let configured = try UserDefaults.migratable(suiteName: suiteName)
+        let configured = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let raw = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
         XCTAssertNotNil(UserDefaults.migrationDomainMetadata(for: configured))

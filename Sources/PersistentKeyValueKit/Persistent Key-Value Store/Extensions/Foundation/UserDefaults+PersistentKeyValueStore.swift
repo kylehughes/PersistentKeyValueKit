@@ -122,11 +122,10 @@ extension PersistentKeyValueStore where Self == UserDefaults {
     /// Creates a native UserDefaults instance whose persistent domain can participate in migrations.
     ///
     /// The suite name is captured on this instance as process-local metadata. The metadata is not a preference and
-    /// does not retain the native object. Empty, reserved, and application-domain names throw
-    /// ``PersistentKeyMigrationError/invalidStoreIdentifier``; unavailable native stores throw
-    /// ``PersistentKeyMigrationError/storeUnavailable``.
-    public static func migratable(suiteName: String) throws -> Self {
-        try Self.migratable(
+    /// does not retain the native object. Returns `nil` for empty, reserved, or application-domain names, or when
+    /// Foundation cannot create the native store.
+    public static func migratable(suiteName: String) -> Self? {
+        Self.migratable(
             suiteName: suiteName,
             makeUserDefaults: {
                 UserDefaults(suiteName: $0)
@@ -168,13 +167,13 @@ extension UserDefaults {
     internal static func migratable(
         suiteName: String,
         makeUserDefaults: (String) -> UserDefaults?
-    ) throws -> UserDefaults {
+    ) -> UserDefaults? {
         guard isValidMigrationDomain(suiteName) else {
-            throw PersistentKeyMigrationError.invalidStoreIdentifier
+            return nil
         }
 
         guard let defaults = makeUserDefaults(suiteName) else {
-            throw PersistentKeyMigrationError.storeUnavailable
+            return nil
         }
 
         objc_setAssociatedObject(

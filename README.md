@@ -427,7 +427,9 @@ e.g.
 The runtime color scheme is copied from standard user defaults to an app-group suite.
 
 ```swift
-let destination = try UserDefaults.migratable(suiteName: "group.example.app")
+guard let destination = UserDefaults.migratable(suiteName: "group.example.app") else {
+    return
+}
 
 let report = try UserDefaults.standard.copy(
     [.runtimeColorScheme],
@@ -440,10 +442,11 @@ Migration is an operation on `PersistentKeyValueStore`, so the same native objec
 passed to generic migration code. `UserDefaults.standard` is ready to use when the application bundle identifier is
 available; `NSUbiquitousKeyValueStore.default` needs no additional configuration.
 For a named `UserDefaults` suite, use `UserDefaults.migratable(suiteName:)` when creating the instance. The factory
-returns a native `UserDefaults` and records the suite's persistent domain for migration. An instance created through
-Foundation's `UserDefaults(suiteName:)` initializer can still be used for ordinary access, but migration throws if its
-persistent domain is not known to the framework. `InMemoryPersistentKeyValueStore` supports migration for tests and
-ephemeral data.
+returns a native `UserDefaults` and records the suite's persistent domain for migration. It returns `nil` when the
+domain is invalid or Foundation cannot create the native store. An instance created through Foundation's
+`UserDefaults(suiteName:)` initializer can still be used for ordinary access, but migration throws if its persistent
+domain is not known to the framework. `InMemoryPersistentKeyValueStore` supports migration for tests and ephemeral
+data.
 
 Every call requires a conflict policy. When a migration runs, its report contains one outcome for each key, including
 conversion, write, and source-removal failures. Setup errors, such as duplicate keys or using the same store, are

@@ -177,6 +177,22 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(values, [0, 19, 0, 20, 21])
     }
 
+    func testUserDefaultsMigratableFactoryIsFailableAndNonthrowing() throws {
+        let suiteName = "PersistentKeyValueKit.PublicAPI.factory.\(UUID().uuidString)"
+        let factory: (String) -> UserDefaults? = UserDefaults.migratable(suiteName:)
+        let defaults = try XCTUnwrap(factory(suiteName))
+
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        XCTAssertNil(factory(""))
+
+        let contextualDefaults: UserDefaults? = .migratable(suiteName: suiteName)
+
+        XCTAssertNotNil(contextualDefaults)
+    }
+
     func testUserDefaultsNativeStoreForwardsOrdinaryAccessAndObservation() throws {
         let suiteName = "PersistentKeyValueKit.PublicAPI.\(UUID().uuidString)"
         let plainDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -185,7 +201,7 @@ final class PublicAPIClientTests: XCTestCase {
             plainDefaults.removePersistentDomain(forName: suiteName)
         }
 
-        let migratableDefaults: UserDefaults = try .migratable(suiteName: suiteName)
+        let migratableDefaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let key = PersistentKey<Int>("adapter", defaultValue: 0)
         var values: [Int] = []
         let cancellable = migratableDefaults.publisher(for: key, emitsInitialValue: true).sink {
@@ -221,8 +237,8 @@ final class PublicAPIClientTests: XCTestCase {
             UserDefaults.standard.removePersistentDomain(forName: destinationName)
         }
 
-        let source = try UserDefaults.migratable(suiteName: sourceName)
-        let destination = try UserDefaults.migratable(suiteName: destinationName)
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let proxyKey = PersistentKey<String>(
             "proxy",
             defaultValue: "",

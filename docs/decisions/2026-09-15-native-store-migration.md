@@ -45,7 +45,10 @@ Migration is exposed through `PersistentKeyValueStore`. A named suite that will
 participate in migration is created with:
 
 ```swift
-let appGroup = try UserDefaults.migratable(suiteName: "group.example.app")
+guard let appGroup = UserDefaults.migratable(suiteName: "group.example.app") else {
+    return
+}
+
 let report = try UserDefaults.standard.move(
     [.runtimeColorScheme],
     to: appGroup,
@@ -54,10 +57,14 @@ let report = try UserDefaults.standard.move(
 ```
 
 `UserDefaults.migratable(suiteName:)` calls Foundation's suite initializer and
-returns that same native `UserDefaults` instance. It attaches the suite name as
-immutable, process-local metadata using an Objective-C associated object. The
-metadata is associated with the instance, contains no preference data, does not
-retain the store, and is not a public replacement for `UserDefaults`.
+returns that same native `UserDefaults` instance. It returns `nil` when the
+domain is invalid or Foundation cannot create the native store. The optional
+return deliberately follows Foundation's failable `UserDefaults(suiteName:)`
+initializer instead of introducing construction errors. The factory attaches
+the suite name as immutable, process-local metadata using an Objective-C
+associated object. The metadata is associated with the instance, contains no
+preference data, does not retain the store, and is not a public replacement for
+`UserDefaults`.
 
 `UserDefaults.standard` is recognized automatically when the application
 bundle identifier is available; without one, standard-store migration reports

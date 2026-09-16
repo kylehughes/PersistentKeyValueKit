@@ -10,8 +10,8 @@ final class MigrationNativeEndpointTests: XCTestCase {
         let sourceName = "MigrationNativeEndpointTests.addedOnlySource.\(UUID().uuidString)"
         let destinationName = "MigrationNativeEndpointTests.addedOnlyDestination.\(UUID().uuidString)"
         let addedName = "MigrationNativeEndpointTests.addedOnly.\(UUID().uuidString)"
-        let source = try UserDefaults.migratable(suiteName: sourceName)
-        let destination = try UserDefaults.migratable(suiteName: destinationName)
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let added = try XCTUnwrap(UserDefaults(suiteName: addedName))
 
         defer {
@@ -42,8 +42,8 @@ final class MigrationNativeEndpointTests: XCTestCase {
         let sourceName = "MigrationNativeEndpointTests.addedSource.\(UUID().uuidString)"
         let destinationName = "MigrationNativeEndpointTests.addedDestination.\(UUID().uuidString)"
         let addedName = "MigrationNativeEndpointTests.added.\(UUID().uuidString)"
-        let source = try UserDefaults.migratable(suiteName: sourceName)
-        let destination = try UserDefaults.migratable(suiteName: destinationName)
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let added = try XCTUnwrap(UserDefaults(suiteName: addedName))
 
         defer {
@@ -215,7 +215,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
             },
             {
                 let name = "MigrationNativeEndpointTests.generic.\(UUID().uuidString)"
-                let defaults = try UserDefaults.migratable(suiteName: name)
+                let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
 
                 self.addTeardownBlock {
                     UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
@@ -278,8 +278,8 @@ final class MigrationNativeEndpointTests: XCTestCase {
 
         let rawSource = try XCTUnwrap(UserDefaults(suiteName: sourceName))
         let rawDestination = try XCTUnwrap(UserDefaults(suiteName: destinationName))
-        let configuredSource = try UserDefaults.migratable(suiteName: sourceName)
-        let configuredDestination = try UserDefaults.migratable(suiteName: destinationName)
+        let configuredSource = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+        let configuredDestination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
 
         rawSource.set(21, forKey: key.id)
         rawDestination.set("preserve", forKey: "unrelated")
@@ -344,8 +344,8 @@ final class MigrationNativeEndpointTests: XCTestCase {
 
     private func makeNativePair() throws -> (UserDefaults, UserDefaults, String) {
         let name = "MigrationNativeEndpointTests.alias.\(UUID().uuidString)"
-        let first = try UserDefaults.migratable(suiteName: name)
-        let second = try UserDefaults.migratable(suiteName: name)
+        let first = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
+        let second = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
 
         XCTAssertFalse(first === second)
 
