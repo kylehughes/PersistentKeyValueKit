@@ -1,45 +1,15 @@
 import Foundation
 
-/// A migration adapter for one UserDefaults persistent domain.
+/// The migration backend for one UserDefaults persistent domain.
 ///
 /// The wrapped Foundation object and domain name are immutable after initialization. Subclasses used for testing must
 /// preserve UserDefaults' thread-safety guarantees.
-public final class UserDefaultsMigrationStore: @unchecked Sendable {
+final class UserDefaultsMigrationBackend: @unchecked Sendable {
     /// The UserDefaults instance used for ordinary typed access.
-    public let userDefaults: UserDefaults
+    let userDefaults: UserDefaults
     /// The persistent domain read and written by migration operations.
-    public let domainName: String
+    let domainName: String
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
-
-    /// Creates an adapter for a named persistent domain.
-    ///
-    /// The adapter creates the matching UserDefaults instance internally so its domain identity cannot be paired with
-    /// an unrelated instance.
-    public convenience init(suiteName: String) throws {
-        try self.init(suiteName: suiteName, makeUserDefaults: { UserDefaults(suiteName: $0) })
-    }
-
-    internal convenience init(suiteName: String, makeUserDefaults: (String) -> UserDefaults?) throws {
-        guard !suiteName.isEmpty else { throw PersistentKeyMigrationError.invalidStoreIdentifier }
-        guard let defaults = makeUserDefaults(suiteName) else {
-            throw PersistentKeyMigrationError.storeUnavailable
-        }
-        self.init(userDefaults: defaults, domainName: suiteName)
-    }
-
-    /// Creates an adapter for the application's standard persistent domain.
-    ///
-    /// Throws when the main bundle has no application identifier.
-    public static func standard() throws -> Self {
-        try standard(applicationIdentifier: Bundle.main.bundleIdentifier)
-    }
-
-    internal static func standard(applicationIdentifier: String?) throws -> Self {
-        guard let identifier = applicationIdentifier, !identifier.isEmpty else {
-            throw PersistentKeyMigrationError.missingApplicationIdentifier
-        }
-        return Self(userDefaults: .standard, domainName: identifier)
-    }
 
     internal init(userDefaults: UserDefaults, domainName: String) {
         self.userDefaults = userDefaults
@@ -126,33 +96,4 @@ public final class UserDefaultsMigrationStore: @unchecked Sendable {
     }
 }
 
-extension UserDefaultsMigrationStore: PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend {
-    public var migrationEndpoint: PersistentKeyValueMigrationEndpoint { PersistentKeyValueMigrationEndpoint(backend: self) }
-}
-
-extension UserDefaultsMigrationStore: PersistentKeyValueStore {
-    public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        userDefaults.get(key)
-    }
-    public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        userDefaults.set(key, to: value)
-    }
-    public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        userDefaults.remove(key)
-    }
-    public func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        userDefaults.deregister(observer, for: key, context: context)
-    }
-    public func register<Key>(
-        observer target: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        userDefaults.register(observer: target, for: key, with: context, and: selector)
-    }
-}
+extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {}

@@ -30,7 +30,7 @@ final class MigrationObservationTests: XCTestCase {
         let suiteName = "MigrationObservation.\(UUID().uuidString)"
         let source = UserDefaults(suiteName: suiteName)!
         defer { source.removePersistentDomain(forName: suiteName) }
-        let sourceStore = UserDefaultsMigrationStore(
+        let sourceStore = UserDefaultsMigrationBackend(
             userDefaults: source, domainName: suiteName)
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>(#function, defaultValue: 0)
@@ -70,7 +70,7 @@ final class MigrationObservationTests: XCTestCase {
         let suite = "MigrationObservation.\(#function)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        let destination = UserDefaultsMigrationStore(userDefaults: defaults, domainName: suite)
+        let destination = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite)
         let key = PersistentKey<String>(#function, defaultValue: "")
         source.set(key, to: "migrated")
         var values: [String] = []
@@ -86,7 +86,7 @@ final class MigrationObservationTests: XCTestCase {
         let suite = "MigrationObservation.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        let destination = UserDefaultsMigrationStore(userDefaults: defaults, domainName: suite)
+        let destination = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite)
         let key = PersistentKey<Int>(#function, defaultValue: 0)
         source.set(key, to: 1)
         var replaced = false
@@ -108,7 +108,7 @@ final class MigrationObservationTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testCloudSourceObserverRefillCausesRemovalFailure() throws {
         let raw = StrictMigrationUbiquitousStore()
-        let source = UbiquitousKeyValueMigrationStore(
+        let source = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "observation", identifier: UUID().uuidString))
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>(#function, defaultValue: 0)
@@ -133,7 +133,7 @@ final class MigrationObservationTests: XCTestCase {
     func testCloudDestinationObserverCausesWriteFailure() throws {
         let source = InMemoryPersistentKeyValueStore()
         let raw = StrictMigrationUbiquitousStore()
-        let destination = UbiquitousKeyValueMigrationStore(
+        let destination = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "observation", identifier: UUID().uuidString))
         let key = PersistentKey<Int>(#function, defaultValue: 0)
         source.set(key, to: 1)
@@ -157,7 +157,7 @@ final class MigrationObservationTests: XCTestCase {
     func testCloudCopyPublishesOneRelatedNotification() throws {
         let source = InMemoryPersistentKeyValueStore()
         let raw = StrictMigrationUbiquitousStore()
-        let destination = UbiquitousKeyValueMigrationStore(
+        let destination = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "observation", identifier: UUID().uuidString))
         let key = PersistentKey<Int>(#function, defaultValue: 0)
         let other = PersistentKey<Int>("other-\(#function)", defaultValue: 0)

@@ -21,8 +21,8 @@ final class MigrationDomainTests: XCTestCase {
         let key = PersistentKey("domain.source", defaultValue: 0)
         sourceDefaults.register([key])
         sourceDefaults.setVolatileDomain([key.id: 22], forName: UserDefaults.argumentDomain)
-        let source = UserDefaultsMigrationStore(userDefaults: sourceDefaults, domainName: sourceName)
-        let destination = UserDefaultsMigrationStore(
+        let source = UserDefaultsMigrationBackend(userDefaults: sourceDefaults, domainName: sourceName)
+        let destination = UserDefaultsMigrationBackend(
             userDefaults: destinationDefaults, domainName: destinationName)
 
         let report = try source.copy(key, to: destination, onConflict: .overwriteDestination)
@@ -44,8 +44,8 @@ final class MigrationDomainTests: XCTestCase {
         sourceDefaults.set(41, forKey: key.id)
         destinationDefaults.register([key])
         destinationDefaults.setVolatileDomain([key.id: 99], forName: UserDefaults.argumentDomain)
-        let source = UserDefaultsMigrationStore(userDefaults: sourceDefaults, domainName: sourceName)
-        let destination = UserDefaultsMigrationStore(
+        let source = UserDefaultsMigrationBackend(userDefaults: sourceDefaults, domainName: sourceName)
+        let destination = UserDefaultsMigrationBackend(
             userDefaults: destinationDefaults, domainName: destinationName)
 
         _ = try source.copy(key, to: destination, onConflict: .keepDestination)
@@ -67,8 +67,8 @@ final class MigrationDomainTests: XCTestCase {
         let key = PersistentKey("domain.added", defaultValue: 0)
         addedDefaults.set(7, forKey: key.id)
         sourceDefaults.addSuite(named: addedName)
-        let source = UserDefaultsMigrationStore(userDefaults: sourceDefaults, domainName: sourceName)
-        let destination = UserDefaultsMigrationStore(
+        let source = UserDefaultsMigrationBackend(userDefaults: sourceDefaults, domainName: sourceName)
+        let destination = UserDefaultsMigrationBackend(
             userDefaults: destinationDefaults, domainName: destinationName)
 
         let report = try source.copy(key, to: destination, onConflict: .overwriteDestination)
@@ -91,8 +91,8 @@ final class MigrationDomainTests: XCTestCase {
         sourceDefaults.set(12, forKey: key.id)
         destinationDefaults.register(defaults: [marker.id: true])
         destinationDefaults.setVolatileDomain([marker.id: true], forName: UserDefaults.argumentDomain)
-        let source = UserDefaultsMigrationStore(userDefaults: sourceDefaults, domainName: sourceName)
-        let destination = UserDefaultsMigrationStore(
+        let source = UserDefaultsMigrationBackend(userDefaults: sourceDefaults, domainName: sourceName)
+        let destination = UserDefaultsMigrationBackend(
             userDefaults: destinationDefaults, domainName: destinationName)
         let completion: PersistentKeyMigrationCompletionPolicy = .once(
             id: migrationID, recordedIn: destination)

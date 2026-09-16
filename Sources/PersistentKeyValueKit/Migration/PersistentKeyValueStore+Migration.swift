@@ -29,16 +29,18 @@ fileprivate enum PersistentKeyMigrationOperation {
     case move(PersistentKeyMoveConflictPolicy)
 }
 
-extension PersistentKeyValueMigrationStore {
+extension PersistentKeyValueStore {
     /// Copies one typed key to another migration-capable store.
     public func copy<Key, Destination>(
         _ key: Key, to destination: Destination,
         onConflict policy: PersistentKeyCopyConflictPolicy,
         completion: PersistentKeyMigrationCompletionPolicy = .untracked
     ) throws -> PersistentKeyMigrationReport
-    where Key: PersistentKeyProtocol, Destination: PersistentKeyValueMigrationStore {
-        try migrationEndpoint.backend.execute(
-            [key], destination: destination.migrationEndpoint.backend,
+    where Key: PersistentKeyProtocol, Destination: PersistentKeyValueStore {
+        let sourceEndpoint = try migrationEndpoint
+        let destinationEndpoint = try destination.migrationEndpoint
+        return try sourceEndpoint.backend.execute(
+            [key], destination: destinationEndpoint.backend,
             operation: PersistentKeyMigrationOperation.copy(policy), completion: completion)
     }
 
@@ -47,9 +49,11 @@ extension PersistentKeyValueMigrationStore {
         _ keys: [any PersistentKeyProtocol], to destination: Destination,
         onConflict policy: PersistentKeyCopyConflictPolicy,
         completion: PersistentKeyMigrationCompletionPolicy = .untracked
-    ) throws -> PersistentKeyMigrationReport where Destination: PersistentKeyValueMigrationStore {
-        try migrationEndpoint.backend.execute(
-            keys, destination: destination.migrationEndpoint.backend, operation: PersistentKeyMigrationOperation.copy(policy),
+    ) throws -> PersistentKeyMigrationReport where Destination: PersistentKeyValueStore {
+        let sourceEndpoint = try migrationEndpoint
+        let destinationEndpoint = try destination.migrationEndpoint
+        return try sourceEndpoint.backend.execute(
+            keys, destination: destinationEndpoint.backend, operation: PersistentKeyMigrationOperation.copy(policy),
             completion: completion)
     }
 
@@ -62,9 +66,11 @@ extension PersistentKeyValueMigrationStore {
         onConflict policy: PersistentKeyMoveConflictPolicy,
         completion: PersistentKeyMigrationCompletionPolicy = .untracked
     ) throws -> PersistentKeyMigrationReport
-    where Key: PersistentKeyProtocol, Destination: PersistentKeyValueMigrationStore {
-        try migrationEndpoint.backend.execute(
-            [key], destination: destination.migrationEndpoint.backend,
+    where Key: PersistentKeyProtocol, Destination: PersistentKeyValueStore {
+        let sourceEndpoint = try migrationEndpoint
+        let destinationEndpoint = try destination.migrationEndpoint
+        return try sourceEndpoint.backend.execute(
+            [key], destination: destinationEndpoint.backend,
             operation: PersistentKeyMigrationOperation.move(policy), completion: completion)
     }
 
@@ -76,9 +82,11 @@ extension PersistentKeyValueMigrationStore {
         _ keys: [any PersistentKeyProtocol], to destination: Destination,
         onConflict policy: PersistentKeyMoveConflictPolicy,
         completion: PersistentKeyMigrationCompletionPolicy = .untracked
-    ) throws -> PersistentKeyMigrationReport where Destination: PersistentKeyValueMigrationStore {
-        try migrationEndpoint.backend.execute(
-            keys, destination: destination.migrationEndpoint.backend, operation: PersistentKeyMigrationOperation.move(policy),
+    ) throws -> PersistentKeyMigrationReport where Destination: PersistentKeyValueStore {
+        let sourceEndpoint = try migrationEndpoint
+        let destinationEndpoint = try destination.migrationEndpoint
+        return try sourceEndpoint.backend.execute(
+            keys, destination: destinationEndpoint.backend, operation: PersistentKeyMigrationOperation.move(policy),
             completion: completion)
     }
 
@@ -94,7 +102,7 @@ extension PersistentKeyValueMigrationBackend {
         case .untracked:
             recorderEndpoint = nil
         case .once(_, let recorder):
-            recorderEndpoint = recorder.migrationEndpoint
+            recorderEndpoint = try recorder.migrationEndpoint
         }
         guard !migrationIdentity.namespace.isEmpty, !migrationIdentity.identifier.isEmpty,
             !destination.migrationIdentity.namespace.isEmpty, !destination.migrationIdentity.identifier.isEmpty

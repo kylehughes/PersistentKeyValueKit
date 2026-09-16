@@ -63,3 +63,36 @@ extension NSLock {
         return body()
     }
 }
+
+extension UserDefaultsMigrationBackend: PersistentKeyValueStore {
+    public var migrationEndpoint: PersistentKeyValueMigrationEndpoint { .init(backend: self) }
+
+    public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol { userDefaults.get(key) }
+    public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        userDefaults.set(key, to: value)
+    }
+    public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol { userDefaults.remove(key) }
+    public func deregister<Key>(_ observer: NSObject, for key: Key, context: UnsafeMutableRawPointer?)
+    where Key: PersistentKeyProtocol { userDefaults.deregister(observer, for: key, context: context) }
+    public func register<Key>(observer: NSObject, for key: Key, with context: UnsafeMutableRawPointer?, and selector: Selector)
+    where Key: PersistentKeyProtocol {
+        userDefaults.register(observer: observer, for: key, with: context, and: selector)
+    }
+}
+
+@available(watchOS 9.0, *)
+extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueStore {
+    public var migrationEndpoint: PersistentKeyValueMigrationEndpoint { .init(backend: self) }
+
+    public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol { ubiquitousStore.get(key) }
+    public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        ubiquitousStore.set(key, to: value)
+    }
+    public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol { ubiquitousStore.remove(key) }
+    public func deregister<Key>(_ observer: NSObject, for key: Key, context: UnsafeMutableRawPointer?)
+    where Key: PersistentKeyProtocol { ubiquitousStore.deregister(observer, for: key, context: context) }
+    public func register<Key>(observer: NSObject, for key: Key, with context: UnsafeMutableRawPointer?, and selector: Selector)
+    where Key: PersistentKeyProtocol {
+        ubiquitousStore.register(observer: observer, for: key, with: context, and: selector)
+    }
+}

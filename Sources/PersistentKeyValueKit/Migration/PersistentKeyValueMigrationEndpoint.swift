@@ -1,16 +1,11 @@
 import Foundation
 
-/// A migration capability exposed by a persistent key-value store.
+/// An opaque capability used by the migration engine.
 ///
 /// The endpoint keeps storage mechanics private while allowing generic client abstractions to forward migration
 /// operations without knowing whether the store is backed by UserDefaults, iCloud, or memory. Forwarding an endpoint
 /// forwards migration work to the backing store; it does not route individual reads or writes through a wrapper's
 /// ordinary ``PersistentKeyValueStore`` methods.
-public protocol PersistentKeyValueMigrationStore {
-    var migrationEndpoint: PersistentKeyValueMigrationEndpoint { get }
-}
-
-/// An opaque capability used by the migration engine.
 public struct PersistentKeyValueMigrationEndpoint {
     let backend: any PersistentKeyValueMigrationBackend
 

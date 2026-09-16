@@ -426,20 +426,23 @@ e.g.
 The runtime color scheme is copied from standard user defaults to an app-group suite.
 
 ```swift
-let source = try UserDefaultsMigrationStore.standard()
-let destination = try UserDefaultsMigrationStore(suiteName: "group.example.app")
+let destination = try UserDefaults.migratable(suiteName: "group.example.app")
 
-let report = try source.copy(
+let report = try UserDefaults.standard.copy(
     [.runtimeColorScheme],
     to: destination,
     onConflict: .overwriteDestination
 )
 ```
 
-`UserDefaultsMigrationStore` and `UbiquitousKeyValueMigrationStore` conform to `PersistentKeyValueStore` for ordinary
-access and to `PersistentKeyValueMigrationStore` for migration. The UserDefaults adapter must be created for the explicit
-persistent domain being migrated; use the named-suite initializer for an app-group domain rather than relying on
-UserDefaults' search hierarchy. `InMemoryPersistentKeyValueStore` also supports migration for tests and ephemeral data.
+Migration is an operation on `PersistentKeyValueStore`, so the same native objects used for ordinary access can be
+passed to generic migration code. `UserDefaults.standard` is ready to use when the application bundle identifier is
+available; `NSUbiquitousKeyValueStore.default` needs no additional configuration.
+For a named `UserDefaults` suite, use `UserDefaults.migratable(suiteName:)` when creating the instance. The factory
+returns a native `UserDefaults` and records the suite's persistent domain for migration. An instance created through
+Foundation's `UserDefaults(suiteName:)` initializer can still be used for ordinary access, but migration throws if its
+persistent domain is not known to the framework. `InMemoryPersistentKeyValueStore` supports migration for tests and
+ephemeral data.
 
 Every call requires a conflict policy. When a migration runs, its report contains one outcome for each key, including
 conversion, write, and source-removal failures. Setup errors, such as duplicate keys or using the same store, are
@@ -461,7 +464,8 @@ values and values without a Foundation-compatible representation.
 
 Generic store abstractions can forward their migration endpoint when they wrap a supported store. This lets code that
 uses the abstraction remain independent of the concrete store type. The endpoint does not change ordinary `get` and
-`set` behavior.
+`set` behavior. In version 2.0.0, `PersistentKeyValueStore` requires a throwing `migrationEndpoint`; wrappers should
+forward it with `try base.migrationEndpoint`.
 
 Migrations do not provide rollback. A failed move can already have copied a value to the destination. Coordinate other
 writers and processes while migrating. The caller controls iCloud readiness; a successful local write does not guarantee
@@ -469,14 +473,14 @@ disk durability or cloud delivery, and removing a value from an iCloud store aff
 
 #### Track a Migration
 
-Completion tracking is optional. Pass `.once(id:recordedIn:)` with a local migration adapter when a migration should be
-recorded after all keys resolve. Absent sources, disabled keys, and retained conflicts count as resolved. The marker is
-the key returned by `PersistentKeyProtocol.isMigrationCompleted(id:)`; remove it from the tracking adapter's underlying
-`userDefaults` to reset it. Once the marker is recorded, subsequent calls with the same identifier skip the migration and
-return a report with no outcomes. Version the identifier when changing the migration's meaning.
+Completion tracking is optional. Pass `.once(id:recordedIn:)` with a store when a migration should be recorded after all
+keys resolve. Absent sources, disabled keys, and retained conflicts count as resolved. The marker is the key returned by
+`PersistentKeyProtocol.isMigrationCompleted(id:)`; remove it from the recording store with the ordinary store API to
+reset it. Once the marker is recorded, subsequent calls with the same identifier skip the migration and return a report
+with no outcomes. Version the identifier when changing the migration's meaning.
 
 ```swift
-let report = try source.move(
+let report = try UserDefaults.standard.move(
     [.runtimeColorScheme],
     to: destination,
     onConflict: .keepBoth,

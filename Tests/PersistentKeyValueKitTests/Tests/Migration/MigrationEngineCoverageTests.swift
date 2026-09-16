@@ -3,8 +3,7 @@ import XCTest
 
 @testable import PersistentKeyValueKit
 
-private final class ScriptedMigrationStore: PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend,
-    PersistentKeyValueStore
+private final class ScriptedMigrationStore: PersistentKeyValueStore, PersistentKeyValueMigrationBackend
 {
     typealias MigrationSnapshot = InMemoryPersistentKeyValueStore.MigrationSnapshot
     typealias MigrationWrite = InMemoryPersistentKeyValueStore.MigrationWrite

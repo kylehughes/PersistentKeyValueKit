@@ -21,8 +21,7 @@ private final class MigrationResultBox: @unchecked Sendable {
     }
 }
 
-private final class GateMigrationStore: @unchecked Sendable, PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend,
-    PersistentKeyValueStore
+private final class GateMigrationStore: @unchecked Sendable, PersistentKeyValueStore, PersistentKeyValueMigrationBackend
 {
     typealias MigrationSnapshot = InMemoryPersistentKeyValueStore.MigrationSnapshot
     typealias MigrationWrite = InMemoryPersistentKeyValueStore.MigrationWrite

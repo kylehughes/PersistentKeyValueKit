@@ -23,6 +23,8 @@ Representations are the ownership boundary for converting between a Swift value 
 
 We own the supported Apple store integrations and may encode knowledge of their native formats, domains, identities, observation, and other platform behavior in those implementations. `InMemoryPersistentKeyValueStore` exists for convenience and testing. That implementation knowledge does not make arbitrary third-party storage engines a required extension point, and it does not justify exposing Foundation details to callers.
 
+Preserve exact native store objects while keeping consumer abstractions generic. Migration is uncommon and may require one opt-in construction step for a named `UserDefaults` suite; it must not replace ordinary native APIs or force concrete-store knowledge into generic code.
+
 Treat public API changes as release decisions. Before adding requirements, changing defaults, renaming symbols, or raising platform minimums, identify the compatibility impact and document the reason.
 
 Prefer required type contracts when core behavior must be checked and correct; representation conversion is one such contract. Do not use default "unsupported" implementations to avoid requiring a core capability. A breaking release can be the right way to establish such a contract, but a major-version boundary is not permission to break source compatibility without a concrete reason.
@@ -32,6 +34,8 @@ Do not leak Foundation storage quirks into user-facing APIs. Handle normalizatio
 Preserve the distinction between missing values and valid values such as `false` or `0`, so typed keys can apply their declared defaults. An unconditional `bool(forKey:)` loses that distinction; a bare `object(forKey:) as? Bool` rejects string-valued launch overrides.
 
 UserDefaults launch arguments can contain strings for typed values. Keep their parsing scoped to `UserDefaults.argumentDomain`; do not extend it to arbitrary persisted strings. Optional and proxy representations must inherit this behavior without requiring consumer workarounds.
+
+Store identity, migration, and representation boundaries are deliberate design constraints. Read the [native-store migration decision](docs/decisions/2026-09-15-native-store-migration.md) before changing them; it records the trade-offs and the evidence behind them.
 
 ## Repository Structure
 

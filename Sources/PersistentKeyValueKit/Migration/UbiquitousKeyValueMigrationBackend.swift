@@ -1,20 +1,20 @@
 import Foundation
 
-/// A migration adapter for an iCloud key-value store.
+/// The migration backend for an iCloud key-value store.
 ///
 /// The wrapped store and identity are immutable after initialization. Subclasses and test doubles must preserve the
 /// thread-safety expected from NSUbiquitousKeyValueStore. A successful local write does not establish cloud delivery
 /// or durability.
 @available(watchOS 9.0, *)
-public final class UbiquitousKeyValueMigrationStore: @unchecked Sendable {
+final class UbiquitousKeyValueMigrationBackend: @unchecked Sendable {
     /// The underlying store for ordinary Foundation access.
-    public let ubiquitousStore: NSUbiquitousKeyValueStore
+    let ubiquitousStore: NSUbiquitousKeyValueStore
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
 
-    /// Creates an adapter over the supplied iCloud key-value store.
+    /// Creates a backend for the supplied iCloud key-value store.
     ///
     /// Instances use the canonical ubiquitous-store identity because Foundation instances share one backing store.
-    public init(_ store: NSUbiquitousKeyValueStore = .default) {
+    init(_ store: NSUbiquitousKeyValueStore = .default) {
         ubiquitousStore = store
         migrationIdentity = PersistentKeyValueMigrationStoreIdentity(
             namespace: "NSUbiquitousKeyValueStore", identifier: "default")
@@ -116,34 +116,4 @@ public final class UbiquitousKeyValueMigrationStore: @unchecked Sendable {
 }
 
 @available(watchOS 9.0, *)
-extension UbiquitousKeyValueMigrationStore: PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend {
-    public var migrationEndpoint: PersistentKeyValueMigrationEndpoint { PersistentKeyValueMigrationEndpoint(backend: self) }
-}
-
-@available(watchOS 9.0, *)
-extension UbiquitousKeyValueMigrationStore: PersistentKeyValueStore {
-    public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        ubiquitousStore.get(key)
-    }
-    public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        ubiquitousStore.set(key, to: value)
-    }
-    public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        ubiquitousStore.remove(key)
-    }
-    public func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        ubiquitousStore.deregister(observer, for: key, context: context)
-    }
-    public func register<Key>(
-        observer target: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        ubiquitousStore.register(observer: target, for: key, with: context, and: selector)
-    }
-}
+extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend {}

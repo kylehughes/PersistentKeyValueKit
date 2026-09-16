@@ -16,6 +16,10 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     private var registrations: Int
     private var storage: [String: Any]
 
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        get throws { throw PersistentKeyMigrationError.missingMigrationDomain }
+    }
+
     init() {
         deregistrations = 0
         lock = NSLock()

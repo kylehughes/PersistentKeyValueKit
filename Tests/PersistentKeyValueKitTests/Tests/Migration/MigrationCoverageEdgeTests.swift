@@ -18,7 +18,7 @@ final class MigrationCoverageEdgeTests: XCTestCase {
         let suite = "MigrationCoverageEdge.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        let destination = UserDefaultsMigrationStore(userDefaults: defaults, domainName: suite)
+        let destination = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite)
         let key = PersistentKey<Int?>(#function, defaultValue: nil)
         source.set(key, to: nil)
         defaults.set(8, forKey: key.id)
@@ -31,7 +31,7 @@ final class MigrationCoverageEdgeTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testCloudDestinationRacePreservesNewValue() throws {
         let raw = StrictMigrationUbiquitousStore()
-        let destination = UbiquitousKeyValueMigrationStore(
+        let destination = UbiquitousKeyValueMigrationBackend(
             store: raw,
             identity: .init(namespace: "coverage", identifier: UUID().uuidString))
         let key = PersistentKey<Int>(#function, defaultValue: 0)

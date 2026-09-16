@@ -657,6 +657,10 @@ private final class CallbackRetainingPersistentKeyValueStore: PersistentKeyValue
 
     private(set) var getCount = 0
 
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        get throws { throw PersistentKeyMigrationError.missingMigrationDomain }
+    }
+
     var hasCapturedObserver: Bool {
         capturedObserver != nil
     }

@@ -78,6 +78,7 @@ final class MigrationRepresentationTests: XCTestCase {
                 ["value": MigrationUnencodableValue(rawValue: "value")], format: .propertyList))
     }
 
+    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func testCodableDecodePreservesUnderlyingError() throws {
         let representation = CodablePersistentKeyValueRepresentation<MigrationPayload, JSONEncoder, JSONDecoder>()
         XCTAssertThrowsError(try representation.decode(storageObject: Data("{}".utf8), format: .propertyList)) {
@@ -88,6 +89,7 @@ final class MigrationRepresentationTests: XCTestCase {
         }
     }
 
+    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func testCodableEncodePreservesUnderlyingError() {
         let representation = CodablePersistentKeyValueRepresentation<
             MigrationPayload, MigrationThrowingEncoder, JSONDecoder

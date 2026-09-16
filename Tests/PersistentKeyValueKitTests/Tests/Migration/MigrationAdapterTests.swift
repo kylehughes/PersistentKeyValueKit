@@ -11,11 +11,11 @@ final class MigrationAdapterTests: XCTestCase {
     private struct NonEquatableValue: Codable, Sendable { let value: String }
     private var key: PersistentKey<Int> { .init("migration.\(#function)", defaultValue: 0) }
 
-    private func defaults(_ suffix: String = #function) throws -> UserDefaultsMigrationStore {
+    private func defaults(_ suffix: String = #function) throws -> UserDefaultsMigrationBackend {
         let name = "MigrationAdapterTests.\(suffix).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         addTeardownBlock { UserDefaults(suiteName: name)?.removePersistentDomain(forName: name) }
-        return UserDefaultsMigrationStore(userDefaults: defaults, domainName: name)
+        return UserDefaultsMigrationBackend(userDefaults: defaults, domainName: name)
     }
 
     func testMemoryCopyAndMove() throws {
@@ -72,7 +72,7 @@ final class MigrationAdapterTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: name) }
         defaults.register(defaults: ["registered": 1])
         defaults.set("persisted", forKey: "persisted")
-        let store = UserDefaultsMigrationStore(userDefaults: defaults, domainName: name)
+        let store = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: name)
         XCTAssertNil(try store.migrationSnapshot(for: "registered"))
         XCTAssertNotNil(try store.migrationSnapshot(for: "persisted"))
     }
@@ -86,8 +86,8 @@ final class MigrationAdapterTests: XCTestCase {
             sourceDefaults.removePersistentDomain(forName: sourceName)
             destinationDefaults.removePersistentDomain(forName: destinationName)
         }
-        let source = UserDefaultsMigrationStore(userDefaults: sourceDefaults, domainName: sourceName)
-        let destination = UserDefaultsMigrationStore(userDefaults: destinationDefaults, domainName: destinationName)
+        let source = UserDefaultsMigrationBackend(userDefaults: sourceDefaults, domainName: sourceName)
+        let destination = UserDefaultsMigrationBackend(userDefaults: destinationDefaults, domainName: destinationName)
         let key = PersistentKey("suite.key", defaultValue: "")
         sourceDefaults.set("hello", forKey: key.id)
         XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .keepDestination))
@@ -96,6 +96,7 @@ final class MigrationAdapterTests: XCTestCase {
         XCTAssertNil(sourceDefaults.object(forKey: key.id))
     }
 
+    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func testUserDefaultsCodableCodecCrossSuite() throws {
         let source = try defaults("codec.source")
         let destination = try defaults("codec.destination")
@@ -114,8 +115,8 @@ final class MigrationAdapterTests: XCTestCase {
         let name = "MigrationAdapterTests.alias.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
-        let a = UserDefaultsMigrationStore(userDefaults: defaults, domainName: name)
-        let b = UserDefaultsMigrationStore(userDefaults: defaults, domainName: name)
+        let a = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: name)
+        let b = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: name)
         let key = PersistentKey("alias", defaultValue: 0)
         defaults.set(1, forKey: key.id)
         XCTAssertThrowsError(try a.move(key, to: b, onConflict: .keepBoth))
@@ -136,6 +137,7 @@ final class MigrationAdapterTests: XCTestCase {
         if case .sourceAbsent = absentReport.outcomes[0].status {} else { XCTFail() }
     }
 
+    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func testCodableAndURLRepresentations() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -151,6 +153,7 @@ final class MigrationAdapterTests: XCTestCase {
         XCTAssertEqual(destination.get(urlKey), URL(string: "https://swift.org")!)
     }
 
+    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func testNonEquatableValueRoundTripsInMemory() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -210,8 +213,8 @@ final class MigrationAdapterTests: XCTestCase {
             sourceDefaults.removePersistentDomain(forName: sourceName)
             destinationDefaults.removePersistentDomain(forName: destinationName)
         }
-        let source = UserDefaultsMigrationStore(userDefaults: sourceDefaults, domainName: sourceName)
-        let destination = UserDefaultsMigrationStore(userDefaults: destinationDefaults, domainName: destinationName)
+        let source = UserDefaultsMigrationBackend(userDefaults: sourceDefaults, domainName: sourceName)
+        let destination = UserDefaultsMigrationBackend(userDefaults: destinationDefaults, domainName: destinationName)
         let key = PersistentKey("unsupported", defaultValue: 1, representation: representation)
         sourceDefaults.set(2, forKey: key.id)
         let report = try source.copy(key, to: destination, onConflict: .keepDestination)
@@ -223,7 +226,7 @@ final class MigrationAdapterTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testUbiquitousStoreDoesNotSynchronize() throws {
         let raw = StrictMigrationUbiquitousStore()
-        let store = UbiquitousKeyValueMigrationStore(
+        let store = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "test", identifier: UUID().uuidString))
         let key = PersistentKey("cloud", defaultValue: 0)
         raw.set(Int64(4), forKey: key.id)
@@ -235,7 +238,7 @@ final class MigrationAdapterTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testUbiquitousKeyLengthBoundary() throws {
         let raw = StrictMigrationUbiquitousStore()
-        let store = UbiquitousKeyValueMigrationStore(
+        let store = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "test", identifier: UUID().uuidString))
         let key128 = String(repeating: "x", count: 128)
         let key129 = String(repeating: "x", count: 129)
@@ -247,7 +250,7 @@ final class MigrationAdapterTests: XCTestCase {
     func testUbiquitousRejectedWritePreservesDestination() throws {
         let raw = StrictMigrationUbiquitousStore()
         raw.set(Int64(8), forKey: "cloud.reject")
-        let destination = UbiquitousKeyValueMigrationStore(
+        let destination = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "test", identifier: UUID().uuidString))
         let source = InMemoryPersistentKeyValueStore()
         let key = PersistentKey("cloud.reject", defaultValue: 0)
@@ -261,7 +264,7 @@ final class MigrationAdapterTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testUbiquitousQuotaRejectedBeforeWrite() throws {
         let raw = StrictMigrationUbiquitousStore()
-        let store = UbiquitousKeyValueMigrationStore(
+        let store = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "test", identifier: UUID().uuidString))
         let key = PersistentKey("cloud.large", defaultValue: Data())
         XCTAssertThrowsError(try store.prepareMigrationWrite(Data(repeating: 1, count: 1_048_577), for: key))

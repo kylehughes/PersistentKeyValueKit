@@ -3,6 +3,7 @@ import XCTest
 
 @testable import PersistentKeyValueKit
 
+@available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
 final class MigrationStoreMatrixTests: XCTestCase {
     private let boolKey = PersistentKey("matrix.bool", defaultValue: false)
     private let intKey = PersistentKey("matrix.int", defaultValue: 0)
@@ -22,7 +23,7 @@ final class MigrationStoreMatrixTests: XCTestCase {
         let count: Int
     }
 
-    private func runPair<S: PersistentKeyValueMigrationStore & PersistentKeyValueMigrationBackend, D: PersistentKeyValueMigrationStore & PersistentKeyValueMigrationBackend>(
+    private func runPair<S: PersistentKeyValueStore & PersistentKeyValueMigrationBackend, D: PersistentKeyValueStore & PersistentKeyValueMigrationBackend>(
         _ source: S, _ destination: D
     ) throws {
         let keys: [any PersistentKeyProtocol] = [
@@ -55,13 +56,13 @@ final class MigrationStoreMatrixTests: XCTestCase {
         for key in keys { XCTAssertNil(try source.migrationSnapshot(for: key.id)) }
     }
 
-    private func decoded<S: PersistentKeyValueMigrationStore & PersistentKeyValueMigrationBackend, K: PersistentKeyProtocol>(_ store: S, _ key: K) throws
+    private func decoded<S: PersistentKeyValueStore & PersistentKeyValueMigrationBackend, K: PersistentKeyProtocol>(_ store: S, _ key: K) throws
         -> K.Value
     {
         try store.migrationValue(for: key, in: XCTUnwrap(store.migrationSnapshot(for: key.id)))
     }
 
-    private func assertValues<S: PersistentKeyValueMigrationStore & PersistentKeyValueMigrationBackend>(_ store: S) throws {
+    private func assertValues<S: PersistentKeyValueStore & PersistentKeyValueMigrationBackend>(_ store: S) throws {
         XCTAssertEqual(try decoded(store, boolKey), true)
         XCTAssertEqual(try decoded(store, intKey), 42)
         XCTAssertEqual(try decoded(store, doubleKey), 3.5 as Double)
@@ -76,7 +77,7 @@ final class MigrationStoreMatrixTests: XCTestCase {
         XCTAssertEqual(try decoded(store, codableKey), CodableValue(name: "sample", count: 7))
     }
 
-    private func seed<S: PersistentKeyValueMigrationStore & PersistentKeyValueMigrationBackend, K: PersistentKeyProtocol>(
+    private func seed<S: PersistentKeyValueStore & PersistentKeyValueMigrationBackend, K: PersistentKeyProtocol>(
         _ store: S, _ key: K, _ value: K.Value
     ) throws {
         _ = try store.commitMigrationWrite(store.prepareMigrationWrite(value, for: key), replacing: nil)
@@ -102,16 +103,16 @@ final class MigrationStoreMatrixTests: XCTestCase {
         }
     }
 
-    private func makeDefaults(_ suffix: String) -> UserDefaultsMigrationStore {
+    private func makeDefaults(_ suffix: String) -> UserDefaultsMigrationBackend {
         let name = "MigrationStoreMatrixTests.\(suffix).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         addTeardownBlock { UserDefaults(suiteName: name)?.removePersistentDomain(forName: name) }
-        return UserDefaultsMigrationStore(userDefaults: defaults, domainName: name)
+        return UserDefaultsMigrationBackend(userDefaults: defaults, domainName: name)
     }
 
     @available(watchOS 9.0, *)
-    private func makeCloud() -> UbiquitousKeyValueMigrationStore {
-        UbiquitousKeyValueMigrationStore(
+    private func makeCloud() -> UbiquitousKeyValueMigrationBackend {
+        UbiquitousKeyValueMigrationBackend(
             store: StrictMigrationUbiquitousStore(), identity: .init(namespace: "matrix", identifier: UUID().uuidString)
         )
     }

@@ -6,10 +6,21 @@
 //
 
 import Foundation
+import ObjectiveC
 
 // MARK: - PersistentKeyValueStore Extension
 
 extension UserDefaults: PersistentKeyValueStore {
+    public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        get throws {
+            let domainName = try UserDefaults.migrationDomainName(
+                for: self, applicationIdentifier: Bundle.main.bundleIdentifier)
+            return PersistentKeyValueMigrationEndpoint(
+                backend: UserDefaultsMigrationBackend(userDefaults: self, domainName: domainName)
+            )
+        }
+    }
+
     // MARK: Getting Values
     
     @inlinable
@@ -103,5 +114,84 @@ extension PersistentKeyValueStore where Self == UserDefaults {
     @inlinable
     public static var local: Self {
         .standard
+    }
+
+    /// Creates a native UserDefaults instance whose persistent domain can participate in migrations.
+    ///
+    /// The suite name is captured on this instance as process-local metadata. The metadata is not a preference and
+    /// does not retain the native object. Empty, reserved, and application-domain names throw
+    /// ``PersistentKeyMigrationError/invalidStoreIdentifier``; unavailable native stores throw
+    /// ``PersistentKeyMigrationError/storeUnavailable``.
+    public static func migratable(suiteName: String) throws -> Self {
+        try Self.migratable(suiteName: suiteName, makeUserDefaults: { UserDefaults(suiteName: $0) })
+    }
+}
+
+private final class UserDefaultsMigrationDomainAssociationKey: Sendable {}
+
+final class UserDefaultsMigrationDomain: Sendable {
+    let name: String
+
+    init(name: String) {
+        self.name = name
+    }
+}
+
+extension UserDefaults {
+    // A stable object address gives Objective-C associations an immutable process-local key without a mutable global.
+    fileprivate static let migrationDomainAssociationToken = UserDefaultsMigrationDomainAssociationKey()
+
+    fileprivate static var migrationDomainAssociationAddress: UnsafeRawPointer {
+        UnsafeRawPointer(Unmanaged.passUnretained(migrationDomainAssociationToken).toOpaque())
+    }
+
+    internal static func migrationDomainMetadata(for defaults: UserDefaults) -> UserDefaultsMigrationDomain? {
+        objc_getAssociatedObject(defaults, migrationDomainAssociationAddress) as? UserDefaultsMigrationDomain
+    }
+
+    internal static func isValidMigrationDomain(
+        _ name: String,
+        applicationIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> Bool {
+        guard !name.isEmpty, name != argumentDomain, name != registrationDomain, name != globalDomain else {
+            return false
+        }
+        return name != applicationIdentifier
+    }
+
+    internal static func migratable(
+        suiteName: String,
+        makeUserDefaults: (String) -> UserDefaults?
+    ) throws -> UserDefaults {
+        guard isValidMigrationDomain(suiteName) else {
+            throw PersistentKeyMigrationError.invalidStoreIdentifier
+        }
+        guard let defaults = makeUserDefaults(suiteName) else {
+            throw PersistentKeyMigrationError.storeUnavailable
+        }
+        objc_setAssociatedObject(
+            defaults,
+            migrationDomainAssociationAddress,
+            // The metadata is retained by the native object and never retains a backend or the object itself.
+            UserDefaultsMigrationDomain(name: suiteName),
+            .OBJC_ASSOCIATION_RETAIN
+        )
+        return defaults
+    }
+
+    internal static func migrationDomainName(
+        for defaults: UserDefaults,
+        applicationIdentifier: String?
+    ) throws -> String {
+        if defaults === UserDefaults.standard {
+            guard let applicationIdentifier, !applicationIdentifier.isEmpty else {
+                throw PersistentKeyMigrationError.missingApplicationIdentifier
+            }
+            return applicationIdentifier
+        }
+        guard let metadata = migrationDomainMetadata(for: defaults) else {
+            throw PersistentKeyMigrationError.missingMigrationDomain
+        }
+        return metadata.name
     }
 }

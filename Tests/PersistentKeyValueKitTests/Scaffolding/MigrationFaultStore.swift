@@ -2,8 +2,7 @@ import Foundation
 
 @testable import PersistentKeyValueKit
 
-final class MigrationFaultStore: PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend,
-    PersistentKeyValueStore
+final class MigrationFaultStore: PersistentKeyValueStore, PersistentKeyValueMigrationBackend
 {
     typealias MigrationSnapshot = InMemoryPersistentKeyValueStore.MigrationSnapshot
     typealias MigrationWrite = InMemoryPersistentKeyValueStore.MigrationWrite

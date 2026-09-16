@@ -161,9 +161,9 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     }
 }
 
-// MARK: - PersistentKeyValueMigrationStore Extension
+// MARK: - Migration Backend Extension
 
-extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationStore, PersistentKeyValueMigrationBackend {
+extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     struct MigrationSnapshot {
         /// The store and key this snapshot belongs to.
         let identity: PersistentKeyValueMigrationStoreIdentity

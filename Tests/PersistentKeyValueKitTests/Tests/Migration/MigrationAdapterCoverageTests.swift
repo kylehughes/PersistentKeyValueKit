@@ -10,21 +10,22 @@ final class MigrationAdapterCoverageTests: XCTestCase {
 
     func testStandardFactoryValidationAndEmptySuite() throws {
         if let identifier = Bundle.main.bundleIdentifier {
-            XCTAssertEqual(try UserDefaultsMigrationStore.standard().domainName, identifier)
+            XCTAssertEqual(
+                try UserDefaults.migrationDomainName(for: .standard, applicationIdentifier: identifier), identifier)
         } else {
-            XCTAssertThrowsError(try UserDefaultsMigrationStore.standard())
+            XCTAssertThrowsError(try UserDefaults.migrationDomainName(for: .standard, applicationIdentifier: nil))
         }
-        XCTAssertNoThrow(try UserDefaultsMigrationStore.standard(applicationIdentifier: "coverage.app"))
-        XCTAssertThrowsError(try UserDefaultsMigrationStore.standard(applicationIdentifier: nil)) {
+        XCTAssertNoThrow(try UserDefaults.migrationDomainName(for: .standard, applicationIdentifier: "coverage.app"))
+        XCTAssertThrowsError(try UserDefaults.migrationDomainName(for: .standard, applicationIdentifier: nil)) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingApplicationIdentifier)
         }
-        XCTAssertThrowsError(try UserDefaultsMigrationStore.standard(applicationIdentifier: "")) {
+        XCTAssertThrowsError(try UserDefaults.migrationDomainName(for: .standard, applicationIdentifier: "")) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingApplicationIdentifier)
         }
-        XCTAssertThrowsError(try UserDefaultsMigrationStore(suiteName: "")) {
+        XCTAssertThrowsError(try UserDefaults.migratable(suiteName: "")) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidStoreIdentifier)
         }
-        XCTAssertThrowsError(try UserDefaultsMigrationStore(suiteName: "coverage", makeUserDefaults: { _ in nil })) {
+        XCTAssertThrowsError(try UserDefaults.migratable(suiteName: "coverage", makeUserDefaults: { _ in nil })) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .storeUnavailable)
         }
     }
@@ -73,7 +74,8 @@ final class MigrationAdapterCoverageTests: XCTestCase {
 
     func testUserDefaultsConstructorsAndNilWrite() throws {
         let suite = "MigrationAdapterCoverageTests.\(UUID().uuidString)"
-        let store = try UserDefaultsMigrationStore(suiteName: suite)
+        let defaults = try UserDefaults.migratable(suiteName: suite)
+        let store = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite)
         defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
         XCTAssertEqual(store.domainName, suite)
         let write = try store.prepareMigrationWrite(3, for: intKey)
@@ -86,8 +88,10 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     func testUserDefaultsSnapshotAndWriteTokensRejectWrongKeyOrStore() throws {
         let firstName = "MigrationAdapterCoverageTests.first.\(UUID().uuidString)"
         let secondName = "MigrationAdapterCoverageTests.second.\(UUID().uuidString)"
-        let first = try UserDefaultsMigrationStore(suiteName: firstName)
-        let second = try UserDefaultsMigrationStore(suiteName: secondName)
+        let first = UserDefaultsMigrationBackend(
+            userDefaults: try UserDefaults.migratable(suiteName: firstName), domainName: firstName)
+        let second = UserDefaultsMigrationBackend(
+            userDefaults: try UserDefaults.migratable(suiteName: secondName), domainName: secondName)
         defer {
             UserDefaults(suiteName: firstName)?.removePersistentDomain(forName: firstName)
             UserDefaults(suiteName: secondName)?.removePersistentDomain(forName: secondName)
@@ -103,7 +107,8 @@ final class MigrationAdapterCoverageTests: XCTestCase {
 
     func testUserDefaultsStaleSnapshotAndAbsentInsertion() throws {
         let name = "MigrationAdapterCoverageTests.stale.\(UUID().uuidString)"
-        let store = try UserDefaultsMigrationStore(suiteName: name)
+        let store = UserDefaultsMigrationBackend(
+            userDefaults: try UserDefaults.migratable(suiteName: name), domainName: name)
         defer { UserDefaults(suiteName: name)?.removePersistentDomain(forName: name) }
         let write = try store.prepareMigrationWrite(1, for: intKey)
         store.userDefaults.set(8, forKey: intKey.id)
@@ -117,7 +122,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     func testUserDefaultsRefusingStoreReportsWriteAndRemovalFailures() throws {
         let name = "MigrationAdapterCoverageTests.refusing.\(UUID().uuidString)"
         let raw = RefusingDefaults(suiteName: name)!
-        let store = UserDefaultsMigrationStore(userDefaults: raw, domainName: name)
+        let store = UserDefaultsMigrationBackend(userDefaults: raw, domainName: name)
         defer { raw.removePersistentDomain(forName: name) }
         raw.set(1, forKey: intKey.id)
         let snapshot = try XCTUnwrap(store.migrationSnapshot(for: intKey.id))
@@ -134,7 +139,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
 
     @available(watchOS 9.0, *)
     func testUbiquitousPublicConstructorUsesCanonicalIdentity() {
-        let store = UbiquitousKeyValueMigrationStore(StrictMigrationUbiquitousStore())
+        let store = UbiquitousKeyValueMigrationBackend(StrictMigrationUbiquitousStore())
         XCTAssertEqual(store.migrationIdentity.namespace, "NSUbiquitousKeyValueStore")
         XCTAssertEqual(store.migrationIdentity.identifier, "default")
     }
@@ -142,7 +147,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testUbiquitousWrongTokensAndNilRemoval() throws {
         let raw = StrictMigrationUbiquitousStore()
-        let store = UbiquitousKeyValueMigrationStore(
+        let store = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "coverage", identifier: UUID().uuidString))
         let write = try store.prepareMigrationWrite(1, for: intKey)
         _ = try store.commitMigrationWrite(write, replacing: nil)
@@ -186,9 +191,9 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     func testUbiquitousStaleAndWrongStoreTokensAreRejected() throws {
         let firstRaw = StrictMigrationUbiquitousStore()
         let secondRaw = StrictMigrationUbiquitousStore()
-        let first = UbiquitousKeyValueMigrationStore(
+        let first = UbiquitousKeyValueMigrationBackend(
             store: firstRaw, identity: .init(namespace: "coverage", identifier: "first"))
-        let second = UbiquitousKeyValueMigrationStore(
+        let second = UbiquitousKeyValueMigrationBackend(
             store: secondRaw, identity: .init(namespace: "coverage", identifier: "second"))
         let write = try first.prepareMigrationWrite(1, for: intKey)
         firstRaw.set(Int64(7), forKey: intKey.id)
@@ -211,7 +216,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testUbiquitousRefusingRemovalReportsFailureAndPreservesValue() throws {
         let raw = StrictMigrationUbiquitousStore()
-        let store = UbiquitousKeyValueMigrationStore(
+        let store = UbiquitousKeyValueMigrationBackend(
             store: raw, identity: .init(namespace: "coverage", identifier: "remove"))
         let write = try store.prepareMigrationWrite(1, for: intKey)
         _ = try store.commitMigrationWrite(write, replacing: nil)

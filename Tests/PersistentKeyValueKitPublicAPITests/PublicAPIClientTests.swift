@@ -16,8 +16,8 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(destination.get(key), 42)
 
         let secondDestination = InMemoryPersistentKeyValueStore()
-        let existentialSource: any PersistentKeyValueMigrationStore = source
-        let existentialDestination: any PersistentKeyValueMigrationStore = secondDestination
+        let existentialSource: any PersistentKeyValueStore = source
+        let existentialDestination: any PersistentKeyValueStore = secondDestination
         let report = try existentialSource.copy(
             [key], to: existentialDestination, onConflict: .overwriteDestination)
 
@@ -85,11 +85,11 @@ final class PublicAPIClientTests: XCTestCase {
         }
     }
 
-    func testUserDefaultsMigrationAdapterForwardsOrdinaryAccessAndObservation() throws {
+    func testUserDefaultsNativeStoreForwardsOrdinaryAccessAndObservation() throws {
         let suiteName = "PersistentKeyValueKit.PublicAPI.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let adapter = try UserDefaultsMigrationStore(suiteName: suiteName)
+        let adapter: UserDefaults = try .migratable(suiteName: suiteName)
         let key = PersistentKey<Int>("adapter", defaultValue: 0)
         var values: [Int] = []
         let cancellable = adapter.publisher(for: key, emitsInitialValue: true).sink { values.append($0) }
@@ -99,7 +99,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(defaults.get(key), 12)
         adapter.remove(key)
         XCTAssertEqual(adapter.get(key), 0)
-        adapter.userDefaults.set(key, to: 13)
+        adapter.set(key, to: 13)
         let source = InMemoryPersistentKeyValueStore()
         source.set(key, to: 14)
         XCTAssertTrue(try source.copy(key, to: adapter, onConflict: .overwriteDestination).isComplete)
@@ -109,15 +109,15 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(values, [0, 12, 0, 13, 14])
     }
 
-    func testUserDefaultsAdapterMigrationUsesCustomRepresentations() throws {
+    func testUserDefaultsNativeStoreMigrationUsesCustomRepresentations() throws {
         let sourceName = "PersistentKeyValueKit.PublicAPI.source.\(UUID().uuidString)"
         let destinationName = "PersistentKeyValueKit.PublicAPI.destination.\(UUID().uuidString)"
         defer {
             UserDefaults.standard.removePersistentDomain(forName: sourceName)
             UserDefaults.standard.removePersistentDomain(forName: destinationName)
         }
-        let source = try UserDefaultsMigrationStore(suiteName: sourceName)
-        let destination = try UserDefaultsMigrationStore(suiteName: destinationName)
+        let source = try UserDefaults.migratable(suiteName: sourceName)
+        let destination = try UserDefaults.migratable(suiteName: destinationName)
         let proxyKey = PersistentKey<String>(
             "proxy",
             defaultValue: "",
@@ -135,9 +135,9 @@ final class PublicAPIClientTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousMigrationAdapterForwardsOrdinaryAccessAndMigration() throws {
+    func testUbiquitousNativeStoreForwardsOrdinaryAccessAndMigration() throws {
         let underlying = PublicMockUbiquitousKeyValueStore()
-        let adapter = UbiquitousKeyValueMigrationStore(underlying)
+        let adapter = underlying
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>("cloud-adapter", defaultValue: 0)
         var values: [Int] = []
@@ -187,13 +187,13 @@ final class PublicAPIClientTests: XCTestCase {
     private func migrate<Key, Source, Destination>(
         source: Source, destination: Destination, key: Key
     ) throws -> PersistentKeyMigrationReport
-    where Key: PersistentKeyProtocol, Source: PersistentKeyValueMigrationStore,
-          Destination: PersistentKeyValueMigrationStore {
+    where Key: PersistentKeyProtocol, Source: PersistentKeyValueStore,
+          Destination: PersistentKeyValueStore {
         try source.copy(key, to: destination, onConflict: .overwriteDestination)
     }
 }
 
-private final class EndpointForwardingStore: PersistentKeyValueStore, PersistentKeyValueMigrationStore {
+private final class EndpointForwardingStore: PersistentKeyValueStore {
     let base: InMemoryPersistentKeyValueStore
     private(set) var endpointAccessCount = 0
 

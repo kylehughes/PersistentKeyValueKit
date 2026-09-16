@@ -1,4 +1,4 @@
 import PersistentKeyValueKit
 
 let store = InMemoryPersistentKeyValueStore()
-_ = store.migrationEndpoint.snapshot(for: "key")
+_ = try! store.migrationEndpoint.snapshot(for: "key")

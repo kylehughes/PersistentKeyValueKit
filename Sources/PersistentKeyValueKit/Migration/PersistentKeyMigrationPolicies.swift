@@ -24,5 +24,5 @@ public enum PersistentKeyMigrationCompletionPolicy {
     case untracked
     /// Records completion under `id` in the supplied store after all outcomes resolve. Version `id` when the
     /// migration's meaning changes; this is a retryable marker, not an exactly-once guarantee.
-    case once(id: String, recordedIn: any PersistentKeyValueMigrationStore)
+    case once(id: String, recordedIn: any PersistentKeyValueStore)
 }

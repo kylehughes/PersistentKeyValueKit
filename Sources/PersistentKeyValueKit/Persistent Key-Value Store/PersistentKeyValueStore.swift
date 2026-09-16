@@ -21,6 +21,12 @@ import Foundation
 /// uncommon.
 /// Implementations that are not thread-safe will exhibit undefined behavior or crash when used with observation APIs.
 public protocol PersistentKeyValueStore {
+    /// The migration capability for this store. Access throws when the backing store's writable identity is unavailable.
+    ///
+    /// Wrappers forward this capability to their backing store. Migration does not invoke a wrapper's ordinary
+    /// `get` or `set` methods.
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint { get throws }
+
     // MARK: Getting Values
     
     /// Gets the value for the given key.

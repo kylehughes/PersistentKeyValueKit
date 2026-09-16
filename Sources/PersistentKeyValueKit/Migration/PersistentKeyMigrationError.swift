@@ -5,6 +5,7 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     case invalidStoreIdentifier
     case missingApplicationIdentifier
     case storeUnavailable
+    case missingMigrationDomain
     case sameStore
     case duplicateKey(String)
     case reservedKey(String)
