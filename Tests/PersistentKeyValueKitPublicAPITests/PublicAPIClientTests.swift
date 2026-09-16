@@ -187,6 +187,8 @@ final class PublicAPIClientTests: XCTestCase {
         }
 
         XCTAssertNil(factory(""))
+        XCTAssertNil(factory(kCFPreferencesAnyApplication as String))
+        XCTAssertNil(factory(kCFPreferencesCurrentApplication as String))
 
         let contextualDefaults: UserDefaults? = .migratable(suiteName: suiteName)
 

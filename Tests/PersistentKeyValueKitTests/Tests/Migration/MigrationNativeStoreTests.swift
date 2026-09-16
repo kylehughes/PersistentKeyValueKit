@@ -135,6 +135,8 @@ final class MigrationNativeStoreTests: XCTestCase {
             UserDefaults.argumentDomain,
             UserDefaults.registrationDomain,
             UserDefaults.globalDomain,
+            kCFPreferencesAnyApplication as String,
+            kCFPreferencesCurrentApplication as String,
         ]
 
         for name in names {
@@ -160,14 +162,20 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     func testMigratableFactoryReportsFoundationInitializationFailure() {
+        var called = false
+
         XCTAssertNil(
             UserDefaults.migratable(
                 suiteName: "MigrationNativeStoreTests.invalid.\(UUID().uuidString)",
                 makeUserDefaults: { _ in
-                    nil
+                    called = true
+
+                    return nil
                 }
             )
         )
+
+        XCTAssertTrue(called)
     }
 
     func testMigratableFactoryReturnsNativeObjectAndAssociatesDomain() throws {
@@ -193,6 +201,18 @@ final class MigrationNativeStoreTests: XCTestCase {
 
     func testMigrationDomainValidationUsesProvidedApplicationIdentifier() {
         XCTAssertFalse(UserDefaults.isValidMigrationDomain("test.bundle", applicationIdentifier: "test.bundle"))
+        XCTAssertFalse(
+            UserDefaults.isValidMigrationDomain(
+                kCFPreferencesAnyApplication as String,
+                applicationIdentifier: "test.bundle"
+            )
+        )
+        XCTAssertFalse(
+            UserDefaults.isValidMigrationDomain(
+                kCFPreferencesCurrentApplication as String,
+                applicationIdentifier: "test.bundle"
+            )
+        )
         XCTAssertTrue(UserDefaults.isValidMigrationDomain("test.other", applicationIdentifier: "test.bundle"))
     }
 

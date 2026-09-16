@@ -157,7 +157,14 @@ extension UserDefaults {
         _ name: String,
         applicationIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> Bool {
-        guard !name.isEmpty, name != argumentDomain, name != registrationDomain, name != globalDomain else {
+        // Core Foundation aliases can refer to the same store under a different migration identity.
+        guard !name.isEmpty,
+            name != argumentDomain,
+            name != registrationDomain,
+            name != globalDomain,
+            name != kCFPreferencesAnyApplication as String,
+            name != kCFPreferencesCurrentApplication as String
+        else {
             return false
         }
 

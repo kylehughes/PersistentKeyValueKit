@@ -169,15 +169,20 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         }
 
         XCTAssertNil(UserDefaults.migratable(suiteName: ""))
+        var called = false
 
         XCTAssertNil(
             UserDefaults.migratable(
                 suiteName: "coverage",
                 makeUserDefaults: { _ in
-                    nil
+                    called = true
+
+                    return nil
                 }
             )
         )
+
+        XCTAssertTrue(called)
     }
 
     @available(watchOS 9.0, *)
