@@ -458,9 +458,6 @@ Migration reads persisted values, not registered defaults, launch arguments, or 
 become destination conflicts. Values use their key's representation; optional `nil` removes the destination key in
 Foundation stores. The in-memory store retains typed values, including stored `nil`.
 
-In version 2.0.0, store wrappers must forward the throwing `migrationEndpoint` requirement with
-`try base.migrationEndpoint`.
-
 Migrations do not provide rollback; a failed move may have already copied the value. Coordinate other writers and
 processes, and ensure iCloud is ready before migrating. Success does not guarantee disk durability or cloud delivery,
 and removing an iCloud value affects other devices.
@@ -473,6 +470,8 @@ no outcomes.
 
 Remove `.isMigrationCompleted(id:)` from the recording store to reset it. Version the identifier when changing the
 migration's meaning.
+
+e.g.
 
 ```swift
 let report = try UserDefaults.standard.move(
