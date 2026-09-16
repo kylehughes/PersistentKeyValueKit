@@ -403,19 +403,16 @@ func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws 
 func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any?
 ```
 
-The `format` identifies property-list storage, `UserDefaults`, or `NSUbiquitousKeyValueStore`. A successful `encode`
-that returns `nil` means that the key should be removed. Built-in conversion failures use
-`PersistentKeyValueConversionError`; throwing encoders and decoders preserve their underlying errors. Existing `get`
-and `set` methods retain their non-throwing behavior.
+The `format` identifies property-list storage, `UserDefaults`, or `NSUbiquitousKeyValueStore`. Returning `nil` from
+`encode` removes the key. Built-in failures use `PersistentKeyValueConversionError`; throwing encoders and decoders
+preserve their underlying errors. `get` and `set` remain non-throwing.
 
-Proxy representations get checked conversion from their existing `from` and `to` methods. Custom representations that
-conform directly to `PersistentKeyValueRepresentation` must implement both methods. Custom primitive types must also
-implement the required primitive `decode(storageObject:format:)` and `encode(format:)` methods. This is a breaking API
-change in version 2.0.0. Checked conversion can run more than once while a migration validates a write.
+Version 2.0.0 requires these methods for direct conformances; proxy representations use their `from` and `to` methods.
+Custom primitive types must implement `decode(storageObject:format:)` and `encode(format:)`. Migration can call
+conversions more than once when validating a write.
 
 URLs use absolute strings in property-list storage. In version 2.0.0, ubiquitous URL writes also use absolute strings;
-reads continue to accept legacy URL objects. User defaults retain Foundation's native URL format: file URLs use
-paths and other URLs use secure archived data.
+reads continue to accept legacy URL objects. User defaults retain Foundation's native URL format.
 
 ### Migrate Values Between Stores
 
@@ -438,19 +435,16 @@ let report = try UserDefaults.standard.copy(
 )
 ```
 
-Migration is an operation on `PersistentKeyValueStore`, so the same native objects used for ordinary access can be
-passed to generic migration code. `UserDefaults.standard` is ready to use when the application bundle identifier is
-available; `NSUbiquitousKeyValueStore.default` needs no additional configuration.
-For a named `UserDefaults` suite, use `UserDefaults.migratable(suiteName:)` when creating the instance. The factory
-returns a native `UserDefaults` and records the suite's persistent domain for migration. It returns `nil` when the
-domain is invalid or Foundation cannot create the native store. An instance created through Foundation's
-`UserDefaults(suiteName:)` initializer can still be used for ordinary access, but migration throws if its persistent
-domain is not known to the framework. `InMemoryPersistentKeyValueStore` supports migration for tests and ephemeral
-data.
+`UserDefaults.standard` supports migration when the application bundle identifier is available.
+`NSUbiquitousKeyValueStore.default` and `InMemoryPersistentKeyValueStore` need no configuration.
 
-Every call requires a conflict policy. When a migration runs, its report contains one outcome for each key, including
-conversion, write, and source-removal failures. Setup errors, such as duplicate keys or using the same store, are
-thrown before mutation. A batch can contain keys with different value types and continues after individual failures.
+For named suites, use `UserDefaults.migratable(suiteName:)`. It returns a native `UserDefaults`, or `nil` for an invalid
+domain or if Foundation cannot create the store. Migration throws for ordinary `UserDefaults(suiteName:)` instances
+whose persistent domain is unknown to the framework.
+
+`copy` and `move` require a conflict policy and return a report with one outcome per key. Batches can mix value types
+and continue after per-key failures. Setup errors, such as duplicate keys or using the same store, are thrown before
+mutation.
 
 | Operation | Conflict policy | Existing destination value |
 | --- | --- | --- |
@@ -460,28 +454,25 @@ thrown before mutation. A batch can contain keys with different value types and 
 | Move | `.overwriteDestination` | Replace the destination, then remove the source. |
 | Move | `.keepDestinationAndRemoveSource` | Retain the destination and discard the source. |
 
-Migration reads persisted values only. Registered defaults, launch arguments, and other implicit defaults do not become
-source values or destination conflicts. Primitive, collection, optional, and proxy representations use their checked
-conversion methods. Optional `nil` values remove the destination key in Foundation stores, and collection encoding
-follows the existing normalization rules. The in-memory store retains its typed-value semantics, including stored `nil`
-values and values without a Foundation-compatible representation.
+Migration reads persisted values, not registered defaults, launch arguments, or key defaults. Those defaults do not
+become destination conflicts. Values use their key's representation; optional `nil` removes the destination key in
+Foundation stores. The in-memory store retains typed values, including stored `nil`.
 
-Generic store abstractions can forward their migration endpoint when they wrap a supported store. This lets code that
-uses the abstraction remain independent of the concrete store type. The endpoint does not change ordinary `get` and
-`set` behavior. In version 2.0.0, `PersistentKeyValueStore` requires a throwing `migrationEndpoint`; wrappers should
-forward it with `try base.migrationEndpoint`.
+In version 2.0.0, store wrappers must forward the throwing `migrationEndpoint` requirement with
+`try base.migrationEndpoint`.
 
-Migrations do not provide rollback. A failed move can already have copied a value to the destination. Coordinate other
-writers and processes while migrating. The caller controls iCloud readiness; a successful local write does not guarantee
-disk durability or cloud delivery, and removing a value from an iCloud store affects its other devices.
+Migrations do not provide rollback; a failed move may have already copied the value. Coordinate other writers and
+processes, and ensure iCloud is ready before migrating. Success does not guarantee disk durability or cloud delivery,
+and removing an iCloud value affects other devices.
 
 #### Track a Migration
 
-Completion tracking is optional. Pass `.once(id:recordedIn:)` with a store when a migration should be recorded after all
-keys resolve. Absent sources, disabled keys, and retained conflicts count as resolved. The marker is the key returned by
-`PersistentKeyProtocol.isMigrationCompleted(id:)`; remove it from the recording store with the ordinary store API to
-reset it. Once the marker is recorded, subsequent calls with the same identifier skip the migration and return a report
-with no outcomes. Version the identifier when changing the migration's meaning.
+Pass `.once(id:recordedIn:)` to record completion after all keys resolve. Absent sources, disabled keys, and retained
+conflicts count as resolved. Once recorded, subsequent calls with the same identifier skip the migration and return
+no outcomes.
+
+Remove `.isMigrationCompleted(id:)` from the recording store to reset it. Version the identifier when changing the
+migration's meaning.
 
 ```swift
 let report = try UserDefaults.standard.move(
