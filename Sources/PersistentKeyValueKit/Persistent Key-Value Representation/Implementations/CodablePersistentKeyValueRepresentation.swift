@@ -52,16 +52,6 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
     public typealias Proxy = Encoder.Output
     
     // MARK: Public Instance Interface
-    
-    @inlinable
-    public func from(_ proxy: Proxy) -> Value? {
-        try? decoder.decode(Value.self, from: proxy)
-    }
-    
-    @inlinable
-    public func to(_ value: Value) -> Proxy? {
-        try? encoder.encode(value)
-    }
 
     public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
         let proxy = try Encoder.Output.persistentKeyValueRepresentation.decode(
@@ -78,6 +68,16 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
             value: proxy,
             format: format
         )
+    }
+
+    @inlinable
+    public func from(_ proxy: Proxy) -> Value? {
+        try? decoder.decode(Value.self, from: proxy)
+    }
+
+    @inlinable
+    public func to(_ value: Value) -> Proxy? {
+        try? encoder.encode(value)
     }
 }
 

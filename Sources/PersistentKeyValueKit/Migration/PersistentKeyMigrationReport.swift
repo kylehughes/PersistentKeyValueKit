@@ -16,17 +16,17 @@ public struct PersistentKeyMigrationReport: Sendable {
 
     /// Whether any key or completion-record operation failed.
     public var hasFailures: Bool {
-        outcomes.contains {
+        if case .failed = completion {
+            return true
+        }
+
+        return outcomes.contains {
             if case .failed = $0.status {
                 return true
             }
+
             return false
-        } || {
-            if case .failed = completion {
-                return true
-            }
-            return false
-        }()
+        }
     }
 
     /// Whether the operation fully resolved, including completion recording.

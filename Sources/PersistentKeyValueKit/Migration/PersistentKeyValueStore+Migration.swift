@@ -67,7 +67,9 @@ extension PersistentKeyValueStore {
         try copy([key], to: destination, onConflict: policy, completion: completion)
     }
 
-    /// Copies keys in input order, returning one outcome per key.
+    /// Copies keys in input order.
+    ///
+    /// The report has one outcome per key, or no outcomes if completion was already recorded.
     public func copy<Destination>(
         _ keys: [any PersistentKeyProtocol],
         to destination: Destination,
@@ -99,7 +101,9 @@ extension PersistentKeyValueStore {
         try move([key], to: destination, onConflict: policy, completion: completion)
     }
 
-    /// Moves keys in input order, returning one outcome per key.
+    /// Moves keys in input order.
+    ///
+    /// The report has one outcome per key, or no outcomes if completion was already recorded.
     ///
     /// Setup failures are thrown before mutation. Per-key conversion, write, and cleanup failures are returned in the
     /// report, and a partial batch is not rolled back.
@@ -207,12 +211,12 @@ extension PersistentKeyValueMigrationBackend {
             PersistentKeyMigrationRegistry.shared.release(resources)
         }
 
-        if case .once(let id, _) = completion, let recorderBackend = recorderEndpoint?.backend {
+        if let marker, let recorderBackend = recorderEndpoint?.backend {
             return try executeTracked(
                 keys,
                 destination: destination,
                 operation: operation,
-                id: id,
+                marker: marker,
                 recorder: recorderBackend
             )
         }
@@ -226,14 +230,13 @@ extension PersistentKeyValueMigrationBackend {
         _ keys: [any PersistentKeyProtocol],
         destination: Destination,
         operation: PersistentKeyMigrationOperation,
-        id: String,
+        marker: PersistentKey<Bool>,
         recorder: Recorder
     ) throws -> PersistentKeyMigrationReport
     where
         Destination: PersistentKeyValueMigrationBackend,
         Recorder: PersistentKeyValueMigrationBackend
     {
-        let marker = PersistentKey<Bool>.isMigrationCompleted(id: id)
         let markerSnapshot: Recorder.MigrationSnapshot?
         markerSnapshot = try recorder.migrationSnapshot(for: marker.id)
         if let markerSnapshot {

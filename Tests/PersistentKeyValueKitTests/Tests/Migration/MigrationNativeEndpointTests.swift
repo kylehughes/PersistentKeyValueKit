@@ -438,8 +438,8 @@ private enum EndpointFailure: Error {
 private final class CountingEndpointStore {
     let backend: MigrationFaultStore
     let base: InMemoryPersistentKeyValueStore
-    var failsEndpoint = false
     private(set) var endpointAccessCount = 0
+    var failsEndpoint = false
 
     // MARK: Internal Initialization
 

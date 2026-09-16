@@ -371,8 +371,8 @@ final class MigrationAdapterCoverageTests: XCTestCase {
 }
 
 private final class RefusingDefaults: UserDefaults {
-    var refuseWrites = false
     var refuseRemovals = false
+    var refuseWrites = false
 
     override func removeObject(forKey defaultName: String) {
         if !refuseRemovals {

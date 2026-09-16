@@ -181,6 +181,32 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(subscriber.values, ["defaultValue", "secondChangedValue"])
     }
 
+    func test_publisher_reentrantDemandAndChangeDoNotNestEmissions() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = ReentrantSubscriber<String>()
+
+        subscriber.onFirstReceive = {
+            store.set(key, to: "reentrantValue")
+            subscriber.request(.max(1))
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        subscriber.request(.max(1))
+
+        XCTAssertEqual(subscriber.values, ["defaultValue", "reentrantValue"])
+        XCTAssertEqual(subscriber.maximumReceiveDepth, 1)
+
+        subscriber.request(.max(1))
+        store.set(key, to: "laterValue")
+
+        XCTAssertEqual(subscriber.values, ["defaultValue", "reentrantValue", "laterValue"])
+        XCTAssertEqual(subscriber.maximumReceiveDepth, 1)
+
+        subscriber.cancel()
+    }
+
     func test_publisher_storeConvenienceEmitsInitialValue() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -217,32 +243,6 @@ extension PersistentKeyValuePublisherTests {
         store.set(key, to: "changedValue")
 
         XCTAssertEqual(subscriber.values, ["defaultValue", "changedValue"])
-    }
-
-    func test_publisher_reentrantDemandAndChangeDoNotNestEmissions() {
-        let store = ObservablePersistentKeyValueStore()
-        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
-        let subscriber = ReentrantSubscriber<String>()
-
-        subscriber.onFirstReceive = {
-            store.set(key, to: "reentrantValue")
-            subscriber.request(.max(1))
-        }
-
-        key.publisher(in: store).subscribe(subscriber)
-
-        subscriber.request(.max(1))
-
-        XCTAssertEqual(subscriber.values, ["defaultValue", "reentrantValue"])
-        XCTAssertEqual(subscriber.maximumReceiveDepth, 1)
-
-        subscriber.request(.max(1))
-        store.set(key, to: "laterValue")
-
-        XCTAssertEqual(subscriber.values, ["defaultValue", "reentrantValue", "laterValue"])
-        XCTAssertEqual(subscriber.maximumReceiveDepth, 1)
-
-        subscriber.cancel()
     }
 }
 
@@ -392,56 +392,6 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(store.deregistrationCount, 1)
     }
 
-    func test_publisher_ignoresZeroDemandUntilPositiveDemandIsRequested() {
-        let store = ObservablePersistentKeyValueStore()
-        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
-        let subscriber = DemandControlledSubscriber<String>()
-
-        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
-
-        subscriber.request(.none)
-        store.set(key, to: "changedValue")
-
-        XCTAssertEqual(subscriber.values, [])
-
-        subscriber.request(.max(1))
-
-        XCTAssertEqual(subscriber.values, ["changedValue"])
-    }
-
-    func test_publisher_ignoresDemandRequestedAfterCancellation() {
-        let store = ObservablePersistentKeyValueStore()
-        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
-        let subscriber = DemandControlledSubscriber<String>()
-
-        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
-
-        subscriber.cancel()
-        subscriber.request(.unlimited)
-        store.set(key, to: "changedValue")
-
-        XCTAssertEqual(subscriber.values, [])
-        XCTAssertEqual(store.deregistrationCount, 1)
-    }
-
-    func test_publisher_ignoresCallbackCapturedBeforeCancellation() {
-        let store = CallbackRetainingPersistentKeyValueStore()
-        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
-        let subscriber = DemandControlledSubscriber<String>()
-
-        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
-
-        XCTAssertTrue(store.hasCapturedObserver)
-
-        subscriber.request(.unlimited)
-        subscriber.cancel()
-        store.notifyCapturedObserver(for: key.id)
-
-        XCTAssertEqual(subscriber.values, [])
-        XCTAssertEqual(store.deregistrationCount, 1)
-        XCTAssertEqual(store.getCount, 0)
-    }
-
     func test_publisher_concurrentCancellationAndChangeDeregistersOnce() async {
         for iteration in 0 ..< 100 {
             let store = ObservablePersistentKeyValueStore()
@@ -474,6 +424,56 @@ extension PersistentKeyValuePublisherTests {
             XCTAssertTrue(values.isEmpty || values == ["changedValue"])
             XCTAssertEqual(store.deregistrationCount, 1)
         }
+    }
+
+    func test_publisher_ignoresCallbackCapturedBeforeCancellation() {
+        let store = CallbackRetainingPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = DemandControlledSubscriber<String>()
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+
+        XCTAssertTrue(store.hasCapturedObserver)
+
+        subscriber.request(.unlimited)
+        subscriber.cancel()
+        store.notifyCapturedObserver(for: key.id)
+
+        XCTAssertEqual(subscriber.values, [])
+        XCTAssertEqual(store.deregistrationCount, 1)
+        XCTAssertEqual(store.getCount, 0)
+    }
+
+    func test_publisher_ignoresDemandRequestedAfterCancellation() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = DemandControlledSubscriber<String>()
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+
+        subscriber.cancel()
+        subscriber.request(.unlimited)
+        store.set(key, to: "changedValue")
+
+        XCTAssertEqual(subscriber.values, [])
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_publisher_ignoresZeroDemandUntilPositiveDemandIsRequested() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = DemandControlledSubscriber<String>()
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+
+        subscriber.request(.none)
+        store.set(key, to: "changedValue")
+
+        XCTAssertEqual(subscriber.values, [])
+
+        subscriber.request(.max(1))
+
+        XCTAssertEqual(subscriber.values, ["changedValue"])
     }
 
     func test_publisher_releasingCancellableDeregisters() {
@@ -608,9 +608,8 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
 // MARK: - Reentrant Subscriber Definition
 
 private final class ReentrantSubscriber<Input> where Input: Sendable {
-    var onFirstReceive: (() -> Void)?
-
     private(set) var maximumReceiveDepth = 0
+    var onFirstReceive: (() -> Void)?
     private(set) var values: [Input] = []
 
     private var receiveDepth = 0
@@ -661,11 +660,11 @@ extension ReentrantSubscriber: Subscriber {
 // MARK: - Callback Retaining Persistent Key-Value Store Definition
 
 private final class CallbackRetainingPersistentKeyValueStore {
+    private(set) var getCount = 0
+
     private var capturedObserver: NSObject?
     private var deregistrations = 0
     private var storage: [String: Any] = [:]
-
-    private(set) var getCount = 0
 
     // MARK: Internal Instance Interface
 

@@ -82,6 +82,17 @@ swift test -c release
 swift test -Xswiftc -strict-concurrency=complete -Xswiftc -warn-concurrency -Xswiftc -enable-actor-data-race-checks
 ```
 
+Run the public API checks and the combined Debug and Release coverage gate on macOS:
+
+```sh
+bash Scripts/check-public-api.sh
+swift test --enable-code-coverage
+swift test -c release --enable-code-coverage
+ruby Scripts/check-swift-coverage.rb \
+    "$(swift build --show-bin-path)/codecov/PersistentKeyValueKit.json" \
+    "$(swift build -c release --show-bin-path)/codecov/PersistentKeyValueKit.json"
+```
+
 Use the filtered command while iterating. Use strict-concurrency tests for observation, locking, cancellation, or sendability changes. Use release tests for performance-sensitive changes.
 
 ## Programming

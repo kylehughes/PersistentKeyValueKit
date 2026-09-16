@@ -30,7 +30,9 @@ final class MigrationNativeStoreTests: XCTestCase {
             }
         }
 
-        group.wait()
+        guard group.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("Factory and endpoint access did not finish")
+        }
 
         XCTAssertTrue(errors.isEmpty, "Unexpected errors: \(errors.snapshot())")
 
@@ -64,7 +66,9 @@ final class MigrationNativeStoreTests: XCTestCase {
             }
         }
 
-        sharedGroup.wait()
+        guard sharedGroup.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("Shared endpoint access did not finish")
+        }
 
         XCTAssertTrue(errors.isEmpty, "Unexpected errors: \(errors.snapshot())")
     }
@@ -296,6 +300,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 }
 
+// `lock` protects every access to `values`; snapshots return an array value containing Sendable errors.
 private final class LockedErrors: @unchecked Sendable {
     private let lock = NSLock()
     private var values: [Error] = []

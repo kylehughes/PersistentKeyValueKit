@@ -4,11 +4,13 @@ import Foundation
 
 @available(watchOS 9.0, *)
 final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecked Sendable {
+    // `lock` protects the stored values, rejection flags, and synchronization count.
+    // Reference-valued payloads are retained, so tests must keep them immutable during concurrent access.
     private let lock = NSLock()
-    private var values: [String: Any] = [:]
-    private var shouldRejectWrites = false
     private var shouldRejectRemovals = false
+    private var shouldRejectWrites = false
     private var synchronizationCount = 0
+    private var values: [String: Any] = [:]
 
     // MARK: Internal Instance Interface
 

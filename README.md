@@ -406,15 +406,16 @@ func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> A
 The `format` identifies property-list storage, `UserDefaults`, or `NSUbiquitousKeyValueStore`. A successful `encode`
 that returns `nil` means that the key should be removed. Built-in conversion failures use
 `PersistentKeyValueConversionError`; throwing encoders and decoders preserve their underlying errors. Existing `get`
-and `set` methods retain their non-throwing behavior and native storage formats.
+and `set` methods retain their non-throwing behavior.
 
 Proxy representations get checked conversion from their existing `from` and `to` methods. Custom representations that
 conform directly to `PersistentKeyValueRepresentation` must implement both methods. Custom primitive types must also
 implement the required primitive `decode(storageObject:format:)` and `encode(format:)` methods. This is a breaking API
 change in version 2.0.0. Checked conversion can run more than once while a migration validates a write.
 
-URLs use absolute strings in property-list and ubiquitous storage. User defaults retain Foundation's native URL format:
-file URLs use paths and other URLs use secure archived data. Legacy ubiquitous URL objects remain readable.
+URLs use absolute strings in property-list storage. In version 2.0.0, ubiquitous URL writes also use absolute strings;
+reads continue to accept legacy URL objects. User defaults retain Foundation's native URL format: file URLs use
+paths and other URLs use secure archived data.
 
 ### Migrate Values Between Stores
 

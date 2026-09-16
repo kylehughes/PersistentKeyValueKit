@@ -25,6 +25,8 @@ private final class MigrationResultBox: @unchecked Sendable {
     }
 }
 
+// `gateLock` protects `blockNext`; the backing store and semaphores provide their own synchronization.
+// Semaphore waits and backing-store operations run after releasing `gateLock`.
 private final class GateMigrationStore: @unchecked Sendable {
     let base: InMemoryPersistentKeyValueStore
     let blockedKeyID: String
@@ -167,11 +169,12 @@ final class MigrationConcurrencyTests: XCTestCase {
             resume: resume
         )
         let result = MigrationResultBox()
-        let finished = DispatchSemaphore(value: 0)
+        let finished = DispatchGroup()
+        finished.enter()
 
         DispatchQueue.global().async {
             defer {
-                finished.signal()
+                finished.leave()
             }
 
             result.store(
@@ -181,10 +184,13 @@ final class MigrationConcurrencyTests: XCTestCase {
             )
         }
 
-        XCTAssertEqual(entered.wait(timeout: .now() + 5), .success)
-
         defer {
             resume.signal()
+            XCTAssertEqual(finished.wait(timeout: .now() + 5), .success)
+        }
+
+        guard entered.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("Blocked migration did not enter")
         }
 
         let freeReport = try source.copy(free, to: destination, onConflict: .overwriteDestination)
@@ -193,7 +199,9 @@ final class MigrationConcurrencyTests: XCTestCase {
         XCTAssertEqual(destination.get(free), 2)
         resume.signal()
 
-        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success)
+        guard finished.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("Blocked migration did not finish")
+        }
 
         guard let firstResult = result.load(), case .success(let firstReport) = firstResult else {
             return XCTFail("blocked migration failed")
@@ -220,11 +228,12 @@ final class MigrationConcurrencyTests: XCTestCase {
         let workerSource = source
         let workerDestination = destination
         let workerKey = key
-        let finished = DispatchSemaphore(value: 0)
+        let finished = DispatchGroup()
+        finished.enter()
 
         DispatchQueue.global().async {
             defer {
-                finished.signal()
+                finished.leave()
             }
 
             result.store(
@@ -234,10 +243,13 @@ final class MigrationConcurrencyTests: XCTestCase {
             )
         }
 
-        XCTAssertEqual(entered.wait(timeout: .now() + 5), .success)
-
         defer {
             resume.signal()
+            XCTAssertEqual(finished.wait(timeout: .now() + 5), .success)
+        }
+
+        guard entered.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("First migration did not enter")
         }
 
         XCTAssertThrowsError(try source.copy(key, to: destination, onConflict: .overwriteDestination)) { error in
@@ -246,7 +258,9 @@ final class MigrationConcurrencyTests: XCTestCase {
 
         resume.signal()
 
-        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success)
+        guard finished.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("First migration did not finish")
+        }
 
         guard let firstResult = result.load(), case .success(let firstReport) = firstResult else {
             return XCTFail("first migration failed")
@@ -277,11 +291,12 @@ final class MigrationConcurrencyTests: XCTestCase {
         let secondDestination = InMemoryPersistentKeyValueStore()
         let id = #function
         let result = MigrationResultBox()
-        let finished = DispatchSemaphore(value: 0)
+        let finished = DispatchGroup()
+        finished.enter()
 
         DispatchQueue.global().async {
             defer {
-                finished.signal()
+                finished.leave()
             }
 
             result.store(
@@ -296,10 +311,13 @@ final class MigrationConcurrencyTests: XCTestCase {
             )
         }
 
-        XCTAssertEqual(entered.wait(timeout: .now() + 5), .success)
-
         defer {
             resume.signal()
+            XCTAssertEqual(finished.wait(timeout: .now() + 5), .success)
+        }
+
+        guard entered.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("Tracked migration did not enter")
         }
 
         XCTAssertThrowsError(
@@ -315,7 +333,9 @@ final class MigrationConcurrencyTests: XCTestCase {
 
         resume.signal()
 
-        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success)
+        guard finished.wait(timeout: .now() + 5) == .success else {
+            return XCTFail("Tracked migration did not finish")
+        }
 
         guard let firstResult = result.load(), case .success(let firstReport) = firstResult else {
             return XCTFail("tracked migration failed")

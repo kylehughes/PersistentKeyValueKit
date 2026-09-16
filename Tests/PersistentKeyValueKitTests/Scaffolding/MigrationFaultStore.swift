@@ -5,13 +5,13 @@ import Foundation
 final class MigrationFaultStore {
     let base: InMemoryPersistentKeyValueStore
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
+    private(set) var accessCount = 0
+    var commitHook: ((String) -> Void)?
     var failure: Point?
     var failureKey: String?
-    var malformedCompletionRecord = false
     var hook: (() -> Void)?
     var keyedHook: ((String) -> Void)?
-    var commitHook: ((String) -> Void)?
-    private(set) var accessCount = 0
+    var malformedCompletionRecord = false
 
     // MARK: Internal Initialization
 

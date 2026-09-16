@@ -6,50 +6,34 @@ import XCTest
 @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
 final class MigrationStoreMatrixTests: XCTestCase {
     private let boolKey = PersistentKey("matrix.bool", defaultValue: false)
-    private let intKey = PersistentKey("matrix.int", defaultValue: 0)
-    private let doubleKey = PersistentKey("matrix.double", defaultValue: 0.0)
-    private let floatKey = PersistentKey("matrix.float", defaultValue: Float(0))
-    private let stringKey = PersistentKey("matrix.string", defaultValue: "")
-    private let dataKey = PersistentKey("matrix.data", defaultValue: Data())
-    private let urlKey = PersistentKey("matrix.url", defaultValue: URL(string: "https://example.com")!)
-    private let webURLKey = PersistentKey("matrix.webURL", defaultValue: URL(string: "https://example.com")!)
-    private let optionalKey = PersistentKey<Int?>("matrix.optional", defaultValue: nil)
-    private let urlsKey = PersistentKey("matrix.urls", defaultValue: [URL]())
     private let codableKey = PersistentKey(
         "matrix.codable",
         defaultValue: CodableValue(name: "", count: 0),
         representation: CodablePersistentKeyValueRepresentation<CodableValue, JSONEncoder, JSONDecoder>()
     )
+    private let dataKey = PersistentKey("matrix.data", defaultValue: Data())
+    private let doubleKey = PersistentKey("matrix.double", defaultValue: 0.0)
+    private let floatKey = PersistentKey("matrix.float", defaultValue: Float(0))
+    private let intKey = PersistentKey("matrix.int", defaultValue: 0)
+    private let optionalKey = PersistentKey<Int?>("matrix.optional", defaultValue: nil)
+    private let stringKey = PersistentKey("matrix.string", defaultValue: "")
+    private let urlKey = PersistentKey("matrix.url", defaultValue: URL(string: "https://example.com")!)
+    private let urlsKey = PersistentKey("matrix.urls", defaultValue: [URL]())
+    private let webURLKey = PersistentKey("matrix.webURL", defaultValue: URL(string: "https://example.com")!)
+
     // MARK: Tests
 
     @available(watchOS 9.0, *)
     func testAllStorePairs() throws {
-        for sourceKind in 0..<3 {
-            for destinationKind in 0..<3 {
-                switch (sourceKind, destinationKind) {
-                case (0, 0):
-                    try runPair(InMemoryPersistentKeyValueStore(), InMemoryPersistentKeyValueStore())
-                case (0, 1):
-                    try runPair(InMemoryPersistentKeyValueStore(), makeDefaults("d1"))
-                case (0, 2):
-                    try runPair(InMemoryPersistentKeyValueStore(), makeCloud())
-                case (1, 0):
-                    try runPair(makeDefaults("s0"), InMemoryPersistentKeyValueStore())
-                case (1, 1):
-                    try runPair(makeDefaults("s1"), makeDefaults("d2"))
-                case (1, 2):
-                    try runPair(makeDefaults("s2"), makeCloud())
-                case (2, 0):
-                    try runPair(makeCloud(), InMemoryPersistentKeyValueStore())
-                case (2, 1):
-                    try runPair(makeCloud(), makeDefaults("d3"))
-                case (2, 2):
-                    try runPair(makeCloud(), makeCloud())
-                default:
-                    fatalError()
-                }
-            }
-        }
+        try runPair(InMemoryPersistentKeyValueStore(), InMemoryPersistentKeyValueStore())
+        try runPair(InMemoryPersistentKeyValueStore(), makeDefaults("d1"))
+        try runPair(InMemoryPersistentKeyValueStore(), makeCloud())
+        try runPair(makeDefaults("s0"), InMemoryPersistentKeyValueStore())
+        try runPair(makeDefaults("s1"), makeDefaults("d2"))
+        try runPair(makeDefaults("s2"), makeCloud())
+        try runPair(makeCloud(), InMemoryPersistentKeyValueStore())
+        try runPair(makeCloud(), makeDefaults("d3"))
+        try runPair(makeCloud(), makeCloud())
     }
 
     // MARK: Private Instance Interface

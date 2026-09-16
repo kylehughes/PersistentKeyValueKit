@@ -6,9 +6,9 @@ import XCTest
 private final class ScriptedMigrationStore {
     let base = InMemoryPersistentKeyValueStore()
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
-    var current = true
-    var commitReturnsNil = false
     var commitReturnsFalseBool = false
+    var commitReturnsNil = false
+    var current = true
 
     init(
         namespace: String = "scripted",

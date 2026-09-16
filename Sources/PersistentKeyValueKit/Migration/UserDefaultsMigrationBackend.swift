@@ -106,10 +106,6 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
     }
 
     func removeMigrationValue(for keyID: String, matching snapshot: MigrationSnapshot) throws {
-        guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
-            throw PersistentKeyMigrationError.invalidSnapshot
-        }
-
         guard try migrationSnapshotIsCurrent(snapshot, for: keyID) else {
             throw PersistentKeyMigrationError.sourceChanged
         }

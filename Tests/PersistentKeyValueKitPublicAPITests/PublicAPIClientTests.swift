@@ -146,69 +146,68 @@ final class PublicAPIClientTests: XCTestCase {
 
     @available(watchOS 9.0, *)
     func testUbiquitousNativeStoreForwardsOrdinaryAccessAndMigration() throws {
-        let underlying = PublicMockUbiquitousKeyValueStore()
-        let adapter = underlying
+        let store = PublicMockUbiquitousKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>("cloud-adapter", defaultValue: 0)
         var values: [Int] = []
-        let cancellable = adapter.publisher(for: key).sink {
+        let cancellable = store.publisher(for: key).sink {
             values.append($0)
         }
 
-        adapter.set(key, to: 19)
+        store.set(key, to: 19)
 
-        XCTAssertEqual(adapter.get(key), 19)
-        XCTAssertEqual(underlying.object(forKey: key.id) as? Int, 19)
+        XCTAssertEqual(store.get(key), 19)
+        XCTAssertEqual(store.object(forKey: key.id) as? Int, 19)
 
-        let report = try adapter.copy(key, to: destination, onConflict: .overwriteDestination)
+        let report = try store.copy(key, to: destination, onConflict: .overwriteDestination)
 
         XCTAssertFalse(report.hasFailures)
         XCTAssertEqual(destination.get(key), 19)
-        adapter.remove(key)
+        store.remove(key)
 
-        XCTAssertNil(underlying.object(forKey: key.id))
-        underlying.set(key, to: 20)
+        XCTAssertNil(store.object(forKey: key.id))
+        store.set(key, to: 20)
         destination.set(key, to: 21)
 
-        XCTAssertTrue(try destination.copy(key, to: adapter, onConflict: .overwriteDestination).isComplete)
+        XCTAssertTrue(try destination.copy(key, to: store, onConflict: .overwriteDestination).isComplete)
         XCTAssertEqual(values, [0, 19, 0, 20, 21])
         cancellable.cancel()
-        adapter.set(key, to: 22)
+        store.set(key, to: 22)
 
         XCTAssertEqual(values, [0, 19, 0, 20, 21])
     }
 
     func testUserDefaultsNativeStoreForwardsOrdinaryAccessAndObservation() throws {
         let suiteName = "PersistentKeyValueKit.PublicAPI.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let plainDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
         defer {
-            defaults.removePersistentDomain(forName: suiteName)
+            plainDefaults.removePersistentDomain(forName: suiteName)
         }
 
-        let adapter: UserDefaults = try .migratable(suiteName: suiteName)
+        let migratableDefaults: UserDefaults = try .migratable(suiteName: suiteName)
         let key = PersistentKey<Int>("adapter", defaultValue: 0)
         var values: [Int] = []
-        let cancellable = adapter.publisher(for: key, emitsInitialValue: true).sink {
+        let cancellable = migratableDefaults.publisher(for: key, emitsInitialValue: true).sink {
             values.append($0)
         }
 
-        adapter.set(key, to: 12)
+        migratableDefaults.set(key, to: 12)
 
-        XCTAssertEqual(adapter.get(key), 12)
-        XCTAssertEqual(defaults.get(key), 12)
-        adapter.remove(key)
+        XCTAssertEqual(migratableDefaults.get(key), 12)
+        XCTAssertEqual(plainDefaults.get(key), 12)
+        migratableDefaults.remove(key)
 
-        XCTAssertEqual(adapter.get(key), 0)
-        adapter.set(key, to: 13)
+        XCTAssertEqual(migratableDefaults.get(key), 0)
+        migratableDefaults.set(key, to: 13)
         let source = InMemoryPersistentKeyValueStore()
 
         source.set(key, to: 14)
 
-        XCTAssertTrue(try source.copy(key, to: adapter, onConflict: .overwriteDestination).isComplete)
+        XCTAssertTrue(try source.copy(key, to: migratableDefaults, onConflict: .overwriteDestination).isComplete)
         XCTAssertEqual(values, [0, 12, 0, 13, 14])
         cancellable.cancel()
-        adapter.set(key, to: 15)
+        migratableDefaults.set(key, to: 15)
 
         XCTAssertEqual(values, [0, 12, 0, 13, 14])
     }

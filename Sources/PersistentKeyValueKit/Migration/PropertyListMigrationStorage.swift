@@ -27,9 +27,13 @@ internal enum PropertyListMigrationStorage {
         case (let lhs as Date, let rhs as Date):
             return lhs == rhs
         case (let lhs as [Any], let rhs as [Any]):
-            return lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { equal($0, $1) }
+            return lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
+                equal($0, $1)
+            }
         case (let lhs as [String: Any], let rhs as [String: Any]):
-            return lhs.count == rhs.count && lhs.allSatisfy { key, value in equal(value, rhs[key]) }
+            return lhs.count == rhs.count && lhs.allSatisfy { key, value in
+                equal(value, rhs[key])
+            }
         case (let lhs as URL, let rhs as URL):
             return lhs == rhs
         default:

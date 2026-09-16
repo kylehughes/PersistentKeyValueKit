@@ -20,9 +20,6 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     
     // MARK: Instance Interface
 
-    /// Whether this key participates in migration operations. The default implementation returns `true`.
-    var isMigrationEnabled: Bool { get }
-    
     /// The default value for the key.
     ///
     /// This value is used when the key has not been set.
@@ -34,6 +31,9 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     var id: ID { get }
+
+    /// Whether this key participates in migration operations. The default implementation returns `true`.
+    var isMigrationEnabled: Bool { get }
     
     /// The representation of the key-value pair in the ``PersistentKeyValueStore``.
     var representation: any PersistentKeyValueRepresentation<Value> { get }
@@ -89,7 +89,11 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
 
 extension PersistentKeyProtocol {
     // MARK: Public Instance Interface
-    
+
+    public var isMigrationEnabled: Bool {
+        true
+    }
+
     /// Registers the default value for the key in the given property-list-compatible dictionary.
     ///
     /// This is intended for use by `UserDefaults.register(_:)` to register the default values for the keys.
@@ -99,8 +103,6 @@ extension PersistentKeyProtocol {
     public func registerDefault(in propertyListDictionary: inout [String: Any]) {
         representation.set(id, to: defaultValue, in: &propertyListDictionary)
     }
-
-    public var isMigrationEnabled: Bool { true }
 }
 
 extension PersistentKeyProtocol where Self == PersistentKey<Bool> {

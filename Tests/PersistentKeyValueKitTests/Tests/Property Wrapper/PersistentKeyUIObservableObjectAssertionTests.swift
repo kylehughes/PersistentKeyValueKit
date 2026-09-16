@@ -5,6 +5,7 @@
 
 #if os(macOS) && DEBUG
 
+import Darwin
 import Foundation
 import PersistentKeyValueKit
 import XCTest
@@ -72,17 +73,34 @@ final class PersistentKeyUIObservableObjectAssertionTests: XCTestCase {
         process.standardOutput = stdout
         process.standardError = stderrHandle
 
-        let terminationExpectation = expectation(description: "Assertion child process terminated")
+        let termination = DispatchGroup()
+        termination.enter()
         process.terminationHandler = { _ in
-            terminationExpectation.fulfill()
+            termination.leave()
         }
 
-        try process.run()
-        wait(for: [terminationExpectation], timeout: 10)
+        do {
+            try process.run()
+        } catch {
+            termination.leave()
+            throw error
+        }
 
-        if process.isRunning {
-            process.terminate()
-            process.waitUntilExit()
+        guard termination.wait(timeout: .now() + 10) == .success else {
+            if process.isRunning {
+                process.terminate()
+            }
+
+            if termination.wait(timeout: .now() + 5) != .success, process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+
+            guard termination.wait(timeout: .now() + 5) == .success else {
+                XCTFail("Assertion child process termination was not confirmed")
+                return XCTFail("Assertion child process timed out")
+            }
+
+            return XCTFail("Assertion child process timed out")
         }
 
         let stderr = try String(contentsOf: stderrURL, encoding: .utf8)

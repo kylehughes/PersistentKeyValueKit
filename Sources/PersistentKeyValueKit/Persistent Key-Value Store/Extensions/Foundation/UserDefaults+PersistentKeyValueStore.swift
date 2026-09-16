@@ -152,10 +152,6 @@ extension UserDefaults {
     // A stable object address gives Objective-C associations an immutable process-local key without a mutable global.
     fileprivate static let migrationDomainAssociationToken = UserDefaultsMigrationDomainAssociationKey()
 
-    fileprivate static var migrationDomainAssociationAddress: UnsafeRawPointer {
-        UnsafeRawPointer(Unmanaged.passUnretained(migrationDomainAssociationToken).toOpaque())
-    }
-
     // MARK: Internal Static Interface
 
     internal static func isValidMigrationDomain(
@@ -213,5 +209,11 @@ extension UserDefaults {
         }
 
         return metadata.name
+    }
+
+    // MARK: Fileprivate Static Interface
+
+    fileprivate static var migrationDomainAssociationAddress: UnsafeRawPointer {
+        UnsafeRawPointer(Unmanaged.passUnretained(migrationDomainAssociationToken).toOpaque())
     }
 }
