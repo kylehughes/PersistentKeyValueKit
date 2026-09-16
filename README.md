@@ -119,7 +119,7 @@ userDefaults.get(.runtimeColorScheme)
 userDefaults.set(.runtimeColorScheme, to: .dark)
 ```
 
-Observe the same key from async code.
+Observe the key from async code.
 
 ```swift
 for await runtimeColorScheme in userDefaults.values(for: .runtimeColorScheme) {
@@ -127,7 +127,7 @@ for await runtimeColorScheme in userDefaults.values(for: .runtimeColorScheme) {
 }
 ```
 
-Observe it from Combine.
+Observe the key with Combine.
 
 ```swift
 let cancellable = userDefaults.publisher(for: .runtimeColorScheme)
