@@ -63,6 +63,63 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(try representation.decode(storageObject: object as Any, format: .propertyList), "23")
     }
 
+    func testConversionOnlyConformancesWorkWithEveryStore() throws {
+        let suiteName = "PersistentKeyValueKit.PublicAPI.conversionOnly.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let memory = InMemoryPersistentKeyValueStore()
+        let scalarKey = PersistentKey("conversionOnly.scalar", defaultValue: PublicLayout(columns: 1))
+        let arrayKey = PersistentKey("conversionOnly.array", defaultValue: [PublicLayout]())
+        let dictionaryKey = PersistentKey("conversionOnly.dictionary", defaultValue: [String: PublicLayout]())
+        let primitiveKey = PersistentKey("conversionOnly.primitive", defaultValue: PublicConversionOnlyPrimitive(0))
+
+        func exercise(_ store: some PersistentKeyValueStore) {
+            store.set(scalarKey, to: PublicLayout(columns: 2))
+            store.set(arrayKey, to: [PublicLayout(columns: 3), PublicLayout(columns: 4)])
+            store.set(dictionaryKey, to: ["main": PublicLayout(columns: 5)])
+            store.set(primitiveKey, to: PublicConversionOnlyPrimitive(6))
+
+            XCTAssertEqual(store.get(scalarKey), PublicLayout(columns: 2))
+            XCTAssertEqual(store.get(arrayKey), [PublicLayout(columns: 3), PublicLayout(columns: 4)])
+            XCTAssertEqual(store.get(dictionaryKey), ["main": PublicLayout(columns: 5)])
+            XCTAssertEqual(store.get(primitiveKey), PublicConversionOnlyPrimitive(6))
+        }
+
+        exercise(defaults)
+        exercise(memory)
+
+        XCTAssertEqual(defaults.object(forKey: scalarKey.id) as? String, "2")
+        XCTAssertEqual(defaults.object(forKey: arrayKey.id) as? [String], ["3", "4"])
+        XCTAssertEqual(defaults.object(forKey: dictionaryKey.id) as? [String: String], ["main": "5"])
+
+        if #available(watchOS 9.0, *) {
+            let ubiquitousStore = PublicMockUbiquitousKeyValueStore()
+
+            exercise(ubiquitousStore)
+
+            XCTAssertEqual(ubiquitousStore.object(forKey: arrayKey.id) as? [String], ["3", "4"])
+        }
+
+        let keys: [any PersistentKeyProtocol] = [scalarKey, arrayKey, dictionaryKey, primitiveKey]
+        let destination = InMemoryPersistentKeyValueStore()
+        let report = try defaults.copy(keys, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.copied, .copied, .copied, .copied])
+        XCTAssertEqual(destination.get(arrayKey), [PublicLayout(columns: 3), PublicLayout(columns: 4)])
+
+        defaults.remove(scalarKey)
+        memory.set(scalarKey, to: PublicLayout(columns: 7))
+
+        XCTAssertTrue(
+            try memory.copy(scalarKey, to: defaults, onConflict: .overwriteDestination, tracking: .untracked).isComplete
+        )
+        XCTAssertEqual(defaults.get(scalarKey), PublicLayout(columns: 7))
+    }
+
     func testGenericMigrationAndExistentialMigrationUseTheSameContract() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -583,6 +640,67 @@ private final class PublicMockUbiquitousKeyValueStore: NSUbiquitousKeyValueStore
         } else {
             values.removeValue(forKey: key)
         }
+    }
+}
+
+// MARK: - Public Layout Definition
+
+private struct PublicLayout: Equatable, KeyValuePersistible {
+    let columns: Int
+
+    static var persistentKeyValueRepresentation: PublicLayoutRepresentation {
+        PublicLayoutRepresentation()
+    }
+}
+
+// MARK: - Public Layout Representation Definition
+
+private struct PublicLayoutRepresentation {
+}
+
+// MARK: - PersistentKeyValueRepresentation Extension
+
+extension PublicLayoutRepresentation: PersistentKeyValueRepresentation {
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> PublicLayout {
+        guard let string = storageObject as? String, let columns = Int(string) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return PublicLayout(columns: columns)
+    }
+
+    func encode(_ value: PublicLayout, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        String(value.columns)
+    }
+}
+
+// MARK: - Public Conversion-Only Primitive Definition
+
+private struct PublicConversionOnlyPrimitive: Equatable {
+    let rawValue: Int
+
+    init(_ rawValue: Int) {
+        self.rawValue = rawValue
+    }
+}
+
+// MARK: - PrimitiveKeyValuePersistible Extension
+
+extension PublicConversionOnlyPrimitive: PrimitiveKeyValuePersistible {
+    static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
+        PrimitivePersistentKeyValueRepresentation()
+    }
+
+    static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Self {
+        guard let value = storageObject as? NSNumber else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return Self(value.intValue)
+    }
+
+    func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
+        NSNumber(value: rawValue)
     }
 }
 

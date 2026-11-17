@@ -28,8 +28,12 @@ import Foundation
 /// - `String`
 /// - `URL`
 ///
-/// It is intended, but not required, that conforming types' representations are of type 
+/// It is intended, but not required, that conforming types' representations are of type
 /// ``PrimitivePersistentKeyValueRepresentation``.
+///
+/// Conforming types implement ``decode(storageObject:format:)`` and ``encode(format:)``. The `UserDefaults` and
+/// `NSUbiquitousKeyValueStore` methods default to those conversions. The property-list array and dictionary methods
+/// default to storing `Self` directly, so a type that is not itself a property-list object should implement them.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Decodes a value from a stored object for the given storage format.
     ///
@@ -149,5 +153,74 @@ extension PrimitiveKeyValuePersistible {
     @inlinable
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
         propertyListDictionary[dictionaryKey] = value
+    }
+
+    // MARK: Interfacing with User Defaults
+
+    /// Decodes the object stored at `userDefaultsKey` with ``decode(storageObject:format:)``, returning `nil` when the
+    /// key is absent or decoding fails.
+    ///
+    /// This default does not inspect `UserDefaults.argumentDomain`, so it does not coerce string launch arguments into
+    /// typed values. Built-in primitive types implement this method themselves and keep that coercion.
+    public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
+        userDefaults.object(forKey: userDefaultsKey).flatMap {
+            try? decode(storageObject: $0, format: .userDefaults)
+        }
+    }
+
+    /// Writes the object returned by ``encode(format:)``, removes the key when it returns `nil`, and leaves
+    /// `userDefaults` unchanged when it throws.
+    public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
+        guard let object = encodedObject(for: value, format: .userDefaults) else {
+            return
+        }
+
+        if let object {
+            userDefaults.set(object, forKey: userDefaultsKey)
+        } else {
+            userDefaults.removeObject(forKey: userDefaultsKey)
+        }
+    }
+
+    // MARK: Interfacing with Ubiquitous Key-Value Store
+
+    /// Decodes the object stored at `ubiquitousStoreKey` with ``decode(storageObject:format:)``, returning `nil` when
+    /// the key is absent or decoding fails.
+    @available(watchOS 9.0, *)
+    public static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self? {
+        ubiquitousStore.object(forKey: ubiquitousStoreKey).flatMap {
+            try? decode(storageObject: $0, format: .ubiquitousKeyValueStore)
+        }
+    }
+
+    /// Writes the object returned by ``encode(format:)``, removes the key when it returns `nil`, and leaves
+    /// `ubiquitousStore` unchanged when it throws.
+    @available(watchOS 9.0, *)
+    public static func set(
+        _ ubiquitousStoreKey: String,
+        to value: Self,
+        in ubiquitousStore: NSUbiquitousKeyValueStore
+    ) {
+        guard let object = encodedObject(for: value, format: .ubiquitousKeyValueStore) else {
+            return
+        }
+
+        if let object {
+            ubiquitousStore.set(object, forKey: ubiquitousStoreKey)
+        } else {
+            ubiquitousStore.removeObject(forKey: ubiquitousStoreKey)
+        }
+    }
+
+    // MARK: Private Static Interface
+
+    // `try?` would flatten `Any??`, conflating a thrown error with a request to remove the key. The outer `nil` means
+    // `encode` threw; `.some(nil)` means remove.
+    private static func encodedObject(for value: Self, format: PersistentKeyValueStorageFormat) -> Any?? {
+        do {
+            return .some(try value.encode(format: format))
+        } catch {
+            return nil
+        }
     }
 }

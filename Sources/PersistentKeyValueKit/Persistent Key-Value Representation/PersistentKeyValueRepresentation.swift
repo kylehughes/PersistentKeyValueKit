@@ -8,6 +8,10 @@
 import Foundation
 
 /// A representation of a value in a ``PersistentKeyValueStore``.
+///
+/// Conforming types implement ``decode(storageObject:format:)`` and ``encode(_:format:)``. The store-specific `get`
+/// and `set` methods have default implementations built on those conversions; implement them only to customize
+/// access to a particular store.
 public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     // MARK: Associated Types
     
@@ -109,6 +113,150 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in at `ubiquitousStoreKey`.
     @available(watchOS 9.0, *)
     func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore)
+}
+
+// MARK: - Default Implementation
+
+/// Default store and container access built on ``PersistentKeyValueRepresentation/decode(storageObject:format:)`` and
+/// ``PersistentKeyValueRepresentation/encode(_:format:)``.
+///
+/// Reads return `nil` when the stored object is absent or fails to decode. Writes remove the key when `encode`
+/// returns `nil` and leave the store or container unchanged when `encode` throws. Property-list containers use
+/// ``PersistentKeyValueStorageFormat/propertyList``.
+///
+/// These defaults read the effective `UserDefaults` object without inspecting `UserDefaults.argumentDomain`, so they do
+/// not coerce string launch arguments into typed values. Built-in representations implement these methods themselves
+/// and keep that coercion.
+extension PersistentKeyValueRepresentation {
+    // MARK: Interfacing with Property List Array
+
+    /// Decodes every element of `propertyListArray`, returning `nil` if any element fails to decode.
+    public func get(from propertyListArray: [Any]) -> [Value]? {
+        var values: [Value] = []
+
+        values.reserveCapacity(propertyListArray.count)
+
+        for object in propertyListArray {
+            guard let value = decodedValue(from: object, format: .propertyList) else {
+                return nil
+            }
+
+            values.append(value)
+        }
+
+        return values
+    }
+
+    /// Replaces `propertyListArray` with the encoded `values`, omitting elements whose `encode` returns `nil`.
+    ///
+    /// Leaves `propertyListArray` unchanged if encoding any element throws.
+    public func set(_ values: [Value], to propertyListArray: inout [Any]) {
+        var objects: [Any] = []
+
+        objects.reserveCapacity(values.count)
+
+        for value in values {
+            guard let object = encodedObject(for: value, format: .propertyList) else {
+                return
+            }
+
+            if let object {
+                objects.append(object)
+            }
+        }
+
+        propertyListArray = objects
+    }
+
+    // MARK: Interfacing with Property List Dictionary
+
+    /// Decodes the object at `dictionaryKey`, returning `nil` when it is absent or fails to decode.
+    public func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Value? {
+        propertyListDictionary[dictionaryKey].flatMap {
+            decodedValue(from: $0, format: .propertyList)
+        }
+    }
+
+    /// Writes the encoded object, removes `dictionaryKey` when `encode` returns `nil`, and leaves
+    /// `propertyListDictionary` unchanged when `encode` throws.
+    public func set(_ dictionaryKey: String, to value: Value, in propertyListDictionary: inout [String: Any]) {
+        guard let object = encodedObject(for: value, format: .propertyList) else {
+            return
+        }
+
+        if let object {
+            propertyListDictionary[dictionaryKey] = object
+        } else {
+            propertyListDictionary.removeValue(forKey: dictionaryKey)
+        }
+    }
+
+    // MARK: Interfacing with User Defaults
+
+    /// Decodes the object returned by `object(forKey:)`, returning `nil` when it is absent or fails to decode.
+    ///
+    /// This default does not inspect `UserDefaults.argumentDomain`, so it does not coerce string launch arguments into
+    /// typed values. Built-in representations implement this method themselves and keep that coercion.
+    public func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Value? {
+        userDefaults.object(forKey: userDefaultsKey).flatMap {
+            decodedValue(from: $0, format: .userDefaults)
+        }
+    }
+
+    /// Writes the encoded object, removes the key when `encode` returns `nil`, and leaves `userDefaults` unchanged
+    /// when `encode` throws.
+    public func set(_ userDefaultsKey: String, to value: Value, in userDefaults: UserDefaults) {
+        guard let object = encodedObject(for: value, format: .userDefaults) else {
+            return
+        }
+
+        if let object {
+            userDefaults.set(object, forKey: userDefaultsKey)
+        } else {
+            userDefaults.removeObject(forKey: userDefaultsKey)
+        }
+    }
+
+    // MARK: Interfacing with Ubiquitous Key-Value Store
+
+    /// Decodes the object returned by `object(forKey:)`, returning `nil` when it is absent or fails to decode.
+    @available(watchOS 9.0, *)
+    public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
+        ubiquitousStore.object(forKey: ubiquitousStoreKey).flatMap {
+            decodedValue(from: $0, format: .ubiquitousKeyValueStore)
+        }
+    }
+
+    /// Writes the encoded object, removes the key when `encode` returns `nil`, and leaves `ubiquitousStore` unchanged
+    /// when `encode` throws.
+    @available(watchOS 9.0, *)
+    public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
+        guard let object = encodedObject(for: value, format: .ubiquitousKeyValueStore) else {
+            return
+        }
+
+        if let object {
+            ubiquitousStore.set(object, forKey: ubiquitousStoreKey)
+        } else {
+            ubiquitousStore.removeObject(forKey: ubiquitousStoreKey)
+        }
+    }
+
+    // MARK: Private Instance Interface
+
+    private func decodedValue(from object: Any, format: PersistentKeyValueStorageFormat) -> Value? {
+        try? decode(storageObject: object, format: format)
+    }
+
+    // `try?` would flatten `Any??`, conflating a thrown error with a request to remove the key. The outer `nil` means
+    // `encode` threw; `.some(nil)` means remove.
+    private func encodedObject(for value: Value, format: PersistentKeyValueStorageFormat) -> Any?? {
+        do {
+            return .some(try encode(value, format: format))
+        } catch {
+            return nil
+        }
+    }
 }
 
 /// The storage format used to encode or decode a persistent value.

@@ -1,6 +1,7 @@
 // Release notes samples: upgrading custom conformances to 2.0.0.
 //
-// Each stub carries the 1.x members a pre-existing conformance already has, so the samples show only what 2.0.0 adds.
+// Each stub carries the members a conformance needs besides the ones the samples show. The store-specific `get` and
+// `set` methods are omitted because 2.0.0 provides defaults for them.
 
 import Foundation
 import PersistentKeyValueKit
@@ -17,36 +18,6 @@ struct LayoutValue {
 
 struct CustomRepresentation {
     typealias Value = LayoutValue
-
-    func get(from propertyListArray: [Any]) -> [Value]? {
-        nil
-    }
-
-    func set(_ values: [Value], to propertyListArray: inout [Any]) {
-    }
-
-    func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Value? {
-        nil
-    }
-
-    func set(_ dictionaryKey: String, to value: Value, in propertyListDictionary: inout [String: Any]) {
-    }
-
-    func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Value? {
-        nil
-    }
-
-    func set(_ userDefaultsKey: String, to value: Value, in userDefaults: UserDefaults) {
-    }
-
-    @available(watchOS 9.0, *)
-    func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
-        nil
-    }
-
-    @available(watchOS 9.0, *)
-    func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-    }
 }
 
 struct CustomPrimitive {
@@ -54,22 +25,6 @@ struct CustomPrimitive {
 
     static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()
-    }
-
-    static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
-        nil
-    }
-
-    static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
-    }
-
-    @available(watchOS 9.0, *)
-    static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self? {
-        nil
-    }
-
-    @available(watchOS 9.0, *)
-    static func set(_ ubiquitousStoreKey: String, to value: Self, in ubiquitousStore: NSUbiquitousKeyValueStore) {
     }
 }
 

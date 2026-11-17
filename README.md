@@ -328,7 +328,7 @@ func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> A
 
 Conversion can throw (`PersistentKeyValueConversionError` for built-in representations, or the underlying coder error for `CodablePersistentKeyValueRepresentation`). Returning `nil` from `encode(_:format:)` removes the key from the store (or omits the element from a property-list collection). Ordinary `get` and `set` operations remain non-throwing.
 
-Proxy representations (`ProxyPersistentKeyValueRepresentation` and types conforming to `ProxyPersistentKeyValueRepresentationProtocol`) implement `decode(storageObject:format:)` and `encode(_:format:)` automatically using their `from` and `to` conversions. In 2.0.0, types that conform directly to `PersistentKeyValueRepresentation` must implement `decode(storageObject:format:)` and `encode(_:format:)`, and custom `PrimitiveKeyValuePersistible` types must implement `static func decode(storageObject:format:)` and `func encode(format:)`.
+Proxy representations (`ProxyPersistentKeyValueRepresentation` and types conforming to `ProxyPersistentKeyValueRepresentationProtocol`) implement `decode(storageObject:format:)` and `encode(_:format:)` automatically using their `from` and `to` conversions. In 2.0.0, types that conform directly to `PersistentKeyValueRepresentation` must implement `decode(storageObject:format:)` and `encode(_:format:)`, and custom `PrimitiveKeyValuePersistible` types must implement `static func decode(storageObject:format:)` and `func encode(format:)`. The store-specific `get` and `set` methods have default implementations built on these conversions; the defaults do not coerce `UserDefaults` launch-argument strings.
 
 ### Observation
 
