@@ -50,12 +50,14 @@ func observeBufferedChanges() async {
 
 func publishValues() {
     let cancellable = UserDefaults.standard.publisher(for: .username)
+        .receive(on: DispatchQueue.main)
         .sink { username in
             usernameLabel.text = username
         }
 
     let usernameKey: PersistentKey<String> = .username
     let keyCancellable = usernameKey.publisher(in: UserDefaults.standard)
+        .receive(on: DispatchQueue.main)
         .sink { username in
             usernameLabel.text = username
         }

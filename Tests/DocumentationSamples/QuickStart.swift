@@ -64,6 +64,7 @@ func observeValues() async {
 
 func observeWithCombine() {
     let cancellable = userDefaults.publisher(for: .runtimeColorScheme)
+        .receive(on: DispatchQueue.main)
         .sink { runtimeColorScheme in
             apply(runtimeColorScheme)
         }

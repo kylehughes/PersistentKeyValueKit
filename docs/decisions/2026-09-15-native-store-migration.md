@@ -78,7 +78,8 @@ before mutation because the framework cannot identify its persistent domain.
 `UserDefaults` domain names are compared ignoring case and Unicode
 normalization for migration identity and reserved-domain validation, and
 `UserDefaults.migratable(suiteName:)` also rejects names containing `/`,
-starting with `~`, or ending with `.plist` (in any case). On case-insensitive
+starting with `~`, or ending with `.plist` (in any case, checked by UTF-8 code
+units). On case-insensitive
 or normalization-insensitive file systems (the macOS default), suite names that
 differ only by case or Unicode normalization, or that use path or `.plist`
 aliases, can resolve to the same preferences file, so treating them as distinct
@@ -110,12 +111,15 @@ observation. `PersistentKeyMigrationItem` supports migrating a key unchanged
 (`.key(_:)`), renaming a key of the same value type (`.key(_:to:)`), and
 transforming a value across keys or types (`.key(_:to:transform:)`). Migrating
 within a single store is permitted when every item either maps its source key
-to a different destination key identifier or rewrites a key in place through
-`.key(_:to:transform:)` with byte-identical source and destination key
-identifiers (reporting `.rewritten` under any conflict policy without removing
-the key as a source); duplicate source or destination key identifiers throw
-`duplicateKey(_:)`, and same-store batches where one item's destination is
-another item's source throw `overlappingKeys(_:)`.
+to a different destination key in that store or rewrites a key in place through
+`.key(_:to:transform:)` on a single store instance with byte-identical source
+and destination key identifiers (reporting `.rewritten` under any conflict
+policy without removing the key as a source, and recognizing an
+already-rewritten value on retry when it fails to decode with the source key's
+representation and decodes with the destination key's representation); duplicate
+source or destination key identifiers throw `duplicateKey(_:)`, and same-store
+batches where one item's destination is another item's source throw
+`overlappingKeys(_:)`.
 
 `copy` and `move` return `PersistentKeyMigrationReport` and are not marked
 `@discardableResult`. `PersistentKeyMigrationReport.Completion` and
@@ -126,9 +130,10 @@ another item's source throw `overlappingKeys(_:)`.
 carrying the report when any item or completion marker fails or goes
 unrecorded. Public initializers on `PersistentKeyMigrationReport` and `Outcome`
 remain available for test fixtures and enforce with preconditions that an error
-is present if and only if the status is `.failed`, and that `outcomes` is empty
-when `completion` is `.alreadyRecorded`. Migration errors do not conform to
-`LocalizedError`.
+is present if and only if the status is `.failed`, `outcomes` is empty for
+`.alreadyRecorded`, `outcomes` contains at least one failed outcome for
+`.notRecorded`, and `outcomes` contains no failed outcomes for `.recorded` or
+`.failed`. Migration errors do not conform to `LocalizedError`.
 
 `PersistentKeyValueRepresentation` and `PrimitiveKeyValuePersistible` require
 checked `decode(storageObject:format:)` and `encode(_:format:)` /
@@ -203,30 +208,58 @@ principles:
   `@discardableResult`. Because per-item and completion-marker failures are
   recorded in the returned report rather than thrown, the unused-result warning
   nudges callers to inspect the report or call `try report.throwIfIncomplete()`.
-- **Report and outcome shape**: `PersistentKeyMigrationReport.Completion` and
+- **Report and outcome shape (and fixture invariants)**:
+  `PersistentKeyMigrationReport.Completion` and
   `PersistentKeyMigrationReport.Status` (including `.failed(FailureStage)`)
   conform to `Hashable` without embedding `any Error`, while `completionError`
   and `Outcome.error` carry the error alongside the status, following the
   precedent of `URLSessionTask.state` and `URLSessionTask.error`. Public
   initializers on `PersistentKeyMigrationReport` and `Outcome` are kept so
-  callers can construct test fixtures, with preconditions that enforce that an
-  error is non-`nil` if and only if the status is `.failed`.
+  callers can construct test fixtures, with preconditions that enforce every
+  cross-field invariant the engine can produce: `error` and `completionError`
+  are non-`nil` if and only if the status is `.failed`, `outcomes` is empty for
+  `.alreadyRecorded`, `outcomes` contains at least one failed outcome for
+  `.notRecorded`, and `outcomes` contains no failed outcomes for `.recorded` or
+  `.failed`. `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16 code
+  units.
 - **Same-store key mapping and `overlappingKeys`**: Migrating within a single
   store is allowed when every item maps its source key to a different
-  destination key identifier, enabling in-place key renames and value
+  destination key in that store, enabling in-place key renames and value
   transforms. Rejecting same-store batches where one item's destination is
   another item's source (`overlappingKeys(_:)`, such as `A -> B` and `B -> C`
   or `A -> B` and `B -> A`) guarantees that batch results do not depend on item
   order.
-- **Representation defaults built on `decode` and `encode`**: Providing default
-  implementations of the eight store- and container-specific `get` and `set`
-  methods on `PersistentKeyValueRepresentation` and
+- **Representation defaults, container hooks in checked conversion, and the append-or-assign contract**:
+  Providing default implementations of the eight store- and container-specific
+  `get` and `set` methods on `PersistentKeyValueRepresentation` and
   `PrimitiveKeyValuePersistible` reduces custom conformances to two methods
   (`decode(storageObject:format:)` and `encode(_:format:)` /
-  `encode(format:)`). Built-in representations and primitive types keep their
-  specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
+  `encode(format:)`), while built-in representations and primitive types keep
+  their specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
   launch-argument string coercion and direct property-list container casting
-  remain intact.
+  remain intact. Checked conversion for `Array` and `Dictionary`
+  (`Array.decode`/`encode` and `Dictionary.decode`/`encode`, used by migration
+  and `UserDefaults.register(_:)`) routes through the element or value
+  representation's `get(from:)`, `set(_:to:)`, `get(_:from:)`, and
+  `set(_:to:in:)` container hooks within a task-local `CheckedConversion` scope
+  rather than calling scalar `decode` and `encode` element by element, because a
+  per-element scratch path bypasses custom container formats (such as
+  delta-coded arrays) and changes the meaning of stored elements. Within
+  `CheckedConversion`, nested dictionary reads route through `Dictionary.decode`
+  so undecodable entries fail instead of being omitted. Container write hooks
+  receive an empty array (or a dictionary without `dictionaryKey`) and may
+  either assign or append (preserving 1.x representations that append to
+  `propertyListArray` instead of using a pre-seeded sentinel marker); an empty
+  array result for non-empty input (or an absent dictionary entry) counts as a
+  failure unless scalar `encode` returns `nil` for every element (or for the
+  entry's value).
+- **Storage-location contract (`PersistentKeyProtocol.id`)**: A key's value
+  lives under its `id` in every store. Store-specific `PersistentKeyProtocol`
+  methods (`get`, `set`, and `remove` on `UserDefaults`,
+  `NSUbiquitousKeyValueStore`, and `InMemoryPersistentKeyValueStore`) customize
+  how a value is read, written, or gated (such as clamping a value or locking
+  `PersistentDebugKey` in Release builds), not where it is stored, so direct
+  store access, observation, and migration operate on the same entry under `id`.
 - **Removing `storeUnavailable` and omitting `LocalizedError`**: A store
   wrapper that cannot migrate throws its own error from `migrationEndpoint`,
   which propagates unchanged instead of being replaced by a generic
@@ -240,44 +273,105 @@ principles:
   same preferences file under distinct domain identities (or cause
   `persistentDomain(forName:)` to read the wrong domain). `UserDefaults.migratable(suiteName:)`
   returns `nil` when `suiteName` contains `/`, starts with `~`, or ends with
-  `.plist` (ignoring case), and compares domain names using case-folded Swift
-  `String` equality (which also folds Unicode canonical equivalence).
-- **Literal `UserDefaults` key identity**: Bridging `persistentDomain(forName:)`
-  to `[String: Any]` merges keys that are canonically equivalent as Swift
-  `String` values (such as NFC and NFD spellings of `"café"`) even though
-  Foundation stores and looks up `NSString` keys by literal UTF-16 code units.
+  `.plist` (ignoring case), checking those delimiters by UTF-8 code units
+  because a combining or prepended mark changes the Swift `Character` while Core
+  Foundation still sees the ASCII delimiter, and compares domain names using
+  case-folded Swift `String` equality (which also folds Unicode canonical
+  equivalence).
+- **Literal key identity (and the in-memory and dictionary-value exceptions)**:
+  `UserDefaults` and `NSUbiquitousKeyValueStore` store and look up `NSString`
+  keys by literal UTF-16 code units, whereas Swift `String` equality merges
+  canonically equivalent spellings (such as NFC and NFD spellings of `"café"`).
+  The package uses literal UTF-16 key identity across Foundation stores:
   `UserDefaultsMigrationBackend` sends `persistentDomain(forName:)` through
   Objective-C to keep the unbridged `NSDictionary` and looks up keys as
-  `NSString`, and `PropertyListMigrationStorage.equal` compares strings and
-  dictionary keys with `NSString.isEqual` and `NSDictionary.object(forKey:)`.
-- **Type-aware recursive snapshot verification**: Core Foundation treats
-  boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)` as equal under `==`
-  and `CFEqual`, even though format-aware representations distinguish booleans,
-  integers, and floating-point numbers. `PropertyListMigrationStorage.equal`
-  checks `CFBooleanGetTypeID()`, `CFNumberIsFloatType`, `NaN`, and floating-point
-  bit patterns (`0.0` versus `-0.0`) recursively across arrays and dictionaries,
-  and `UserDefaultsMigrationBackend` removes an existing key before writing when
-  the replacement object is `CFEqual` to the snapshot but has a different
-  property-list type so `UserDefaults` does not ignore the write.
+  `NSString`, `PropertyListMigrationStorage.equal` compares strings and
+  dictionary keys with `NSString.isEqual` and `NSDictionary.object(forKey:)`,
+  duplicate/overlap/`sameStore` validation in `UserDefaults` and
+  `NSUbiquitousKeyValueStore` uses literal UTF-16 identity,
+  `UserDefaults.register(_:)` builds an `NSMutableDictionary` keyed by
+  `NSString`, launch-argument coercion looks up the literal key in the unbridged
+  `UserDefaults.argumentDomain` dictionary, and Foundation observation
+  deregistration, iCloud changed-key filtering, and `@PersistentValue`
+  key-change detection compare key identifiers by UTF-16 code units. Two
+  exceptions follow from Swift `String` storage: `InMemoryPersistentKeyValueStore`
+  backs its storage with a Swift dictionary and therefore treats canonically
+  equivalent key identifiers as one key in both storage and migration
+  validation; and bridging a stored Foundation dictionary to `[String: Value]`
+  collapses canonically equivalent `NSString` keys into one Swift key, so
+  checked conversion (`Dictionary.decode`) rejects `NSDictionary` instances
+  whose entry count shrinks on bridging (failing at `.decode` and keeping the
+  source entry during migration), whereas ordinary `Dictionary` reads keep one
+  entry (which one is unspecified).
+- **Type-aware recursive snapshot verification, mutable in-memory references, and file URLs**:
+  Core Foundation treats boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)`
+  as equal under `==` and `CFEqual`, even though format-aware representations
+  distinguish booleans, integers, and floating-point widths.
+  `PropertyListMigrationStorage.equal` checks `CFBooleanGetTypeID()`,
+  `CFNumberIsFloatType`, `CFNumberGetByteSize` (`Float` versus `Double`), `NaN`,
+  and floating-point bit patterns (`0.0` versus `-0.0`) recursively across
+  arrays and dictionaries. `UserDefaultsMigrationBackend` removes an existing
+  key before writing when the replacement object is `CFEqual` to the snapshot
+  but has a different property-list type so `UserDefaults` does not ignore the
+  write, rechecking that the key is still absent after removal and failing at
+  `.write` with `PersistentKeyMigrationError.destinationChanged` if an observer
+  wrote during removal. Because `UserDefaults` stores file URLs as paths (which
+  strips a non-existent directory's trailing slash or drops a file URL host),
+  `UserDefaultsMigrationBackend.prepareMigrationWrite` verifies that decoding
+  the frozen object reproduces `url.absoluteString` and fails at `.prepare` with
+  `PersistentKeyValueConversionError.encodingFailed` before any mutation if it
+  does not. In `InMemoryPersistentKeyValueStore`, snapshots freeze Foundation
+  property-list objects (such as `NSMutableArray`) and compare their contents
+  before writing or removing, while other reference types verify by revision
+  only.
 - **Post-cleanup destination recheck on `move`**: Removing a move's source key
   notifies synchronous observers, which can modify or delete the destination
   key before `move` returns. Both `.overwriteDestination` and
   `.keepDestinationAndRemoveSource` recheck the destination snapshot after
   removing the source and fail the item at `.cleanup` with
   `PersistentKeyMigrationError.destinationChanged` (suppressing completion
-  recording) if the destination changed.
-- **Same-store in-place rewrite via `.key(_:to:transform:)`**: An app that must
-  keep an externally defined key name can upgrade its stored representation or
-  value type in one checked, tracked step by passing `.key(k, to: k, transform:)`
-  with byte-identical key identifiers (`source.id.utf8.elementsEqual(destination.id.utf8)`),
-  using `transform: { $0 }` for a representation-only change. Every copy or
-  move conflict policy rewrites the existing value in place without removing
-  the key as a source and reports `.rewritten`, while `.key(k)` and
-  `.key(k, to: k)` still throw `.sameStore`. The rule is based on the transform
-  overload and literal key identity rather than comparing value types or
-  representations because `PersistentKeyValueRepresentation` instances cannot
-  be compared for equality, so a type-based rule would accept and reject call
-  sites that look identical.
+  recording) if the destination changed. Under `.keepDestinationAndRemoveSource`,
+  `.failed(.cleanup)` with `.destinationChanged` also occurs before source
+  removal if the preserved destination value changed since the initial snapshot
+  (leaving the source in place); callers can read the source key to tell whether
+  it was removed.
+- **Same-store in-place rewrite via `.key(_:to:transform:)` (and retry/instance rules)**:
+  An app that must keep an externally defined key name can upgrade its stored
+  representation or value type in one checked, tracked step by passing
+  `.key(k, to: k, transform:)` with byte-identical key identifiers
+  (`source.id.utf8.elementsEqual(destination.id.utf8)`), using
+  `transform: { $0 }` for a representation-only change. Every copy or move
+  conflict policy rewrites the existing value in place without removing the key
+  as a source and reports `.rewritten`, while `.key(k)` and `.key(k, to: k)`
+  still throw `.sameStore`. A rewrite also requires `source` and `destination`
+  to be the same store instance (`migrationHandle`), throwing `.sameStore` when
+  two distinct instances alias one backing store (such as case-variant
+  `UserDefaults` suite handles that can hold different cached values). Because a
+  tracked batch replays from the start after a later item fails, a rewrite whose
+  stored value fails to decode with `source`'s representation checks whether the
+  snapshot decodes with `destination`'s representation and, if so, reports
+  `.rewritten` without running `transform` or writing again. An in-place rewrite
+  must therefore change the stored representation or use an idempotent
+  transform, whereas same-format value changes (such as dollars to cents) should
+  move to a new key identifier. The rule is based on the transform overload and
+  literal key identity rather than comparing value types or representations
+  because `PersistentKeyValueRepresentation` instances cannot be compared for
+  equality.
+- **Dotted-key `UserDefaults` monitor and observation scope**: Because
+  key-value observation treats `.` as a key-path separator, dotted
+  `UserDefaults` keys are observed through one `UserDefaultsKeyChangeMonitor`
+  associated with each `UserDefaults` instance. The monitor installs its
+  `UserDefaults.didChangeNotification` observer before the first read,
+  deduplicates reads and comparison values per literal UTF-16 key identifier
+  (fast-pathing identical cached non-`NSNumber` object references before
+  `PropertyListMigrationStorage.equal`), and serializes reconciliation with a
+  single-drainer loop that reads values and invokes callbacks outside its lock
+  so concurrent notifications are drained by the active reconciler without stale
+  reads overwriting newer comparison values. Because Foundation posts
+  `didChangeNotification` only for in-process defaults writes and not for
+  `addSuite(named:)` or `removeSuite(named:)`, dotted-key observation is scoped
+  to in-process changes to `object(forKey:)`, and callbacks under concurrent
+  writes can arrive on the reconciling thread.
 - **NFC normalization of migration IDs and dotless completion markers**:
   `PersistentKey.isMigrationCompleted(id:)` normalizes `id` with
   `precomposedStringWithCanonicalMapping` (NFC) before SHA-256 hashing so
@@ -333,13 +427,22 @@ The regression tests preserve these guarantees:
   cover same-store and cross-store key mapping, in-place rewrites, transforms,
   literal key and property-list type fidelity, post-cleanup rechecks, overlap
   and length validation, report invariants, and completion tracking.
-- [`PersistentKeyValueRepresentationDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Representation/PersistentKeyValueRepresentationDefaultsTests.swift)
-  and [`PrimitiveKeyValuePersistibleDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/PrimitiveKeyValuePersistibleDefaultsTests.swift)
-  cover default store and container access built on `decode` and `encode`.
+- [`PersistentKeyValueRepresentationDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Representation/PersistentKeyValueRepresentationDefaultsTests.swift),
+  [`PrimitiveKeyValuePersistibleDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/PrimitiveKeyValuePersistibleDefaultsTests.swift),
+  [`CustomContainerHookTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CustomContainerHookTests.swift),
+  and [`CanonicallyEquivalentKeyTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CanonicallyEquivalentKeyTests.swift)
+  cover default store and container access built on `decode` and `encode`,
+  custom container hooks and 1.x appending overrides, and literal versus
+  canonical key identity across registration, launch arguments, and
+  dictionaries.
+- [`UserDefaultsKeyChangeObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/UserDefaults/UserDefaultsKeyChangeObservationTests.swift)
+  and [`NSUbiquitousKeyValueStoreObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/NSUbiquitousKeyValueStore/NSUbiquitousKeyValueStoreObservationTests.swift)
+  cover the per-instance dotted-key monitor, deduplicated reads, registration
+  deregistration races, and literal key matching in observation.
 - [`PublicAPIClientTests`](../../Tests/PersistentKeyValueKitPublicAPITests/PublicAPIClientTests.swift)
-  checks consumer composition without `@testable import`; compile-fail fixtures
-  keep the endpoint opaque and enforce required protocol members, `tracking:`,
-  and the `items:` label.
+  checks consumer composition and the `id` storage-location contract without
+  `@testable import`; compile-fail fixtures keep the endpoint opaque and enforce
+  required protocol members, `tracking:`, and the `items:` label.
 
 The existing migration tests continue to cover representation conversion,
 verification, conflict policies, observation, and partial failures.

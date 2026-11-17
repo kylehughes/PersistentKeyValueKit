@@ -71,7 +71,10 @@ extension URL: PrimitiveKeyValuePersistible {
     /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``; a relative URL without a base URL encodes as its
     /// relative reference. For
     /// ``PersistentKeyValueStorageFormat/userDefaults``, encodes file URLs as tilde-abbreviated paths and non-file
-    /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`.
+    /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`. During migration to
+    /// `UserDefaults`, a file URL whose path encoding cannot reproduce its `absoluteString` (such as a non-existent
+    /// directory's trailing slash or a file URL host) fails at ``PersistentKeyMigrationReport/FailureStage/prepare``
+    /// with ``PersistentKeyValueConversionError/encodingFailed`` before any store is modified.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         switch format {
         case .propertyList, .ubiquitousKeyValueStore:
