@@ -77,6 +77,24 @@ func moveItemsToAppGroup(appGroup: UserDefaults) throws {
     try report.throwIfIncomplete()
 }
 
+func rewriteColorSchemeInPlace(userDefaults: UserDefaults) throws {
+    let legacyColorSchemeKey = PersistentKey<Int>("RuntimeColorScheme", defaultValue: 0)
+
+    let report = try userDefaults.move(
+        .key(
+            legacyColorSchemeKey,
+            to: .runtimeColorScheme,
+            transform: { rawScheme in
+                rawScheme == 1 ? .dark : .light
+            }
+        ),
+        to: userDefaults,
+        onConflict: .overwriteDestination,
+        tracking: .once(id: "runtime-color-scheme-v2")
+    )
+    try report.throwIfIncomplete()
+}
+
 func seedUbiquitousStore() throws {
     let report = try UserDefaults.standard.copy(
         [.runtimeColorScheme, .launchCount],

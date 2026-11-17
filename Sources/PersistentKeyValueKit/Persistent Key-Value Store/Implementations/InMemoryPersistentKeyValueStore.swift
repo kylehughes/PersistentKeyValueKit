@@ -14,8 +14,9 @@ import Foundation
 ///
 /// Unlike Foundation stores, `InMemoryPersistentKeyValueStore` stores typed Swift values directly (compacting `nil`
 /// elements out of Swift arrays and dictionaries of optionals) and records an explicit entry when an optional key is
-/// set to `nil`. Calling ``remove(_:)`` deletes the entry. When migrating a stored `nil` from an in-memory store to
-/// `UserDefaults` or `NSUbiquitousKeyValueStore` with
+/// set to `nil`. Calling ``remove(_:)`` deletes the entry. Migrations read and write the stored Swift value directly
+/// without calling the key's representation `decode` or `encode`. When migrating a stored `nil` from an in-memory store
+/// to `UserDefaults` or `NSUbiquitousKeyValueStore` with
 /// ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
 /// ``PersistentKeyMoveConflictPolicy/overwriteDestination``, the destination key is removed.
 ///

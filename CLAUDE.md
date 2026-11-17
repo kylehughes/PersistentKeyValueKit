@@ -13,7 +13,7 @@ This file is operating guidance for agents and contributors working in `Persiste
 - **Platforms**: `Package.swift` is the source of truth.
 - **Product**: `PersistentKeyValueKit`
 - **Tests**: XCTest
-- **Runtime resources**: none
+- **Runtime resources**: `PrivacyInfo.xcprivacy` (privacy manifest only)
 
 ## Core Rules
 

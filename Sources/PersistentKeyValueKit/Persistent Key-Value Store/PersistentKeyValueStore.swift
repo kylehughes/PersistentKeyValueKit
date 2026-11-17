@@ -96,8 +96,9 @@ public protocol PersistentKeyValueStore {
     ///
     /// - Parameter observer: The observer to register.
     /// - Parameter key: The key to observe.
-    /// - Parameter context: The context to use for `UserDefaults` key-value observation. This is a `NO-OP` for
-    ///   `NSUbiquitousKeyValueStore`.
+    /// - Parameter context: Arbitrary data that identifies the registration to ``deregister(_:for:context:)`` and is
+    ///   passed to `observeValue(forKeyPath:of:change:context:)` for `UserDefaults` and
+    ///   ``InMemoryPersistentKeyValueStore``.
     /// - Parameter selector: The selector to use for `NSUbiquitousKeyValueStore` notification observation. This is a
     ///   `NO-OP` for `UserDefaults`.
     func register<Key>(
