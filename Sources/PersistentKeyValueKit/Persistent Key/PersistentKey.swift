@@ -9,11 +9,8 @@ import Foundation
 
 /// A key for a value in a ``PersistentKeyValueStore``.
 ///
-/// It is recommended to use the static accessor pattern to define and access keys. This pattern allows you to define
-/// keys in common locations and access them anywhere in a type-safe manner. The APIs are designed to be as ergonomic
-/// as possible for this pattern.
-///
-/// e.g.
+/// Define reusable keys as static members on ``PersistentKeyProtocol`` so call sites can use leading-dot syntax across
+/// stores, property wrappers, observation APIs, and migrations:
 ///
 /// ```swift
 /// extension PersistentKeyProtocol where Self == PersistentKey<Date> {
@@ -21,10 +18,9 @@ import Foundation
 ///         Self("MostRecentLaunchDate", defaultValue: .distantPast)
 ///     }
 /// }
-/// …
+///
 /// userDefaults.set(.mostRecentLaunchDate, to: .now)
-/// …
-/// guard userDefaults.get(.mostRecentLaunchDate) < firstOfMonth else …
+/// let launchDate = userDefaults.get(.mostRecentLaunchDate)
 /// ```
 public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     /// The default value for the key.

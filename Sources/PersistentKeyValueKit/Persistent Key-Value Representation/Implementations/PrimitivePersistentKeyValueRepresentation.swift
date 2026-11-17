@@ -7,12 +7,10 @@
 
 import Foundation
 
-/// A representation of a value in a ``PersistentKeyValueStore`` that is itself a persistible type and defines
-/// explicitly how to interface with `UserDefaults` and `NSUbiquitousKeyValueStore`.
+/// A representation that delegates conversion and store access to a ``PrimitiveKeyValuePersistible`` type.
 ///
-/// `Value` is required to conform to ``PrimitiveKeyValuePersistible``. All applicable standard library & Foundation
-/// types already conform. It is unlikely that you need to use this representation, unless you have built an
-/// especially-custom representation for your custom type and made it conform to ``PrimitiveKeyValuePersistible``.
+/// Built-in primitive types (`Bool`, `Int`, `Float`, `Double`, `String`, `Data`, `URL`, `Array`, and `Dictionary`) use
+/// this representation as their default ``KeyValuePersistible/persistentKeyValueRepresentation``.
 ///
 /// - SeeAlso: ``PrimitiveKeyValuePersistible``
 public struct PrimitivePersistentKeyValueRepresentation<Value>

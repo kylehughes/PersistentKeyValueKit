@@ -7,15 +7,16 @@
 
 import Foundation
 
-/// A key for a value in a ``PersistentKeyValueStore`` that is only mutable in debug builds.
+/// A key for a value in a ``PersistentKeyValueStore`` whose `UserDefaults` and `NSUbiquitousKeyValueStore` access is
+/// only mutable in Debug builds.
 ///
-/// In production builds, the default value is always returned and setting the value has no effect.
+/// In Release builds, `get(from:)`, `set(to:in:)`, and `remove(from:)` on `UserDefaults` and
+/// `NSUbiquitousKeyValueStore` always return the release default value and ignore writes and removals.
+/// ``InMemoryPersistentKeyValueStore`` stores Swift values directly without calling those methods, so it continues to
+/// read, write, and remove values in Release builds. Store migrations check ``isMigrationEnabled`` and skip the key
+/// with ``PersistentKeyMigrationReport/Status/keyDisabled`` in Release builds across all stores.
 ///
-/// It is recommended to use the static accessor pattern to define and access keys. This pattern allows you to define
-/// keys in common locations and access them anywhere in a type-safe manner. The APIs are designed to be as ergonomic
-/// as possible for this pattern.
-///
-/// e.g.
+/// Define reusable keys as static members on ``PersistentKeyProtocol``:
 ///
 /// ```swift
 /// extension PersistentKeyProtocol where Self == PersistentDebugKey<Bool> {
@@ -27,15 +28,14 @@ import Foundation
 ///         )
 ///     }
 /// }
-/// …
+///
 /// userDefaults.set(.isAppStoreRatingEnabled, to: false)
-/// …
 /// userDefaults.get(.isAppStoreRatingEnabled) // false in Debug, true in Release
 /// ```
 ///
-/// - Warning: Debug keys will only work if compiling this framework from source (e.g. as a SwiftPM dependency). If
-///   using a pre-built binary then the `DEBUG` code paths will likely not be included and default values will always
-///   be used.
+/// - Warning: `PersistentDebugKey` relies on the `#if DEBUG` compilation condition when compiling
+///   `PersistentKeyValueKit` from source (such as through Swift Package Manager). Prebuilt binary distributions
+///   compiled in Release mode always take the release path.
 public struct PersistentDebugKey<Value>:
     Identifiable,
     PersistentKeyProtocol
@@ -44,8 +44,8 @@ where
 {
     /// The default value for the key.
     ///
-    /// In debug builds, this value is used when the key has not been set. In production builds, this value is always 
-    /// used.
+    /// In Debug builds, this value is returned when the key has not been set. In Release builds, this value is always
+    /// returned.
     public let defaultValue: Value
 
     /// The unique identifier for the key.

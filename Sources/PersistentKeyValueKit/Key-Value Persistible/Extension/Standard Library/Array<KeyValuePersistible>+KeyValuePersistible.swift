@@ -21,6 +21,7 @@ extension Array: KeyValuePersistible where Element: KeyValuePersistible {
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible {
+    /// Decodes an array of elements from a stored `[Any]` array using ``PersistentKeyValueStorageFormat/propertyList``.
     public static func decode(
         storageObject: Any,
         format: PersistentKeyValueStorageFormat
@@ -36,6 +37,8 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         }
     }
 
+    /// Encodes the elements into a `[Any]` array using ``PersistentKeyValueStorageFormat/propertyList``, omitting
+    /// elements whose encoding returns `nil`.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         try compactMap { value in
             try encodeStorageRepresentation(

@@ -7,15 +7,8 @@
 
 import Foundation
 
-/// A protocol for a representation of a value in a ``PersistentKeyValueStore`` that is itself a persistible type and
-/// defines explicitly how to interface with `UserDefaults` and `NSUbiquitousKeyValueStore`.
-///
-/// This protocol is intended for use with types that have explicit interfaces defined on `UserDefaults` and/or
-/// `NSUbiquitousKeyValueStore`. All of those types already implement this protocol. Other types should prefer
-/// proxy representations, like ``CodablePersistentKeyValueRepresentation`` or
-/// ``ProxyPersistentKeyValueRepresentation``, which simplify the requirements and make the best performance decisions.
-/// However, it is possible to use this type to create very specific or complex representations of a custom type within
-/// a store, such as utilizing `[String: Any]` storage.
+/// A ``KeyValuePersistible`` type that converts directly to and from the storage objects used by `UserDefaults`,
+/// `NSUbiquitousKeyValueStore`, and property-list containers.
 ///
 /// The built-in primitive types are:
 /// - `Array<Element> where Element: KeyValuePersistible`
@@ -28,12 +21,16 @@ import Foundation
 /// - `String`
 /// - `URL`
 ///
-/// It is intended, but not required, that conforming types' representations are of type
-/// ``PrimitivePersistentKeyValueRepresentation``.
+/// Most custom types should conform to ``KeyValuePersistible`` using a proxy representation such as
+/// ``RawRepresentablePersistentKeyValueRepresentation``, ``CodablePersistentKeyValueRepresentation``,
+/// ``LosslessStringConvertiblePersistentKeyValueRepresentation``, or ``ProxyPersistentKeyValueRepresentation``.
+/// Conform to `PrimitiveKeyValuePersistible` (paired with ``PrimitivePersistentKeyValueRepresentation``) when a type
+/// needs direct access to property-list storage such as `[String: Any]`.
 ///
-/// Conforming types implement ``decode(storageObject:format:)`` and ``encode(format:)``. The store-specific `get` and
-/// `set` methods have default implementations built on those conversions; property-list arrays and dictionaries use
-/// ``PersistentKeyValueStorageFormat/propertyList``. Built-in primitive types implement these methods themselves.
+/// Conforming types implement ``decode(storageObject:format:)`` and ``encode(format:)``. The store- and
+/// container-specific `get` and `set` methods have default implementations built on those conversions, using
+/// ``PersistentKeyValueStorageFormat/propertyList`` for property-list arrays and dictionaries. Built-in primitive
+/// types implement these methods themselves.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Decodes a value from a stored object for the given storage format.
     ///
@@ -52,78 +49,68 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
 
     // MARK: Interfacing with Property List Array
     
-    /// Get the values from the given property-list-compatible array, if they exist and if they can all be represented
-    /// as `Self`.
+    /// Decodes the elements of `propertyListArray` as `Self`.
     ///
-    /// - Parameter propertyListArray: The array to get the values from.
-    /// - Returns: The values from the array, or `nil` if any value cannot be represented as `Self`. Note that this
-    ///   function will return `nil` if the array contains values of different types, as it enforces type homogeneity
-    ///   across all elements.
-    /// - Important: This function will return `nil` if the array contains values of different types, as it enforces
-    ///   type homogeneity across all elements.
+    /// - Parameter propertyListArray: The array to decode values from.
+    /// - Returns: The decoded values, or `nil` if any element cannot be decoded as `Self`.
     static func get(from propertyListArray: [Any]) -> [Self]?
     
-    /// Set the values in the given property-list-compatible array.
+    /// Replaces `propertyListArray` with the encoded representations of `values`.
     ///
-    /// - Parameter values: The values to set in the array. All values must be of the same type.
-    /// - Parameter propertyListArray: The array to set the values in.
+    /// - Parameter values: The values to encode into `propertyListArray`.
+    /// - Parameter propertyListArray: The array to replace with the encoded values.
     static func set(_ values: [Self], to propertyListArray: inout [Any])
     
     // MARK: Interfacing with Property List Dictionary
     
-    /// Get the value at the given key from the given property-list-compatible dictionary, if it exists and if it can
-    /// be represented as `Self`.
+    /// Decodes the value at `dictionaryKey` in `propertyListDictionary`, if present and representable as `Self`.
     ///
-    /// - Parameter dictionaryKey: The key to get the value from.
-    /// - Parameter propertyListDictionary: The dictionary to get the value from at `dictionaryKey`.
-    /// - Returns: The value at `dictionaryKey` in `propertyListDictionary`, or `nil` if it does not exist or cannot be
-    ///   represented as `Self`.
+    /// - Parameter dictionaryKey: The key to look up.
+    /// - Parameter propertyListDictionary: The dictionary to read from.
+    /// - Returns: The decoded value at `dictionaryKey` in `propertyListDictionary`, or `nil` if it is absent or cannot
+    ///   be decoded as `Self`.
     static func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Self?
     
-    /// Set the value at the given key in the given property-list-compatible dictionary.
+    /// Sets the value at `dictionaryKey` in `propertyListDictionary`.
     ///
-    /// - Parameter dictionaryKey: The key to set the value at.
-    /// - Parameter value: The value to set.
-    /// - Parameter propertyListDictionary: The dictionary to set the value in at `dictionaryKey`.
+    /// - Parameter dictionaryKey: The key to update.
+    /// - Parameter value: The value to encode.
+    /// - Parameter propertyListDictionary: The dictionary to update at `dictionaryKey`.
     static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any])
     
     // MARK: Interfacing with User Defaults
     
-    /// Get the value at the given key from the given `UserDefaults`, if it exists and if it can be represented as
-    /// `Self`.
+    /// Decodes the value at `userDefaultsKey` in `userDefaults`, if present and representable as `Self`.
     ///
-    /// - Parameter userDefaultsKey: The key to get the value from.
-    /// - Parameter userDefaults: The `UserDefaults` to get the value from at `userDefaultsKey`.
-    /// - Returns: The value at `userDefaultsKey` in `userDefaults`, or `nil` if it does not exist or cannot be
-    ///   represented as `Self`.
+    /// - Parameter userDefaultsKey: The key to look up.
+    /// - Parameter userDefaults: The `UserDefaults` instance to read from.
+    /// - Returns: The decoded value at `userDefaultsKey` in `userDefaults`, or `nil` if it is absent or cannot be
+    ///   decoded as `Self`.
     static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self?
     
-    /// Set the value at the given key in the given `UserDefaults`.
+    /// Sets the value at `userDefaultsKey` in `userDefaults`.
     ///
-    /// - Parameter userDefaultsKey: The key to set the value at.
-    /// - Parameter value: The value to set.
-    /// - Parameter userDefaults: The `UserDefaults` to set the value in at `userDefaultsKey`.
+    /// - Parameter userDefaultsKey: The key to update.
+    /// - Parameter value: The value to encode.
+    /// - Parameter userDefaults: The `UserDefaults` instance to update at `userDefaultsKey`.
     static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults)
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    /// Get the value at the given key from the given `NSUbiquitousKeyValueStore`, if it exists and if it can be
-    /// represented as `Self`.
+    /// Decodes the value at `ubiquitousStoreKey` in `ubiquitousStore`, if present and representable as `Self`.
     ///
-    /// - Parameter ubiquitousStoreKey: The key to get the value from.
-    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from at
-    ///   `ubiquitousStoreKey`.
-    /// - Returns: The value at `ubiquitousStoreKey` in `ubiquitousStore`, or `nil` if it does not exist or cannot be
-    ///   represented as `Self`.
+    /// - Parameter ubiquitousStoreKey: The key to look up.
+    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` instance to read from.
+    /// - Returns: The decoded value at `ubiquitousStoreKey` in `ubiquitousStore`, or `nil` if it is absent or cannot
+    ///   be decoded as `Self`.
     @available(watchOS 9.0, *)
     static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self?
     
-    /// Set the value at the given key in the given `NSUbiquitousKeyValueStore`.
+    /// Sets the value at `ubiquitousStoreKey` in `ubiquitousStore`.
     ///
-    /// - Parameter ubiquitousStoreKey: The key to set the value at.
-    /// - Parameter value: The value to set.
-    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in at
-    ///   `ubiquitousStoreKey`.
+    /// - Parameter ubiquitousStoreKey: The key to update.
+    /// - Parameter value: The value to encode.
+    /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` instance to update at `ubiquitousStoreKey`.
     @available(watchOS 9.0, *)
     static func set(_ ubiquitousStoreKey: String, to value: Self, in ubiquitousStore: NSUbiquitousKeyValueStore)
 }

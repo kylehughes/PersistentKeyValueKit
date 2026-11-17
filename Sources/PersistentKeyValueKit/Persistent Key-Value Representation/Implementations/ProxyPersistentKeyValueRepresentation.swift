@@ -47,7 +47,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         }
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// - Parameter to: The closure used to serialize a value into its proxy.
     /// - Parameter from: The closure used to deserialize a value from its proxy.
@@ -60,7 +60,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         self.from = from
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// This specialized initializer is useful for callers using `KeyPath` shorthand with `Optional` values.
     ///
@@ -75,7 +75,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         self.from = from
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// This specialized initializer is useful for callers using `KeyPath` shorthand with `Optional` values.
     ///
@@ -90,7 +90,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         self.from = from
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// This specialized initializer is useful for callers using `KeyPath` shorthand with `Optional` values.
     ///

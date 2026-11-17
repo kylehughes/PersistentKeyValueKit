@@ -28,14 +28,14 @@ import SwiftUI
 /// }
 /// ```
 ///
-/// If you don't specify a store, `PersistentValue` uses the `defaultPersistentKeyValueStore` from the environment. If
-/// you don't specify a default value, `UserDefaults.standard` is used.
+/// If you don't specify a store, `PersistentValue` reads `defaultPersistentKeyValueStore` from the SwiftUI
+/// environment, which defaults to `UserDefaults.standard`.
 ///
-/// - Important: Using this property wrapper with `NSUbiquitousKeyValueStore` requires all local (i.e. in-app) mutations
-///   to be performed through the ``PersistentKeyValueStore`` APIs, or this property wrapper. There is no way to observe
-///   local changes performed through the system APIs for `NSUbiquitousKeyValueStore`; notifications only exist for
-///   external changes, and key-value observation does not work. We emit a custom notification for internal changes to
-///   emulate the external system behavior.
+/// - Important: Using this property wrapper with `NSUbiquitousKeyValueStore` requires local (in-app) mutations to be
+///   performed through ``PersistentKeyValueStore``, `PersistentValue`, or store migration. Foundation posts
+///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so
+///   `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for local writes and
+///   removals.
 /// - Attention: We use `@preconcurrency` to conform to `DynamicProperty` because otherwise `update()` is forced to
 ///   be nonisolated in order to meet the conformance. Apple uses `@preconcurrency` for their `@MainActor`-isolated
 ///   property wrappers as of 2024-10-22.

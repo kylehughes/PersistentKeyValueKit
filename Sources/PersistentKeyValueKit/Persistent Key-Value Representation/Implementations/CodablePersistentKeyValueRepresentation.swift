@@ -52,6 +52,7 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
     
     // MARK: Public Instance Interface
 
+    /// Decodes a stored object into `Proxy` and decodes `Value` with ``decoder``, rethrowing any `Decoder` error.
     public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
         let proxy = try Encoder.Output.persistentKeyValueRepresentation.decode(
             storageObject: storageObject,
@@ -60,6 +61,8 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
         return try decoder.decode(Value.self, from: proxy)
     }
 
+    /// Encodes `value` into `Proxy` with ``encoder`` and encodes the result for `format`, rethrowing any `Encoder`
+    /// error.
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
         let proxy = try encoder.encode(value)
         return try encodeStorageRepresentation(

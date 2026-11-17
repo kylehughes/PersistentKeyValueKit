@@ -25,6 +25,8 @@ where
     Key == String,
     Value: KeyValuePersistible
 {
+    /// Decodes a dictionary from a stored `[String: Any]` dictionary using
+    /// ``PersistentKeyValueStorageFormat/propertyList``.
     public static func decode(
         storageObject: Any,
         format: PersistentKeyValueStorageFormat
@@ -42,6 +44,8 @@ where
         return values
     }
 
+    /// Encodes the dictionary into a `[String: Any]` dictionary using ``PersistentKeyValueStorageFormat/propertyList``,
+    /// omitting entries whose value encodes to `nil`.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         var objects: [String: Any] = [:]
         for (key, value) in self {

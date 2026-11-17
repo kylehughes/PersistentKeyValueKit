@@ -8,10 +8,10 @@
 import CryptoKit
 import Foundation
 
-/// A protocol for a key for a value in a ``PersistentKeyValueStore``.
+/// A typed key for a value in a ``PersistentKeyValueStore``.
 ///
-/// This interface is designed around the two persistent key-value stores provided by Apple platforms: `UserDefaults`
-/// and `NSUbiquitousKeyValueStore`. It is not intended to support a generic key-value store implementation.
+/// This protocol models keys backed by `UserDefaults`, `NSUbiquitousKeyValueStore`, or
+/// ``InMemoryPersistentKeyValueStore``.
 public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID == String {
     // MARK: Associated Types
     
@@ -28,7 +28,7 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
 
     /// The unique identifier for the key.
     ///
-    /// This is value used as the key in the underlying stores.
+    /// This is the string key used in the underlying stores.
     ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     var id: ID { get }

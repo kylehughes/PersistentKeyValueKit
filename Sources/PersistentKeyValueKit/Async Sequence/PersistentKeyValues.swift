@@ -23,8 +23,8 @@ import Foundation
 /// ```
 ///
 /// By default, the sequence emits the current value immediately upon iteration, followed by subsequent changes. Slow
-/// consumers receive the latest pending change rather than every intermediate value. To observe only changes without the
-/// initial value, pass `emitsInitialValue: false`.
+/// consumers receive the latest pending change rather than every intermediate value. To observe only changes without
+/// the initial value, pass `emitsInitialValue: false`.
 ///
 /// e.g.
 ///
@@ -36,9 +36,9 @@ import Foundation
 ///
 /// - Important: The sequence continues producing values until the iteration is cancelled or the `Task` is cancelled.
 ///   Always iterate within a cancellable context.
-/// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the latest
-///   observed value without accumulating an unbounded backlog. Pass `.unbounded` if every observed transition must be
-///   delivered.
+/// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the
+///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` if every observed transition
+///   must be delivered.
 /// - SeeAlso: ``PersistentKeyProtocol/changes(in:bufferingPolicy:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentValue`` for observation relying on SwiftUI `View` and environment.
 public struct PersistentKeyValues<Key> where Key: PersistentKeyProtocol {

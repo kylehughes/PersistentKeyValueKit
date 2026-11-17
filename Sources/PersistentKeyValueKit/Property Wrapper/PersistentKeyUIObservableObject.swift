@@ -10,17 +10,16 @@ import Foundation
 
 /// A `MainActor`-isolated observer for a key in a ``PersistentKeyValueStore``.
 ///
-/// This class, and the ``PersistentKeyValueStore`` functions it relies upon, implement the two known ways to observe
-/// `UserDefaults` and `NSUbiquitousKeyValueStore`. It is likely that other ``PersistentKeyValueStore`` implementations 
-/// can be written under the same interface but that is not what it is optimized for. This lets us use
-/// ``PersistentValue`` with  any type of ``PersistentKeyValueStore`` and simplifies many callsites that previously had
-/// to be duplicated between those two known ``PersistentKeyValueStore`` implementations.
+/// `PersistentKeyUIObservableObject` drives ``PersistentValue`` by registering with any ``PersistentKeyValueStore``
+/// through ``PersistentKeyValueStore/register(observer:for:with:and:)`` and
+/// ``PersistentKeyValueStore/deregister(_:for:context:)`` (for example, KVO on `UserDefaults`, `NotificationCenter` on
+/// `NSUbiquitousKeyValueStore`, and direct callbacks on ``InMemoryPersistentKeyValueStore``).
 ///
-/// - Important: Using this class with `NSUbiquitousKeyValueStore` requires all local (i.e. in-app) mutations to be
-///   performed through the ``PersistentKeyValueStore`` APIs, or ``PersistentValue``. There is no way to observe local
-///   changes performed through the system APIs for `NSUbiquitousKeyValueStore`; notifications only exist for external
-///   changes, and key-value observation does not work. We emit a custom notification for internal changes to emulate
-///   the external system behavior.
+/// - Important: Using this class with `NSUbiquitousKeyValueStore` requires local (in-app) mutations to be performed
+///   through ``PersistentKeyValueStore``, ``PersistentValue``, or store migration. Foundation posts
+///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so
+///   `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for local writes and
+///   removals.
 @MainActor
 public final class PersistentKeyUIObservableObject<Key>: ObservableObject where Key: PersistentKeyProtocol {
     /// The key being observed.

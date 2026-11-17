@@ -40,8 +40,8 @@ extension PersistentKeyProtocol {
 
     /// Returns an `AsyncSequence` that produces values for this key as changes occur in the store.
     ///
-    /// By default, the sequence emits the current value immediately upon iteration, followed by subsequent changes. Slow
-    /// consumers receive the latest pending change rather than every intermediate value.
+    /// By default, the sequence emits the current value immediately upon iteration, followed by subsequent changes.
+    /// Slow consumers receive the latest pending change rather than every intermediate value.
     ///
     /// e.g.
     ///

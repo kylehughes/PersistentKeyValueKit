@@ -7,16 +7,14 @@
 
 import Foundation
 
-/// A protocol for a representation of a value in a ``PersistentKeyValueStore`` that is proxied through another
-/// persistible type.
+/// A protocol for a ``PersistentKeyValueRepresentation`` that persists `Value` by converting it to and from a
+/// ``KeyValuePersistible`` `Proxy` type.
 ///
-/// This protocol is useful to build other representations that proxy a type in a specific way, like 
-/// ``CodablePersistentKeyValueRepresentation`` which proxies a type through its `Codable` implementation, or
-/// ``RawRepresentablePersistentKeyValueRepresentation`` which proxies a type through its `RawRepresentable`
-/// implementation.
-///
-/// To create a one-off representation to conform a type to ``KeyValuePersistible``, one should use
-/// ``ProxyPersistentKeyValueRepresentation``, which is a concrete implementation of this protocol.
+/// Built-in representations such as ``CodablePersistentKeyValueRepresentation``,
+/// ``RawRepresentablePersistentKeyValueRepresentation``, and
+/// ``LosslessStringConvertiblePersistentKeyValueRepresentation`` conform to this protocol. Use
+/// ``ProxyPersistentKeyValueRepresentation`` for closure-based proxy conversions without defining a new representation
+/// type.
 public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: PersistentKeyValueRepresentation {
     // MARK: Associated Types
     

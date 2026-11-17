@@ -5,15 +5,18 @@
 //  Created by Kyle Hughes on 4/13/24.
 //
 
-/// A type that can be a value in a ``PersistentKeyValueStore``.
+/// A type whose values can be persisted in a ``PersistentKeyValueStore``.
+///
+/// Conforming types supply ``persistentKeyValueRepresentation`` to convert values to and from a store's underlying
+/// storage format.
 public protocol KeyValuePersistible {
     // MARK: Associated Types
     
-    /// The type of the representation of the key-value pair in the ``PersistentKeyValueStore``.
+    /// The representation type that converts `Self` to and from storage objects in a ``PersistentKeyValueStore``.
     associatedtype PersistentKeyValueRepresentation: PersistentKeyValueKit.PersistentKeyValueRepresentation<Self>
     
     // MARK: Static Interface
     
-    /// The representation of the key-value pair in the ``PersistentKeyValueStore``.
+    /// The representation used by default when persisting `Self` in a ``PersistentKeyValueStore``.
     static var persistentKeyValueRepresentation: Self.PersistentKeyValueRepresentation { get }
 }

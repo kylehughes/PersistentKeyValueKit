@@ -7,14 +7,16 @@
 
 import Foundation
 
-/// A persistent key-value representation that can represent the `Optional` variant of another representation's
-/// `Value`. All non-optional operations are deferred to the base representation.
-/// 
-/// - Important: Consumers of this library should not have to interact with this type directly in happy-path scenarios.
+/// A representation that wraps another ``PersistentKeyValueRepresentation`` to persist `Base.Value?`.
+///
+/// Non-`nil` values delegate to ``base``. Encoding `nil` returns `nil`, removing the key from a store or omitting the
+/// element from a property-list collection. `Optional<Wrapped>` and the optional `PersistentKey` and
+/// `PersistentDebugKey` initializers construct this representation automatically.
 public struct OptionalPersistentKeyValueRepresentation<Base>
 where
     Base: PersistentKeyValueRepresentation
 {
+    /// The underlying representation used for non-`nil` values.
     public let base: Base
     
     // MARK: Public Initialization

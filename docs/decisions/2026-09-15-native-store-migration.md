@@ -75,13 +75,56 @@ not need a separate migration construction step. A non-standard `UserDefaults`
 instance created directly through Foundation remains valid for ordinary
 storage, but migration throws `PersistentKeyMigrationError.missingMigrationDomain`
 before mutation because the framework cannot identify its persistent domain.
+`UserDefaults` domain names are compared case-insensitively for migration
+identity and reserved-domain validation. On case-insensitive file systems (the
+macOS default), suite names that differ only by case resolve to the same
+preferences file, so treating them as distinct stores risked a move removing
+the values it had just written. Because this comparison folds case on every
+platform, two genuinely distinct suites on a case-sensitive volume whose names
+differ only by case are also treated as one store, and migrations between them
+are rejected.
 
 The public migration operation stays generic. Its opaque, throwing endpoint
 requirement is part of `PersistentKeyValueStore`; wrappers forward it to their
-backing store with `try base.migrationEndpoint`. Endpoint construction, backend
-identity, snapshots, and verification remain internal. Checked representation
-conversion remains public. Migration does not intercept a wrapper's ordinary
-`get` or `set` behavior.
+backing store with `try base.migrationEndpoint`, and a wrapper that cannot
+migrate throws its own error from `migrationEndpoint`, which propagates
+unchanged. Endpoint construction, backend identity, snapshots, and verification
+remain internal. Migration does not intercept a wrapper's ordinary `get` or
+`set` behavior.
+
+`copy` and `move` provide four overloads (for a single key, a single
+`PersistentKeyMigrationItem`, an unlabeled `[any PersistentKeyProtocol]` array,
+and a labeled `items: [PersistentKeyMigrationItem]` array), each requiring
+explicit `onConflict:` and `tracking:` arguments (`PersistentKeyMigrationTracking.untracked`,
+`.once(id:)` recorded in the destination store, or `.once(id:recordedIn:)`).
+Completion marker keys (`PersistentKey.isMigrationCompleted(id:)`) hash `id`
+with SHA-256 and base64url encoding so identifiers of any length fit within
+`NSUbiquitousKeyValueStore`'s 128-UTF-16-code-unit key limit. `PersistentKeyMigrationItem`
+supports migrating a key unchanged (`.key(_:)`), renaming a key of the same
+value type (`.key(_:to:)`), and transforming a value across keys or types
+(`.key(_:to:transform:)`). Migrating within a single store is permitted when
+every item maps its source key to a different destination key identifier;
+duplicate source or destination key identifiers throw `duplicateKey(_:)`, and
+same-store batches where one item's destination is another item's source throw
+`overlappingKeys(_:)`.
+
+`copy` and `move` return `PersistentKeyMigrationReport` and are not marked
+`@discardableResult`. `PersistentKeyMigrationReport.Completion` and
+`PersistentKeyMigrationReport.Status` (including `.failed(FailureStage)`) are
+`Hashable`, while `completionError` and `Outcome.error` carry any thrown error
+alongside the status. `report.throwIfIncomplete()` throws
+`PersistentKeyMigrationIncompleteError` carrying the report when any item or
+completion marker fails or goes unrecorded. Public initializers on
+`PersistentKeyMigrationReport` and `Outcome` remain available for test fixtures
+and enforce with preconditions that an error is present if and only if the
+status is `.failed`. Migration errors do not conform to `LocalizedError`.
+
+`PersistentKeyValueRepresentation` and `PrimitiveKeyValuePersistible` require
+checked `decode(storageObject:format:)` and `encode(_:format:)` /
+`encode(format:)` methods. Both protocols provide default implementations of
+their eight store- and container-specific `get` and `set` methods built on
+those two conversions, while built-in representations and primitive types keep
+their specialized implementations.
 
 ## Why this design
 
@@ -123,6 +166,63 @@ mechanism, native dynamic type, protocol passage, lifetime cleanup, and the
 behavior of untagged separate instances. The probes did not establish behavior
 on every Apple platform or prove entitlement configuration.
 
+Subsequent refinements to the migration and representation APIs follow the same
+principles:
+
+- **No default for `tracking:`**: Whether a migration repeats on every call or
+  records a persistent completion marker changes what later launches do, so the
+  call site chooses `tracking:` explicitly.
+- **The `items:` label on item batches**: Observed with Apple Swift 6.4.2
+  (Xcode 27.2), having two unlabeled array overloads (`_ keys: [any PersistentKeyProtocol]`
+  and `_ items: [PersistentKeyMigrationItem]`) made an empty literal
+  `copy([], ...)` ambiguous, and a mixed literal missing `.key(...)` on one
+  element failed type-checking with `"failed to produce diagnostic for
+  expression"`. A refining-protocol alternative (`[any PersistentKeyMigrationEntry]`)
+  also failed because implicit-member lookup on an existential element type did
+  not resolve static key accessors constrained with `where Self == PersistentKey<T>`.
+  Labeling the item overload `items:` lets `copy([], ...)` resolve unambiguously
+  to `[any PersistentKeyProtocol]` (exercised by
+  `MigrationReportTests.testEmptyBatchWithTrackingRecordsMarker`) and reports
+  `"missing argument label 'items:'"` when `.key(...)` items are passed without
+  the label (enforced by `Tests/CompileFail/UnlabeledItemBatch.swift` via
+  `Scripts/check-public-api.sh`). The `"failed to produce diagnostic"` behavior
+  and the refining-protocol experiment were observed during design and are not
+  checked by automated tests.
+- **Non-discardable `PersistentKeyMigrationReport`**: `copy` and `move` are not
+  `@discardableResult`. Because per-item and completion-marker failures are
+  recorded in the returned report rather than thrown, the unused-result warning
+  nudges callers to inspect the report or call `try report.throwIfIncomplete()`.
+- **Report and outcome shape**: `PersistentKeyMigrationReport.Completion` and
+  `PersistentKeyMigrationReport.Status` (including `.failed(FailureStage)`)
+  conform to `Hashable` without embedding `any Error`, while `completionError`
+  and `Outcome.error` carry the error alongside the status, following the
+  precedent of `URLSessionTask.state` and `URLSessionTask.error`. Public
+  initializers on `PersistentKeyMigrationReport` and `Outcome` are kept so
+  callers can construct test fixtures, with preconditions that enforce that an
+  error is non-`nil` if and only if the status is `.failed`.
+- **Same-store key mapping and `overlappingKeys`**: Migrating within a single
+  store is allowed when every item maps its source key to a different
+  destination key identifier, enabling in-place key renames and value
+  transforms. Rejecting same-store batches where one item's destination is
+  another item's source (`overlappingKeys(_:)`, such as `A -> B` and `B -> C`
+  or `A -> B` and `B -> A`) guarantees that batch results do not depend on item
+  order.
+- **Representation defaults built on `decode` and `encode`**: Providing default
+  implementations of the eight store- and container-specific `get` and `set`
+  methods on `PersistentKeyValueRepresentation` and
+  `PrimitiveKeyValuePersistible` reduces custom conformances to two methods
+  (`decode(storageObject:format:)` and `encode(_:format:)` /
+  `encode(format:)`). Built-in representations and primitive types keep their
+  specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
+  launch-argument string coercion and direct property-list container casting
+  remain intact.
+- **Removing `storeUnavailable` and omitting `LocalizedError`**: A store
+  wrapper that cannot migrate throws its own error from `migrationEndpoint`,
+  which propagates unchanged instead of being replaced by a generic
+  `PersistentKeyMigrationError.storeUnavailable`. Migration errors do not
+  conform to `LocalizedError` because they are developer diagnostics and the
+  package ships no localized resources.
+
 ## Consequences
 
 - Generic consumer abstractions can migrate without knowing whether their
@@ -146,9 +246,18 @@ The regression tests preserve these guarantees:
 - [`MigrationNativeEndpointTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationNativeEndpointTests.swift)
   covers setup failures before storage access, suite aliases, added-suite fallbacks,
   and migration through generic and existential store types.
+- [`MigrationKeyMappingTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationKeyMappingTests.swift),
+  [`MigrationReportTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationReportTests.swift),
+  and [`MigrationSetupValidationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationSetupValidationTests.swift)
+  cover same-store and cross-store key mapping, transforms, overlap and length
+  validation, report invariants, and completion tracking.
+- [`PersistentKeyValueRepresentationDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Representation/PersistentKeyValueRepresentationDefaultsTests.swift)
+  and [`PrimitiveKeyValuePersistibleDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/PrimitiveKeyValuePersistibleDefaultsTests.swift)
+  cover default store and container access built on `decode` and `encode`.
 - [`PublicAPIClientTests`](../../Tests/PersistentKeyValueKitPublicAPITests/PublicAPIClientTests.swift)
   checks consumer composition without `@testable import`; compile-fail fixtures
-  keep the endpoint opaque and the store requirement explicit.
+  keep the endpoint opaque and enforce required protocol members, `tracking:`,
+  and the `items:` label.
 
 The existing migration tests continue to cover representation conversion,
 verification, conflict policies, observation, and partial failures.

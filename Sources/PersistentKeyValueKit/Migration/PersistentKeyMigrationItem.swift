@@ -16,7 +16,7 @@ import Foundation
 ///     items: [
 ///         .key(.theme),
 ///         .key(.oldLaunchCount, to: .launchCount),
-///         .key(.legacyFlag, to: .mode) { $0 ? .on : .off },
+///         .key(.legacyFlag, to: .mode, transform: { $0 ? .on : .off }),
 ///     ],
 ///     to: appGroup,
 ///     onConflict: .keepBoth,

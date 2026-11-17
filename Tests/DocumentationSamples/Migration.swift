@@ -25,49 +25,67 @@ extension PersistentKeyProtocol where Self == PersistentKey<Int> {
     static var launchCount: Self {
         Self("LaunchCount", defaultValue: 0)
     }
+
+    static var legacyLaunchCount: Self {
+        Self("LegacyLaunchCount", defaultValue: 0)
+    }
+}
+
+extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
+    static var legacyDarkModeEnabled: Self {
+        Self("LegacyDarkModeEnabled", defaultValue: false)
+    }
+}
+
+func handleMigrationError(_ error: any Error, at status: PersistentKeyMigrationReport.Status) {
 }
 
 // MARK: - Samples
 
-func copyToAppGroup() throws {
-    guard let destination = UserDefaults.migratable(suiteName: "group.example.app") else {
-        return
+func makeAppGroupDefaults() throws -> UserDefaults? {
+    guard let appGroup = UserDefaults.migratable(suiteName: "group.example.app") else {
+        return nil
     }
 
+    let report = try UserDefaults.standard.move(
+        [.runtimeColorScheme, .launchCount],
+        to: appGroup,
+        onConflict: .keepBoth,
+        tracking: .once(id: "app-group-preferences-v1")
+    )
+    try report.throwIfIncomplete()
+
+    return appGroup
+}
+
+func moveItemsToAppGroup(appGroup: UserDefaults) throws {
+    let report = try UserDefaults.standard.move(
+        items: [
+            .key(.legacyLaunchCount, to: .launchCount),
+            .key(
+                .legacyDarkModeEnabled,
+                to: .runtimeColorScheme,
+                transform: { isDarkModeEnabled in
+                    isDarkModeEnabled ? .dark : .light
+                }
+            ),
+        ],
+        to: appGroup,
+        onConflict: .keepBoth,
+        tracking: .once(id: "app-group-preferences-v2")
+    )
+    try report.throwIfIncomplete()
+}
+
+func seedUbiquitousStore() throws {
     let report = try UserDefaults.standard.copy(
         [.runtimeColorScheme, .launchCount],
-        to: destination,
-        onConflict: .overwriteDestination,
-        tracking: .untracked
+        to: .ubiquitous,
+        onConflict: .keepDestination,
+        tracking: .once(id: "icloud-initial-seed-v1", recordedIn: UserDefaults.standard)
     )
 
-    _ = report
-}
-
-func moveToAppGroup(destination: UserDefaults) throws {
-    let report = try UserDefaults.standard.move(
-        [.runtimeColorScheme],
-        to: destination,
-        onConflict: .keepBoth,
-        tracking: .once(id: "app-group-preferences-v1", recordedIn: destination)
-    )
-
-    if !report.isComplete {
-        // Inspect report.outcomes and report.completion before retrying.
+    if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.error {
+        handleMigrationError(error, at: outcome.status)
     }
-}
-
-func moveToAppGroupOnce() throws {
-    guard let destination = UserDefaults.migratable(suiteName: "group.example.app") else {
-        return
-    }
-
-    let report = try UserDefaults.standard.move(
-        [.runtimeColorScheme, .launchCount],
-        to: destination,
-        onConflict: .keepBoth,
-        tracking: .once(id: "app-group-preferences-v1", recordedIn: destination)
-    )
-
-    _ = report
 }
