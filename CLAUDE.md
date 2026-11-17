@@ -82,10 +82,11 @@ swift test -c release
 swift test -Xswiftc -strict-concurrency=complete -Xswiftc -warn-concurrency -Xswiftc -enable-actor-data-race-checks
 ```
 
-Run the public API checks and the combined Debug and Release coverage gate on macOS:
+Run the public API checks, the documentation sample check, and the combined Debug and Release coverage gate on macOS:
 
 ```sh
 bash Scripts/check-public-api.sh
+ruby Scripts/check-documentation-samples.rb
 swift test --enable-code-coverage
 swift test -c release --enable-code-coverage
 ruby Scripts/check-swift-coverage.rb \
@@ -122,6 +123,8 @@ Add focused XCTest coverage for every behavior change. Use unique keys such as `
 For store behavior, test each affected store. For async observation, cover initial emission, change-only streams, buffering, unrelated keys, cancellation, iterator deinitialization, deregistration, and concurrent cancellation/change races.
 
 Exercise public APIs from a normal importing client, including generic and existential use where supported. Use compile-fail fixtures for boundaries that must remain inaccessible or required.
+
+Every Swift block in `README.md` and `docs/release-notes/` must appear verbatim in a compiling file under `Tests/DocumentationSamples/`; declaration excerpts may instead match `Sources/`. Update the sample when you change a block.
 
 Maintain 100% line and region coverage across all production code. Coverage is not limited to new or changed code, and it is not a substitute for behavioral assertions.
 

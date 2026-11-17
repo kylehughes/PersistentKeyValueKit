@@ -193,7 +193,7 @@ extension PersistentKeyProtocol where Self == PersistentDebugKey<Bool> {
 }
 
 userDefaults.set(.isAppStoreRatingEnabled, to: false)
-userDefaults.get(.isAppStoreRatingEnabled) // false in Debug, true in Release
+let isRatingEnabled = userDefaults.get(.isAppStoreRatingEnabled) // false in Debug, true in Release
 ```
 
 ### Make a Type Persistible
