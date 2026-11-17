@@ -37,6 +37,9 @@ protocol PersistentKeyValueMigrationBackend {
         replacing snapshot: MigrationSnapshot?
     ) throws -> MigrationSnapshot?
 
+    /// Whether `keyID` exceeds this store's key identifier limit. The engine checks every identifier before mutation.
+    func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool
+
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot?
 
     func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool

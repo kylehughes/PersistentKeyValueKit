@@ -2,15 +2,15 @@ import Foundation
 
 /// Errors thrown during migration setup or reported for individual keys and completion tracking.
 ///
-/// Setup errors—such as ``missingApplicationIdentifier``, ``missingMigrationDomain``, ``sameStore``,
-/// ``duplicateKey(_:)``, ``reservedKey(_:)``, ``invalidMigrationIdentifier``, ``overlappingMigration``, and
-/// ``invalidCompletionRecord``—are thrown before any key is modified. Per-key transfer errors are captured in
-/// ``PersistentKeyMigrationReport/Outcome`` so the remaining keys in a batch can still be processed.
+/// Setup errors are thrown before any key is read or modified: ``missingApplicationIdentifier``,
+/// ``missingMigrationDomain``, ``sameStore``, ``duplicateKey(_:)``, ``overlappingKeys(_:)``, ``reservedKey(_:)``,
+/// ``keyIdentifierTooLong(_:)``, ``invalidMigrationIdentifier``, and ``overlappingMigration``.
+/// ``invalidCompletionRecord`` is thrown after reading the completion marker and before any key is read or modified.
+/// Errors thrown by a store's ``PersistentKeyValueStore/migrationEndpoint`` propagate unchanged.
+///
+/// Per-key errors are captured in ``PersistentKeyMigrationReport/Outcome/error`` and completion-marker errors in
+/// ``PersistentKeyMigrationReport/completionError``, so the remaining keys in a batch can still be processed.
 public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
-    /// A store identity is empty, or a key identifier exceeds the store's length limit (such as 128 UTF-16 code units
-    /// in `NSUbiquitousKeyValueStore`).
-    case invalidStoreIdentifier
-
     /// `UserDefaults.standard` was used in a migration, but `Bundle.main.bundleIdentifier` is missing or empty.
     case missingApplicationIdentifier
 
@@ -18,17 +18,38 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// writable persistent domain is unknown.
     case missingMigrationDomain
 
-    /// The source and destination refer to the same backing store.
+    /// The source and destination refer to the same backing store, and at least one item migrates a key to the same
+    /// key identifier.
+    ///
+    /// Migrating within one store is allowed only when every item maps its source key to a different destination key
+    /// identifier.
     case sameStore
 
-    /// The migration batch contains more than one key with the given identifier.
+    /// The batch contains more than one item with the given source key identifier, or more than one item with the given
+    /// destination key identifier.
+    ///
+    /// Duplicate source identifiers are rejected even when the items map to different destination keys.
     case duplicateKey(String)
 
-    /// A key in the batch uses an identifier reserved for migration completion markers
-    /// (`PersistentKeyValueKit.MigrationCompleted.*`).
+    /// A migration within one store uses the given key identifier as one item's destination and another item's source.
+    ///
+    /// Rejecting such batches keeps results independent of item order. Chained renames (`A` to `B` and `B` to `C`)
+    /// and swaps (`A` to `B` and `B` to `A`) are rejected; perform them as separate migrations.
+    case overlappingKeys(String)
+
+    /// A source or destination key in the batch uses the given identifier, which is reserved for migration completion
+    /// markers (`PersistentKeyValueKit.MigrationCompleted.*`).
     case reservedKey(String)
 
-    /// The migration identifier passed to ``PersistentKeyMigrationCompletionPolicy/once(id:recordedIn:)`` is empty.
+    /// The given key identifier exceeds the key length limit of the store that would hold it.
+    ///
+    /// Source identifiers are checked against the source store, destination identifiers against the destination
+    /// store, and the completion marker against the recording store. `NSUbiquitousKeyValueStore` limits key
+    /// identifiers to 128 UTF-16 code units; `UserDefaults` and ``InMemoryPersistentKeyValueStore`` have no limit.
+    case keyIdentifierTooLong(String)
+
+    /// The migration identifier passed to ``PersistentKeyMigrationTracking/once(id:)`` or
+    /// ``PersistentKeyMigrationTracking/once(id:recordedIn:)`` is empty.
     case invalidMigrationIdentifier
 
     /// Another in-process migration is already operating on one of the requested keys or the completion marker in the
@@ -50,6 +71,9 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// The existing completion marker in the recording store could not be decoded as a `Bool`.
     case invalidCompletionRecord
 
-    /// A migration snapshot or prepared write did not match the expected store or key.
-    case invalidSnapshot
+    /// The library detected a violation of its own migration bookkeeping, such as a store with an empty identity or a
+    /// snapshot or prepared write that does not belong to the store or key being migrated.
+    ///
+    /// This error indicates a defect in PersistentKeyValueKit rather than a recoverable condition.
+    case internalInconsistency
 }

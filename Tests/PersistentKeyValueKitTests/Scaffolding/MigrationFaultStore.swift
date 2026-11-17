@@ -11,6 +11,7 @@ final class MigrationFaultStore {
     var failureKey: String?
     var hook: (() -> Void)?
     var keyedHook: ((String) -> Void)?
+    var keyIDLimit: Int?
     var malformedCompletionRecord = false
 
     // MARK: Internal Initialization
@@ -69,6 +70,12 @@ extension MigrationFaultStore: PersistentKeyValueMigrationBackend {
         }
     }
 
+    func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
+        keyIDLimit.map {
+            keyID.count > $0
+        } ?? false
+    }
+
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         accessCount += 1
 
@@ -86,7 +93,7 @@ extension MigrationFaultStore: PersistentKeyValueMigrationBackend {
 
     func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
-            throw PersistentKeyMigrationError.invalidSnapshot
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
         guard let current = try migrationSnapshot(for: keyID) else {

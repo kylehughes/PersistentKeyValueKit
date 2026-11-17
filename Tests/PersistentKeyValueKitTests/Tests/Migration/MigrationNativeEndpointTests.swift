@@ -28,7 +28,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
         destination.addSuite(named: addedName)
         source.addSuite(named: addedName)
 
-        let report = try source.copy(key, to: destination, onConflict: .keepDestination)
+        let report = try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked)
 
         guard case .sourceAbsent = report.outcomes[0].status else {
             return XCTFail("Expected absent source")
@@ -72,7 +72,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
                 key,
                 to: destination,
                 onConflict: .keepDestination,
-                completion: .once(id: migrationID, recordedIn: destination)
+                tracking: .once(id: migrationID, recordedIn: destination)
             ).hasFailures
         )
 
@@ -102,7 +102,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
 
             source.set(key, to: 8)
 
-            XCTAssertThrowsError(try source.copy(key, to: destination, onConflict: policy)) {
+            XCTAssertThrowsError(try source.copy(key, to: destination, onConflict: policy, tracking: .untracked)) {
                 XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
             }
 
@@ -122,7 +122,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
 
             source.set(key, to: 8)
 
-            XCTAssertThrowsError(try source.move(key, to: destination, onConflict: policy)) {
+            XCTAssertThrowsError(try source.move(key, to: destination, onConflict: policy, tracking: .untracked)) {
                 XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
             }
 
@@ -242,7 +242,9 @@ final class MigrationNativeEndpointTests: XCTestCase {
                         XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
                     }
 
-                    XCTAssertThrowsError(try source.move(key, to: destination, onConflict: .overwriteDestination)) {
+                    XCTAssertThrowsError(
+                        try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+                    ) {
                         XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
                     }
 
@@ -257,7 +259,12 @@ final class MigrationNativeEndpointTests: XCTestCase {
                 XCTAssertEqual(source.get(key), 17)
                 XCTAssertEqual(destination.get(key), 17)
 
-                let moved = try source.move([key], to: destination, onConflict: .overwriteDestination)
+                let moved = try source.move(
+                    [key],
+                    to: destination,
+                    onConflict: .overwriteDestination,
+                    tracking: .untracked
+                )
 
                 XCTAssertTrue(moved.isComplete)
                 XCTAssertEqual(source.get(key), 0)
@@ -286,11 +293,15 @@ final class MigrationNativeEndpointTests: XCTestCase {
         let sourceBefore = rawSource.persistentDomain(forName: sourceName) as NSDictionary?
         let destinationBefore = rawDestination.persistentDomain(forName: destinationName) as NSDictionary?
 
-        XCTAssertThrowsError(try rawSource.copy(key, to: configuredDestination, onConflict: .overwriteDestination)) {
+        XCTAssertThrowsError(
+            try rawSource.copy(key, to: configuredDestination, onConflict: .overwriteDestination, tracking: .untracked)
+        ) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingMigrationDomain)
         }
 
-        XCTAssertThrowsError(try configuredSource.copy(key, to: rawDestination, onConflict: .overwriteDestination)) {
+        XCTAssertThrowsError(
+            try configuredSource.copy(key, to: rawDestination, onConflict: .overwriteDestination, tracking: .untracked)
+        ) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingMigrationDomain)
         }
 
@@ -299,7 +310,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
                 key,
                 to: configuredDestination,
                 onConflict: .overwriteDestination,
-                completion: .once(id: "raw-recorder", recordedIn: rawDestination)
+                tracking: .once(id: "raw-recorder", recordedIn: rawDestination)
             )
         ) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingMigrationDomain)
@@ -322,7 +333,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
                 key,
                 to: destination,
                 onConflict: .overwriteDestination,
-                completion: .once(id: "count-\(#function)", recordedIn: recorder)
+                tracking: .once(id: "count-\(#function)", recordedIn: recorder)
             ).hasFailures
         )
 
@@ -339,7 +350,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
         to destination: Destination
     ) throws -> PersistentKeyMigrationReport
     where Key: PersistentKeyProtocol, Source: PersistentKeyValueStore, Destination: PersistentKeyValueStore {
-        try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
     }
 
     private func makeNativePair() throws -> (UserDefaults, UserDefaults, String) {
@@ -358,17 +369,17 @@ final class MigrationNativeEndpointTests: XCTestCase {
         key: any PersistentKeyProtocol,
         source: any PersistentKeyValueStore,
         destination: any PersistentKeyValueStore,
-        completion: PersistentKeyMigrationCompletionPolicy
+        completion: PersistentKeyMigrationTracking
     ) throws -> PersistentKeyMigrationReport {
         switch operation {
         case .copySingle:
-            return try source.copy(key, to: destination, onConflict: .overwriteDestination, completion: completion)
+            return try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: completion)
         case .copyBatch:
-            return try source.copy(keys, to: destination, onConflict: .overwriteDestination, completion: completion)
+            return try source.copy(keys, to: destination, onConflict: .overwriteDestination, tracking: completion)
         case .moveSingle:
-            return try source.move(key, to: destination, onConflict: .overwriteDestination, completion: completion)
+            return try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: completion)
         case .moveBatch:
-            return try source.move(keys, to: destination, onConflict: .overwriteDestination, completion: completion)
+            return try source.move(keys, to: destination, onConflict: .overwriteDestination, tracking: completion)
         }
     }
 }
@@ -419,7 +430,7 @@ private enum EndpointFailureTracking: CaseIterable, Equatable {
     case untracked
     case tracked
 
-    func completion(id: String, recorder: any PersistentKeyValueStore) -> PersistentKeyMigrationCompletionPolicy {
+    func completion(id: String, recorder: any PersistentKeyValueStore) -> PersistentKeyMigrationTracking {
         switch self {
         case .untracked:
             return .untracked

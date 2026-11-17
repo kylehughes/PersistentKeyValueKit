@@ -35,7 +35,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         replacing snapshot: MigrationSnapshot?
     ) throws -> MigrationSnapshot? {
         guard write.identity == migrationIdentity else {
-            throw PersistentKeyMigrationError.invalidSnapshot
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
         if let snapshot, !(try migrationSnapshotIsCurrent(snapshot, for: write.keyID)) {
@@ -60,6 +60,10 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         return committed
     }
 
+    func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
+        false
+    }
+
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         guard let object = userDefaults.persistentDomain(forName: domainName)?[keyID] else {
             return nil
@@ -74,7 +78,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
 
     func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
-            throw PersistentKeyMigrationError.invalidSnapshot
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
         let current = try migrationSnapshot(for: keyID)
@@ -86,7 +90,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         in snapshot: MigrationSnapshot
     ) throws -> Key.Value where Key: PersistentKeyProtocol {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == key.id else {
-            throw PersistentKeyMigrationError.invalidSnapshot
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
         return try decodeStorageValue(for: key, object: snapshot.object, format: .userDefaults)

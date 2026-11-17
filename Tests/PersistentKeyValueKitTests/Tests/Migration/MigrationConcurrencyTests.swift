@@ -81,6 +81,10 @@ extension GateMigrationStore: PersistentKeyValueMigrationBackend {
         return try base.commitMigrationWrite(write, replacing: snapshot)
     }
 
+    func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
+        false
+    }
+
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         try base.migrationSnapshot(for: keyID)
     }
@@ -179,7 +183,7 @@ final class MigrationConcurrencyTests: XCTestCase {
 
             result.store(
                 Result {
-                    try source.copy(blocked, to: destination, onConflict: .overwriteDestination)
+                    try source.copy(blocked, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
                 }
             )
         }
@@ -193,7 +197,7 @@ final class MigrationConcurrencyTests: XCTestCase {
             return XCTFail("Blocked migration did not enter")
         }
 
-        let freeReport = try source.copy(free, to: destination, onConflict: .overwriteDestination)
+        let freeReport = try source.copy(free, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertFalse(freeReport.hasFailures)
         XCTAssertEqual(destination.get(free), 2)
@@ -238,7 +242,12 @@ final class MigrationConcurrencyTests: XCTestCase {
 
             result.store(
                 Result {
-                    try workerSource.copy(workerKey, to: workerDestination, onConflict: .overwriteDestination)
+                    try workerSource.copy(
+                        workerKey,
+                        to: workerDestination,
+                        onConflict: .overwriteDestination,
+                        tracking: .untracked
+                    )
                 }
             )
         }
@@ -252,7 +261,9 @@ final class MigrationConcurrencyTests: XCTestCase {
             return XCTFail("First migration did not enter")
         }
 
-        XCTAssertThrowsError(try source.copy(key, to: destination, onConflict: .overwriteDestination)) { error in
+        XCTAssertThrowsError(
+            try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+        ) { error in
             XCTAssertEqual(error as? PersistentKeyMigrationError, .overlappingMigration)
         }
 
@@ -267,7 +278,7 @@ final class MigrationConcurrencyTests: XCTestCase {
         }
 
         XCTAssertFalse(firstReport.hasFailures)
-        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .overwriteDestination))
+        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked))
     }
 
     func testSharedCompletionMarkerOverlapsDisjointMigrations() throws {
@@ -305,7 +316,7 @@ final class MigrationConcurrencyTests: XCTestCase {
                         firstKey,
                         to: firstDestination,
                         onConflict: .overwriteDestination,
-                        completion: .once(id: id, recordedIn: recorder)
+                        tracking: .once(id: id, recordedIn: recorder)
                     )
                 }
             )
@@ -325,7 +336,7 @@ final class MigrationConcurrencyTests: XCTestCase {
                 secondKey,
                 to: secondDestination,
                 onConflict: .overwriteDestination,
-                completion: .once(id: id, recordedIn: recorder)
+                tracking: .once(id: id, recordedIn: recorder)
             )
         ) { error in
             XCTAssertEqual(error as? PersistentKeyMigrationError, .overlappingMigration)

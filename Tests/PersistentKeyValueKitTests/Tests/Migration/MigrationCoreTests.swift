@@ -12,7 +12,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: destination)
+            tracking: .once(id: #function, recordedIn: destination)
         )
         if case .recorded = report.completion {
         } else {
@@ -27,7 +27,7 @@ final class MigrationCoreTests: XCTestCase {
         let k = key()
 
         d.set(k, to: "destination")
-        let r = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         status(r, .sourceAbsent)
 
@@ -44,7 +44,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         if case .alreadyRecorded = r.completion {
         } else {
@@ -59,9 +59,9 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(a, to: "a")
         s.set(b, to: "b")
-        let r = try s.copy([a, b], to: d, onConflict: .overwriteDestination)
+        let r = try s.copy([a, b], to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
-        XCTAssertEqual(r.outcomes.map(\.keyID), [a.id, b.id])
+        XCTAssertEqual(r.outcomes.map(\.sourceKeyID), [a.id, b.id])
         XCTAssertEqual(d.get(a), "a")
         XCTAssertEqual(d.get(b), "b")
     }
@@ -73,9 +73,9 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "source")
         s.failure = .remove
-        let r = try s.move(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.move(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard let outcome = r.outcomes.first, case .failed(.cleanup, _) = outcome.status else {
+        guard let outcome = r.outcomes.first, case .failed(.cleanup) = outcome.status else {
             return XCTFail("expected cleanup failure")
         }
 
@@ -94,7 +94,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: recorder)
+            tracking: .once(id: #function, recordedIn: recorder)
         )
 
         XCTAssertEqual(destination.get(k), "value")
@@ -126,7 +126,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: id, recordedIn: destination)
+            tracking: .once(id: id, recordedIn: destination)
         )
 
         XCTAssertFalse(report.hasFailures)
@@ -156,7 +156,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: destination)
+            tracking: .once(id: #function, recordedIn: destination)
         )
 
         XCTAssertFalse(report.hasFailures)
@@ -172,7 +172,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         d.remove(.isMigrationCompleted(id: #function))
         s.set(k, to: "two")
@@ -180,7 +180,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         if case .recorded = report.completion {
         } else {
@@ -204,7 +204,7 @@ final class MigrationCoreTests: XCTestCase {
                 k,
                 to: destination,
                 onConflict: .overwriteDestination,
-                completion: .once(id: #function, recordedIn: recorder)
+                tracking: .once(id: #function, recordedIn: recorder)
             )
         )
 
@@ -221,7 +221,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: destination,
             onConflict: .keepDestination,
-            completion: .once(id: #function, recordedIn: destination)
+            tracking: .once(id: #function, recordedIn: destination)
         )
         if case .recorded = report.completion {
         } else {
@@ -238,7 +238,7 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "source")
         d.set(k, to: "destination")
-        let r = try s.copy(k, to: d, onConflict: .keepDestination)
+        let r = try s.copy(k, to: d, onConflict: .keepDestination, tracking: .untracked)
 
         status(r, .keptDestination)
 
@@ -251,7 +251,7 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "source")
         d.set(k, to: "destination")
-        let r = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         status(r, .copied)
 
@@ -265,9 +265,9 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "value")
         s.base.set(PersistentKey<Int>(k.id, defaultValue: 0), to: 1)
-        let report = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let report = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.decode, _) = report.outcomes[0].status else {
+        guard case .failed(.decode) = report.outcomes[0].status else {
             return XCTFail("expected decode failure")
         }
     }
@@ -280,7 +280,7 @@ final class MigrationCoreTests: XCTestCase {
             releaseDefaultValue: "release"
         )
         s.set(k, to: "value")
-        let r = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         #if DEBUG
             status(r, .copied)
@@ -293,7 +293,7 @@ final class MigrationCoreTests: XCTestCase {
         let (s, d) = stores()
         let k = key()
 
-        XCTAssertThrowsError(try s.copy([k, k], to: d, onConflict: .keepDestination))
+        XCTAssertThrowsError(try s.copy([k, k], to: d, onConflict: .keepDestination, tracking: .untracked))
     }
 
     func testEmptyIdentifierRejected() throws {
@@ -304,7 +304,7 @@ final class MigrationCoreTests: XCTestCase {
                 key(),
                 to: d,
                 onConflict: .keepDestination,
-                completion: .once(id: "", recordedIn: d)
+                tracking: .once(id: "", recordedIn: d)
             )
         )
     }
@@ -314,7 +314,7 @@ final class MigrationCoreTests: XCTestCase {
         let k = key()
 
         s.set(k, to: k.defaultValue)
-        let r = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         status(r, .copied)
 
@@ -331,7 +331,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: destination)
+            tracking: .once(id: #function, recordedIn: destination)
         )
         if case .recorded = report.completion {
         } else {
@@ -348,7 +348,7 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(number, to: 42)
         s.set(text, to: "answer")
-        let report = try s.copy([number, text], to: d, onConflict: .overwriteDestination)
+        let report = try s.copy([number, text], to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(report.outcomes.count, 2)
         XCTAssertEqual(d.get(number), 42)
@@ -359,7 +359,7 @@ final class MigrationCoreTests: XCTestCase {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore(identifier: "")
 
-        XCTAssertThrowsError(try s.copy(key(), to: d, onConflict: .keepDestination))
+        XCTAssertThrowsError(try s.copy(key(), to: d, onConflict: .keepDestination, tracking: .untracked))
     }
 
     func testMalformedCompletionRecordPrecedesTransfer() throws {
@@ -377,7 +377,7 @@ final class MigrationCoreTests: XCTestCase {
                 k,
                 to: destination,
                 onConflict: .overwriteDestination,
-                completion: .once(id: #function, recordedIn: recorder)
+                tracking: .once(id: #function, recordedIn: recorder)
             )
         ) { error in
             XCTAssertEqual(error as? PersistentKeyMigrationError, .invalidCompletionRecord)
@@ -392,7 +392,7 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "source")
         d.set(k, to: "destination")
-        let r = try s.move(k, to: d, onConflict: .keepBoth)
+        let r = try s.move(k, to: d, onConflict: .keepBoth, tracking: .untracked)
 
         status(r, .keptDestination)
 
@@ -405,7 +405,7 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "source")
         d.set(k, to: "destination")
-        let r = try s.move(k, to: d, onConflict: .keepDestinationAndRemoveSource)
+        let r = try s.move(k, to: d, onConflict: .keepDestinationAndRemoveSource, tracking: .untracked)
 
         status(r, .discardedSource)
 
@@ -418,7 +418,7 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "source")
         d.set(k, to: "destination")
-        let r = try s.move(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.move(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         status(r, .moved)
 
@@ -429,7 +429,7 @@ final class MigrationCoreTests: XCTestCase {
     func testOptionalNilSourceIsAbsent() throws {
         let (s, d) = stores()
         let k = PersistentKey<String?>(#function, defaultValue: nil)
-        let r = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         status(r, .sourceAbsent)
 
@@ -446,11 +446,11 @@ final class MigrationCoreTests: XCTestCase {
         s.set(b, to: "b")
         d.failure = .commit
         d.failureKey = a.id
-        let r = try s.copy([a, b], to: d, onConflict: .overwriteDestination)
+        let r = try s.copy([a, b], to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(r.outcomes.count, 2)
 
-        guard case .failed(.write, _) = r.outcomes[0].status else {
+        guard case .failed(.write) = r.outcomes[0].status else {
             return XCTFail("expected first failure")
         }
 
@@ -464,9 +464,9 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "value")
         d.failure = .prepare
-        let report = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let report = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.prepare, _) = report.outcomes[0].status else {
+        guard case .failed(.prepare) = report.outcomes[0].status else {
             return XCTFail("expected prepare failure")
         }
     }
@@ -481,18 +481,18 @@ final class MigrationCoreTests: XCTestCase {
 
         d.hook = {
             do {
-                _ = try s.copy(k, to: d, onConflict: .overwriteDestination)
+                _ = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
             } catch {
                 rejected = true
             }
         }
 
-        _ = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        _ = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertTrue(rejected)
         d.hook = nil
 
-        XCTAssertNoThrow(try s.copy(k, to: d, onConflict: .overwriteDestination))
+        XCTAssertNoThrow(try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked))
     }
 
     func testRegistryReleasesAfterFailure() throws {
@@ -502,9 +502,9 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "value")
         d.failure = .commit
-        _ = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        _ = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
         d.failure = nil
-        let r = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertFalse(r.hasFailures)
     }
@@ -513,13 +513,13 @@ final class MigrationCoreTests: XCTestCase {
         let (s, d) = stores()
         let k = PersistentKey<String>("PersistentKeyValueKit.MigrationCompleted.bad", defaultValue: "")
 
-        XCTAssertThrowsError(try s.copy(k, to: d, onConflict: .keepDestination))
+        XCTAssertThrowsError(try s.copy(k, to: d, onConflict: .keepDestination, tracking: .untracked))
     }
 
     func testSameStoreRejected() throws {
         let s = InMemoryPersistentKeyValueStore()
 
-        XCTAssertThrowsError(try s.copy(key(), to: s, onConflict: .keepDestination))
+        XCTAssertThrowsError(try s.copy(key(), to: s, onConflict: .keepDestination, tracking: .untracked))
     }
 
     func testSnapshotFailureReportsSnapshotStage() throws {
@@ -529,9 +529,9 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "value")
         s.failure = .snapshot
-        let report = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let report = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.snapshot, _) = report.outcomes[0].status else {
+        guard case .failed(.snapshot) = report.outcomes[0].status else {
             return XCTFail("expected snapshot failure")
         }
     }
@@ -546,9 +546,9 @@ final class MigrationCoreTests: XCTestCase {
             s.set(k, to: "new")
         }
 
-        let report = try s.move(k, to: d, onConflict: .overwriteDestination)
+        let report = try s.move(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.cleanup, _) = report.outcomes[0].status else {
+        guard case .failed(.cleanup) = report.outcomes[0].status else {
             return XCTFail("expected cleanup failure")
         }
 
@@ -566,7 +566,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         if case .notRecorded = first.completion {
         } else {
@@ -578,7 +578,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         if case .recorded = second.completion {
         } else {
@@ -595,7 +595,7 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         if case .recorded = r.completion {
         } else {
@@ -614,14 +614,14 @@ final class MigrationCoreTests: XCTestCase {
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         s.set(k, to: "two")
         let r = try s.copy(
             k,
             to: d,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: d)
+            tracking: .once(id: #function, recordedIn: d)
         )
         if case .alreadyRecorded = r.completion {
         } else {
@@ -636,9 +636,9 @@ final class MigrationCoreTests: XCTestCase {
         let k = key()
 
         s.set(k, to: "one")
-        _ = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        _ = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
         s.set(k, to: "two")
-        _ = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        _ = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(d.get(k), "two")
     }
@@ -650,7 +650,7 @@ final class MigrationCoreTests: XCTestCase {
 
         s.set(k, to: "source")
         d.failure = .commit
-        let r = try s.copy(k, to: d, onConflict: .overwriteDestination)
+        let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertTrue(r.hasFailures)
         XCTAssertEqual(s.get(k), "source")

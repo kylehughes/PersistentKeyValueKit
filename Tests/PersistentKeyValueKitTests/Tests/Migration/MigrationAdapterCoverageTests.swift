@@ -41,9 +41,9 @@ final class MigrationAdapterCoverageTests: XCTestCase {
             source.deregister(observer, for: intKey, context: nil)
         }
 
-        let report = try source.move(intKey, to: destination, onConflict: .overwriteDestination)
+        let report = try source.move(intKey, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(_, let error) = report.outcomes[0].status else {
+        guard case .failed(_) = report.outcomes[0].status, let error = report.outcomes[0].error else {
             return XCTFail()
         }
 
@@ -66,9 +66,9 @@ final class MigrationAdapterCoverageTests: XCTestCase {
             destination.deregister(observer, for: intKey, context: nil)
         }
 
-        let report = try source.copy(intKey, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(intKey, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(_, let error) = report.outcomes[0].status else {
+        guard case .failed(_) = report.outcomes[0].status, let error = report.outcomes[0].error else {
             return XCTFail()
         }
 
@@ -238,11 +238,11 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try second.commitMigrationWrite(write, replacing: nil)) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidSnapshot)
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .internalInconsistency)
         }
 
         XCTAssertThrowsError(try second.migrationValue(for: intKey, in: snapshot)) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidSnapshot)
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .internalInconsistency)
         }
 
         XCTAssertThrowsError(try first.removeMigrationValue(for: intKey.id, matching: snapshot)) {

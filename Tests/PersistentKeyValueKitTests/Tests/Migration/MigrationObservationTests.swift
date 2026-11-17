@@ -29,7 +29,7 @@ final class MigrationObservationTests: XCTestCase {
         raw.changesPublisher(for: other).sink {
             unrelated.append($0)
         }.store(in: &subscriptions)
-        _ = try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        _ = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(values, [4])
         XCTAssertTrue(unrelated.isEmpty)
@@ -55,9 +55,9 @@ final class MigrationObservationTests: XCTestCase {
                 raw.set(Int64(9), forKey: key.id)
             }
         }.store(in: &subscriptions)
-        let report = try source.move(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.write, let error) = report.outcomes[0].status else {
+        guard case .failed(.write) = report.outcomes[0].status, let error = report.outcomes[0].error else {
             return XCTFail("expected write failure")
         }
 
@@ -85,9 +85,9 @@ final class MigrationObservationTests: XCTestCase {
                 raw.set(Int64(2), forKey: key.id)
             }
         }.store(in: &subscriptions)
-        let report = try source.move(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.cleanup, let error) = report.outcomes[0].status else {
+        guard case .failed(.cleanup) = report.outcomes[0].status, let error = report.outcomes[0].error else {
             return XCTFail("expected cleanup failure")
         }
 
@@ -120,9 +120,9 @@ final class MigrationObservationTests: XCTestCase {
                 source.set(key, to: 2)
             }
         }.store(in: &subscriptions)
-        let report = try sourceStore.move(key, to: destination, onConflict: .overwriteDestination)
+        let report = try sourceStore.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.cleanup, let error) = report.outcomes[0].status else {
+        guard case .failed(.cleanup) = report.outcomes[0].status, let error = report.outcomes[0].error else {
             return XCTFail("expected sourceChanged")
         }
 
@@ -143,7 +143,7 @@ final class MigrationObservationTests: XCTestCase {
         destination.changesPublisher(for: key).sink {
             values.append($0)
         }.store(in: &subscriptions)
-        _ = try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        _ = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(values, [9])
     }
@@ -173,7 +173,7 @@ final class MigrationObservationTests: XCTestCase {
         }.store(
             in: &subscriptions
         )
-        _ = try source.move(key, to: destination, onConflict: .overwriteDestination)
+        _ = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(sourceValues, [0])
         XCTAssertEqual(destinationValues, [7])
@@ -193,7 +193,7 @@ final class MigrationObservationTests: XCTestCase {
         destination.changesPublisher(for: other).sink {
             values.append($0)
         }.store(in: &subscriptions)
-        _ = try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        _ = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertTrue(values.isEmpty)
     }
@@ -220,9 +220,9 @@ final class MigrationObservationTests: XCTestCase {
                 defaults.set(99, forKey: key.id)
             }
         }.store(in: &subscriptions)
-        let report = try source.move(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
-        guard case .failed(.write, let error) = report.outcomes[0].status else {
+        guard case .failed(.write) = report.outcomes[0].status, let error = report.outcomes[0].error else {
             return XCTFail("expected write failure")
         }
 
@@ -249,7 +249,7 @@ final class MigrationObservationTests: XCTestCase {
         defaults.changesPublisher(for: key).sink {
             values.append($0)
         }.store(in: &subscriptions)
-        _ = try source.move(key, to: destination, onConflict: .overwriteDestination)
+        _ = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(values, ["migrated"])
         XCTAssertEqual(source.get(key), "")

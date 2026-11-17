@@ -111,7 +111,7 @@ extension PersistentKeyProtocol {
 
 extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
     /// Returns the persistent boolean key used to record completion for a migration identifier with
-    /// ``PersistentKeyMigrationCompletionPolicy/once(id:recordedIn:)``.
+    /// ``PersistentKeyMigrationTracking/once(id:)`` or ``PersistentKeyMigrationTracking/once(id:recordedIn:)``.
     ///
     /// Remove this key from the recording store (or set it to `false`) to allow a completed migration with the same
     /// `id` to run again.
@@ -119,7 +119,8 @@ extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
     /// The key's identifier has the same length for every `id`, so identifiers of any length can be recorded in any
     /// store, including `NSUbiquitousKeyValueStore`.
     ///
-    /// - Parameter id: The migration identifier passed to ``PersistentKeyMigrationCompletionPolicy/once(id:recordedIn:)``.
+    /// - Parameter id: The migration identifier passed to ``PersistentKeyMigrationTracking/once(id:)`` or
+    ///   ``PersistentKeyMigrationTracking/once(id:recordedIn:)``.
     /// - Returns: A boolean key whose default value is `false`.
     public static func isMigrationCompleted(id: String) -> Self {
         // A digest keeps the marker within `NSUbiquitousKeyValueStore`'s 128-unit key limit for any `id`.

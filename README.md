@@ -434,7 +434,8 @@ guard let destination = UserDefaults.migratable(suiteName: "group.example.app") 
 let report = try UserDefaults.standard.copy(
     [.runtimeColorScheme, .launchCount],
     to: destination,
-    onConflict: .overwriteDestination
+    onConflict: .overwriteDestination,
+    tracking: .untracked
 )
 ```
 
@@ -460,14 +461,14 @@ Migrations do not roll back completed work: if a `move` writes the destination v
 
 #### Track a Migration
 
-Pass `completion: .once(id:recordedIn:)` to record a persistent completion marker after the batch finishes:
+Pass `tracking: .once(id:recordedIn:)` to record a persistent completion marker after the batch finishes:
 
 ```swift
 let report = try UserDefaults.standard.move(
     [.runtimeColorScheme],
     to: destination,
     onConflict: .keepBoth,
-    completion: .once(id: "app-group-preferences-v1", recordedIn: destination)
+    tracking: .once(id: "app-group-preferences-v1", recordedIn: destination)
 )
 
 if !report.isComplete {

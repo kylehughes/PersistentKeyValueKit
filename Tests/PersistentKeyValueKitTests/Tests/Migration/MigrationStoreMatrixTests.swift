@@ -107,10 +107,10 @@ final class MigrationStoreMatrixTests: XCTestCase {
         try seed(source, codableKey, CodableValue(name: "sample", count: 7))
         try assertValues(source)
 
-        let copied = try source.copy(keys, to: destination, onConflict: .overwriteDestination)
+        let copied = try source.copy(keys, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertFalse(copied.hasFailures)
-        XCTAssertEqual(copied.outcomes.map(\.keyID), keys.map(\.id))
+        XCTAssertEqual(copied.outcomes.map(\.sourceKeyID), keys.map(\.id))
         XCTAssertTrue(
             copied.outcomes.allSatisfy {
                 if case .copied = $0.status {
@@ -123,10 +123,10 @@ final class MigrationStoreMatrixTests: XCTestCase {
         try assertValues(destination)
         try assertValues(source)
 
-        let moved = try source.move(keys, to: destination, onConflict: .overwriteDestination)
+        let moved = try source.move(keys, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertFalse(moved.hasFailures)
-        XCTAssertEqual(moved.outcomes.map(\.keyID), keys.map(\.id))
+        XCTAssertEqual(moved.outcomes.map(\.sourceKeyID), keys.map(\.id))
         XCTAssertTrue(
             moved.outcomes.allSatisfy {
                 if case .moved = $0.status {

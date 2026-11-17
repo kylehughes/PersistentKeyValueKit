@@ -18,7 +18,7 @@ final class PublicAPIClientTests: XCTestCase {
             key,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: "migration", recordedIn: recorder)
+            tracking: .once(id: "migration", recordedIn: recorder)
         )
 
         XCTAssertEqual(report.outcomes.count, 1)
@@ -33,7 +33,7 @@ final class PublicAPIClientTests: XCTestCase {
 
         source.set(key, to: 7)
 
-        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(report.outcomes.count, 1)
         XCTAssertEqual(destination.base.get(key), 7)
@@ -81,50 +81,100 @@ final class PublicAPIClientTests: XCTestCase {
         let report = try existentialSource.copy(
             [key],
             to: existentialDestination,
-            onConflict: .overwriteDestination
+            onConflict: .overwriteDestination,
+            tracking: .untracked
         )
 
         XCTAssertEqual(report.outcomes.count, 1)
         XCTAssertEqual(secondDestination.get(key), 42)
     }
 
+    func testItemBatchesMixSameKeysMappedKeysAndTransforms() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+
+        source.set(.publicTheme, to: "dark")
+        source.set(.publicOldLaunchCount, to: 4)
+        source.set(.publicLegacyFlag, to: true)
+
+        let report = try source.copy(
+            items: [
+                .key(.publicTheme),
+                .key(.publicOldLaunchCount, to: .publicLaunchCount),
+                .key(.publicLegacyFlag, to: .publicMode) {
+                    $0 ? .on : .off
+                },
+            ],
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.copied, .copied, .copied])
+        XCTAssertEqual(report.outcome(for: .publicOldLaunchCount)?.destinationKeyID, "PublicAPI.launchCount")
+        XCTAssertEqual(destination.get(.publicTheme), "dark")
+        XCTAssertEqual(destination.get(.publicLaunchCount), 4)
+        XCTAssertEqual(destination.get(.publicMode), .on)
+
+        let renamed = try destination.move(
+            .key(.publicLaunchCount, to: .publicOldLaunchCount),
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(renamed.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(destination.get(.publicOldLaunchCount), 4)
+        XCTAssertEqual(destination.get(.publicLaunchCount), 0)
+    }
+
     func testMigrationCapturesEachEndpointOnce() throws {
-        for operation in 0..<4 {
+        for operation in 0..<8 {
             let source = EndpointForwardingStore(InMemoryPersistentKeyValueStore())
             let destination = EndpointForwardingStore(InMemoryPersistentKeyValueStore())
             let recorder = EndpointForwardingStore(InMemoryPersistentKeyValueStore())
             let key = PersistentKey<Int>("counted-\(operation)", defaultValue: 0)
+            let tracking = PersistentKeyMigrationTracking.once(id: "counted-\(operation)", recordedIn: recorder)
 
             source.set(key, to: 9)
             let report: PersistentKeyMigrationReport
 
-            if operation == 0 {
+            switch operation {
+            case 0:
+                report = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: tracking)
+            case 1:
+                report = try source.copy([key], to: destination, onConflict: .overwriteDestination, tracking: tracking)
+            case 2:
                 report = try source.copy(
-                    key,
+                    .key(key),
                     to: destination,
                     onConflict: .overwriteDestination,
-                    completion: .once(id: "counted-\(operation)", recordedIn: recorder)
+                    tracking: tracking
                 )
-            } else if operation == 1 {
+            case 3:
                 report = try source.copy(
-                    [key],
+                    items: [.key(key)],
                     to: destination,
                     onConflict: .overwriteDestination,
-                    completion: .once(id: "counted-\(operation)", recordedIn: recorder)
+                    tracking: tracking
                 )
-            } else if operation == 2 {
+            case 4:
+                report = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: tracking)
+            case 5:
+                report = try source.move([key], to: destination, onConflict: .overwriteDestination, tracking: tracking)
+            case 6:
                 report = try source.move(
-                    key,
+                    .key(key),
                     to: destination,
                     onConflict: .overwriteDestination,
-                    completion: .once(id: "counted-\(operation)", recordedIn: recorder)
+                    tracking: tracking
                 )
-            } else {
+            default:
                 report = try source.move(
-                    [key],
+                    items: [.key(key)],
                     to: destination,
                     onConflict: .overwriteDestination,
-                    completion: .once(id: "counted-\(operation)", recordedIn: recorder)
+                    tracking: tracking
                 )
             }
 
@@ -137,11 +187,93 @@ final class PublicAPIClientTests: XCTestCase {
         }
     }
 
+    func testReportFixturesCanBeBuiltWithPublicInitializers() {
+        let failure = PersistentKeyMigrationReport.Outcome(
+            sourceKeyID: "old",
+            destinationKeyID: "new",
+            failedAt: .transform,
+            error: PublicMigrationFailure()
+        )
+        let report = PersistentKeyMigrationReport(
+            outcomes: [failure, .init(sourceKeyID: "other", status: .copied)],
+            completion: .notRecorded
+        )
+        let failedCompletion = PersistentKeyMigrationReport(outcomes: [], completionError: PublicMigrationFailure())
+
+        XCTAssertTrue(report.hasFailures)
+        XCTAssertEqual(report.outcomes.map(\.destinationKeyID), ["new", "other"])
+        XCTAssertTrue(report.outcomes[0].error is PublicMigrationFailure)
+        XCTAssertEqual(failedCompletion.completion, .failed)
+        XCTAssertTrue(failedCompletion.completionError is PublicMigrationFailure)
+        XCTAssertEqual(PersistentKeyMigrationIncompleteError(report: report).report.outcomes.count, 2)
+    }
+
     func testRepresentationCheckedConversionIsPublicAndFormatAware() throws {
         let representation = Int.persistentKeyValueRepresentation
         let object = try representation.encode(21, format: .propertyList)
 
         XCTAssertEqual(try representation.decode(storageObject: object as Any, format: .propertyList), 21)
+    }
+
+    func testSendableItemBatchCanMigrateInsideTask() async throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let items: [PersistentKeyMigrationItem] = [
+            .key(.publicOldLaunchCount, to: .publicLaunchCount),
+            .key(.publicLegacyFlag, to: .publicMode) {
+                $0 ? .on : .off
+            },
+        ]
+
+        source.set(.publicOldLaunchCount, to: 5)
+
+        let report = try await Task.detached {
+            try source.move(items: items, to: destination, onConflict: .keepBoth, tracking: .once(id: "task"))
+        }.value
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved, .sourceAbsent])
+        XCTAssertEqual(report.completion, .recorded)
+        XCTAssertEqual(destination.get(.publicLaunchCount), 5)
+    }
+
+    func testThrowIfIncompleteSurfacesTheReport() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+
+        source.set(.publicLegacyFlag, to: true)
+
+        do {
+            try source.move(
+                .key(.publicLegacyFlag, to: .publicMode) { _ in
+                    throw PublicMigrationFailure()
+                },
+                to: destination,
+                onConflict: .overwriteDestination,
+                tracking: .once(id: "incomplete")
+            )
+            .throwIfIncomplete()
+            XCTFail("Expected an incomplete migration")
+        } catch let error as PersistentKeyMigrationIncompleteError {
+            XCTAssertEqual(error.report.outcome(for: .publicLegacyFlag)?.status, .failed(.transform))
+            XCTAssertTrue(error.report.outcome(for: .publicLegacyFlag)?.error is PublicMigrationFailure)
+            XCTAssertEqual(error.report.completion, .notRecorded)
+        }
+
+        XCTAssertTrue(source.get(.publicLegacyFlag))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: "incomplete")))
+
+        let complete = try source.move(
+            .key(.publicLegacyFlag, to: .publicMode) {
+                $0 ? .on : .off
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: "incomplete")
+        )
+
+        XCTAssertNoThrow(try complete.throwIfIncomplete())
+        XCTAssertTrue(destination.get(.isMigrationCompleted(id: "incomplete")))
+        XCTAssertFalse(source.get(.isMigrationCompleted(id: "incomplete")))
     }
 
     @available(watchOS 9.0, *)
@@ -159,7 +291,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(store.get(key), 19)
         XCTAssertEqual(store.object(forKey: key.id) as? Int, 19)
 
-        let report = try store.copy(key, to: destination, onConflict: .overwriteDestination)
+        let report = try store.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertFalse(report.hasFailures)
         XCTAssertEqual(destination.get(key), 19)
@@ -169,7 +301,9 @@ final class PublicAPIClientTests: XCTestCase {
         store.set(key, to: 20)
         destination.set(key, to: 21)
 
-        XCTAssertTrue(try destination.copy(key, to: store, onConflict: .overwriteDestination).isComplete)
+        XCTAssertTrue(
+            try destination.copy(key, to: store, onConflict: .overwriteDestination, tracking: .untracked).isComplete
+        )
         XCTAssertEqual(values, [0, 19, 0, 20, 21])
         cancellable.cancel()
         store.set(key, to: 22)
@@ -222,7 +356,14 @@ final class PublicAPIClientTests: XCTestCase {
 
         source.set(key, to: 14)
 
-        XCTAssertTrue(try source.copy(key, to: migratableDefaults, onConflict: .overwriteDestination).isComplete)
+        XCTAssertTrue(
+            try source.copy(
+                key,
+                to: migratableDefaults,
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            ).isComplete
+        )
         XCTAssertEqual(values, [0, 12, 0, 13, 14])
         cancellable.cancel()
         migratableDefaults.set(key, to: 15)
@@ -261,7 +402,8 @@ final class PublicAPIClientTests: XCTestCase {
         let report = try source.copy(
             [proxyKey, primitiveKey],
             to: destination,
-            onConflict: .overwriteDestination
+            onConflict: .overwriteDestination,
+            tracking: .untracked
         )
 
         XCTAssertFalse(report.hasFailures)
@@ -281,7 +423,7 @@ final class PublicAPIClientTests: XCTestCase {
         Source: PersistentKeyValueStore,
         Destination: PersistentKeyValueStore
     {
-        try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
     }
 }
 
@@ -441,5 +583,51 @@ private final class PublicMockUbiquitousKeyValueStore: NSUbiquitousKeyValueStore
         } else {
             values.removeValue(forKey: key)
         }
+    }
+}
+
+// MARK: - Public Migration Failure Definition
+
+private struct PublicMigrationFailure: Error {
+}
+
+// MARK: - Public Mode Definition
+
+private enum PublicMode: String, KeyValuePersistible {
+    case off
+    case on
+
+    static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
+        RawRepresentablePersistentKeyValueRepresentation()
+    }
+}
+
+// MARK: - PersistentKeyProtocol Extensions
+
+extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
+    fileprivate static var publicLegacyFlag: Self {
+        Self("PublicAPI.legacyFlag", defaultValue: false)
+    }
+}
+
+extension PersistentKeyProtocol where Self == PersistentKey<Int> {
+    fileprivate static var publicLaunchCount: Self {
+        Self("PublicAPI.launchCount", defaultValue: 0)
+    }
+
+    fileprivate static var publicOldLaunchCount: Self {
+        Self("PublicAPI.oldLaunchCount", defaultValue: 0)
+    }
+}
+
+extension PersistentKeyProtocol where Self == PersistentKey<PublicMode> {
+    fileprivate static var publicMode: Self {
+        Self("PublicAPI.mode", defaultValue: .off)
+    }
+}
+
+extension PersistentKeyProtocol where Self == PersistentKey<String> {
+    fileprivate static var publicTheme: Self {
+        Self("PublicAPI.theme", defaultValue: "")
     }
 }

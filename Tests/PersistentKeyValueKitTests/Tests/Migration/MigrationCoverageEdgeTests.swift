@@ -39,7 +39,7 @@ final class MigrationCoverageEdgeTests: XCTestCase {
 
         source.set(key, to: nil)
         defaults.set(8, forKey: key.id)
-        let report = try source.move(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         guard case .moved = report.outcomes[0].status else {
             return XCTFail("expected moved")

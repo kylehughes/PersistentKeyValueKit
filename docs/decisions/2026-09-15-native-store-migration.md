@@ -52,7 +52,8 @@ guard let appGroup = UserDefaults.migratable(suiteName: "group.example.app") els
 let report = try UserDefaults.standard.move(
     [.runtimeColorScheme],
     to: appGroup,
-    onConflict: .keepBoth
+    onConflict: .keepBoth,
+    tracking: .untracked
 )
 ```
 

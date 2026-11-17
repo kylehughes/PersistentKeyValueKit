@@ -63,6 +63,10 @@ extension ScriptedMigrationStore: PersistentKeyValueMigrationBackend {
         }
     }
 
+    func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
+        false
+    }
+
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         try base.migrationSnapshot(for: keyID).map {
             .init(identity: migrationIdentity, keyID: keyID, revision: $0.revision, object: $0.object)
@@ -162,7 +166,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function + "1", recordedIn: recorder)
+            tracking: .once(id: #function + "1", recordedIn: recorder)
         )
         if case .failed = first.completion {
         } else {
@@ -175,7 +179,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function + "2", recordedIn: recorder)
+            tracking: .once(id: #function + "2", recordedIn: recorder)
         )
         if case .failed = second.completion {
         } else {
@@ -195,7 +199,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
             k,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: .once(id: #function, recordedIn: recorder)
+            tracking: .once(id: #function, recordedIn: recorder)
         )
         if case .failed = report.completion {
         } else {
@@ -214,9 +218,15 @@ final class MigrationEngineCoverageTests: XCTestCase {
         source.set(k, to: 1)
         destination.set(k, to: 2)
         destination.current = false
-        let report = try source.move(k, to: destination, onConflict: .keepDestinationAndRemoveSource)
+        let report = try source.move(
+            k,
+            to: destination,
+            onConflict: .keepDestinationAndRemoveSource,
+            tracking: .untracked
+        )
 
-        guard let outcome = report.outcomes.first, case .failed(.cleanup, let error) = outcome.status
+        guard let outcome = report.outcomes.first, case .failed(.cleanup) = outcome.status,
+            let error = outcome.error
         else {
             return XCTFail()
         }
@@ -233,10 +243,16 @@ final class MigrationEngineCoverageTests: XCTestCase {
         source.set(k, to: 1)
         destination.set(k, to: 2)
         source.current = false
-        let report = try source.move(k, to: destination, onConflict: .keepDestinationAndRemoveSource)
+        let report = try source.move(
+            k,
+            to: destination,
+            onConflict: .keepDestinationAndRemoveSource,
+            tracking: .untracked
+        )
 
         guard
-            case .failed(.cleanup, PersistentKeyMigrationError.sourceChanged) = report.outcomes[0].status
+            case .failed(.cleanup) = report.outcomes[0].status,
+            report.outcomes[0].error as? PersistentKeyMigrationError == .sourceChanged
         else {
             return XCTFail()
         }
@@ -283,7 +299,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
         let k = DisabledKey(id: #function)
 
         source.set(k, to: 1)
-        let report = try source.copy(k, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(k, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         guard case .keyDisabled = report.outcomes[0].status else {
             return XCTFail()
@@ -299,11 +315,11 @@ final class MigrationEngineCoverageTests: XCTestCase {
 
         source.set(k, to: 1)
         destination.current = false
-        let report = try source.copy(k, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(k, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         guard
-            case .failed(.write, PersistentKeyMigrationError.writeVerificationFailed) = report.outcomes[0]
-                .status
+            case .failed(.write) = report.outcomes[0].status,
+            report.outcomes[0].error as? PersistentKeyMigrationError == .writeVerificationFailed
         else {
             return XCTFail()
         }
@@ -315,21 +331,24 @@ final class MigrationEngineCoverageTests: XCTestCase {
         let source = ScriptedMigrationStore(namespace: "", identifier: "x")
         let destination = ScriptedMigrationStore()
 
-        XCTAssertThrowsError(try source.copy(key(), to: destination, onConflict: .overwriteDestination)) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .invalidStoreIdentifier)
+        XCTAssertThrowsError(
+            try source.copy(key(), to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .internalInconsistency)
         }
 
         let invalidDestination = ScriptedMigrationStore(namespace: "x", identifier: "")
 
         XCTAssertThrowsError(
-            try destination.copy(key(), to: invalidDestination, onConflict: .overwriteDestination)
+            try destination.copy(key(), to: invalidDestination, onConflict: .overwriteDestination, tracking: .untracked)
         )
 
         XCTAssertThrowsError(
             try destination.copy(
                 key(),
                 to: ScriptedMigrationStore(namespace: "", identifier: "x"),
-                onConflict: .overwriteDestination
+                onConflict: .overwriteDestination,
+                tracking: .untracked
             )
         )
 
@@ -338,7 +357,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
                 key(),
                 to: ScriptedMigrationStore(),
                 onConflict: .overwriteDestination,
-                completion: .once(
+                tracking: .once(
                     id: "x",
                     recordedIn: ScriptedMigrationStore(namespace: "", identifier: "x")
                 )
@@ -350,7 +369,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
                 key(),
                 to: ScriptedMigrationStore(),
                 onConflict: .overwriteDestination,
-                completion: .once(
+                tracking: .once(
                     id: "x",
                     recordedIn: ScriptedMigrationStore(namespace: "x", identifier: "")
                 )
@@ -366,11 +385,11 @@ final class MigrationEngineCoverageTests: XCTestCase {
         source.set(k, to: 1)
         destination.set(k, to: 2)
         destination.commitReturnsNil = true
-        let report = try source.copy(k, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(k, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         guard
-            case .failed(.write, PersistentKeyMigrationError.writeVerificationFailed) = report.outcomes[0]
-                .status
+            case .failed(.write) = report.outcomes[0].status,
+            report.outcomes[0].error as? PersistentKeyMigrationError == .writeVerificationFailed
         else {
             return XCTFail()
         }
@@ -385,8 +404,9 @@ final class MigrationEngineCoverageTests: XCTestCase {
         let failedOutcome = PersistentKeyMigrationReport(
             outcomes: [
                 .init(
-                    keyID: "x",
-                    status: .failed(stage: .write, error: PersistentKeyMigrationError.writeVerificationFailed)
+                    sourceKeyID: "x",
+                    failedAt: .write,
+                    error: PersistentKeyMigrationError.writeVerificationFailed
                 )
             ],
             completion: .untracked
@@ -397,7 +417,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
 
         let failedCompletion = PersistentKeyMigrationReport(
             outcomes: [],
-            completion: .failed(PersistentKeyMigrationError.writeVerificationFailed)
+            completionError: PersistentKeyMigrationError.writeVerificationFailed
         )
 
         XCTAssertTrue(failedCompletion.hasFailures)

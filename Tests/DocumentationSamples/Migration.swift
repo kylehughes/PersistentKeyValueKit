@@ -37,7 +37,8 @@ func copyToAppGroup() throws {
     let report = try UserDefaults.standard.copy(
         [.runtimeColorScheme, .launchCount],
         to: destination,
-        onConflict: .overwriteDestination
+        onConflict: .overwriteDestination,
+        tracking: .untracked
     )
 
     _ = report
@@ -48,7 +49,7 @@ func moveToAppGroup(destination: UserDefaults) throws {
         [.runtimeColorScheme],
         to: destination,
         onConflict: .keepBoth,
-        completion: .once(id: "app-group-preferences-v1", recordedIn: destination)
+        tracking: .once(id: "app-group-preferences-v1", recordedIn: destination)
     )
 
     if !report.isComplete {
@@ -65,7 +66,7 @@ func moveToAppGroupOnce() throws {
         [.runtimeColorScheme, .launchCount],
         to: destination,
         onConflict: .keepBoth,
-        completion: .once(id: "app-group-preferences-v1", recordedIn: destination)
+        tracking: .once(id: "app-group-preferences-v1", recordedIn: destination)
     )
 
     _ = report

@@ -33,5 +33,7 @@ check_fixture Tests/CompileFail/SnapshotAccess.swift "has no member 'snapshot'"
 check_fixture Tests/CompileFail/WriteAccess.swift "has no member 'prepareWrite'"
 check_fixture Tests/CompileFail/OperationAccess.swift "has no member 'commitWrite'"
 check_fixture Tests/CompileFail/MissingMigrationEndpoint.swift "does not conform to protocol 'PersistentKeyValueStore'"
+check_fixture Tests/CompileFail/MissingTracking.swift "missing argument for parameter 'tracking'"
+check_fixture Tests/CompileFail/UnlabeledItemBatch.swift "missing argument label 'items:'"
 
 echo "Public API compile-fail checks passed."

@@ -28,7 +28,7 @@ final class MigrationDomainTests: XCTestCase {
             domainName: destinationName
         )
 
-        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         if case .sourceAbsent = report.outcomes[0].status {
         } else {
@@ -61,7 +61,7 @@ final class MigrationDomainTests: XCTestCase {
             userDefaults: destinationDefaults,
             domainName: destinationName
         )
-        let completion: PersistentKeyMigrationCompletionPolicy = .once(
+        let completion: PersistentKeyMigrationTracking = .once(
             id: migrationID,
             recordedIn: destination
         )
@@ -70,7 +70,7 @@ final class MigrationDomainTests: XCTestCase {
             key,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: completion
+            tracking: completion
         )
         if case .recorded = first.completion {
         } else {
@@ -93,7 +93,7 @@ final class MigrationDomainTests: XCTestCase {
             key,
             to: destination,
             onConflict: .overwriteDestination,
-            completion: completion
+            tracking: completion
         )
         if case .alreadyRecorded = second.completion {
         } else {
@@ -127,7 +127,7 @@ final class MigrationDomainTests: XCTestCase {
             domainName: destinationName
         )
 
-        _ = try source.copy(key, to: destination, onConflict: .keepDestination)
+        _ = try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked)
 
         XCTAssertEqual(
             destinationDefaults.persistentDomain(forName: destinationName)?[key.id] as? Int,
@@ -158,7 +158,7 @@ final class MigrationDomainTests: XCTestCase {
             domainName: destinationName
         )
 
-        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         XCTAssertEqual(report.outcomes.count, 1)
         if case .sourceAbsent = report.outcomes[0].status {

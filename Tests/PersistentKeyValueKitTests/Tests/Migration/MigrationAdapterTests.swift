@@ -17,14 +17,14 @@ final class MigrationAdapterTests: XCTestCase {
         )
         source.set(valueKey, to: CodableValue(name: "x", count: 3))
 
-        XCTAssertNoThrow(try source.copy(valueKey, to: destination, onConflict: .keepDestination))
+        XCTAssertNoThrow(try source.copy(valueKey, to: destination, onConflict: .keepDestination, tracking: .untracked))
         XCTAssertEqual(destination.get(valueKey), CodableValue(name: "x", count: 3))
 
         let urlKey = PersistentKey("url", defaultValue: URL(string: "https://example.com")!)
 
         source.set(urlKey, to: URL(string: "https://swift.org")!)
 
-        XCTAssertNoThrow(try source.copy(urlKey, to: destination, onConflict: .keepDestination))
+        XCTAssertNoThrow(try source.copy(urlKey, to: destination, onConflict: .keepDestination, tracking: .untracked))
         XCTAssertEqual(destination.get(urlKey), URL(string: "https://swift.org")!)
     }
 
@@ -52,7 +52,7 @@ final class MigrationAdapterTests: XCTestCase {
         let key = PersistentKey("unsupported", defaultValue: 1, representation: representation)
 
         sourceDefaults.set(2, forKey: key.id)
-        let report = try source.copy(key, to: destination, onConflict: .keepDestination)
+        let report = try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked)
 
         if case .copied = report.outcomes[0].status {
         } else {
@@ -91,9 +91,9 @@ final class MigrationAdapterTests: XCTestCase {
         let b = PersistentKey("b", defaultValue: "")
 
         source.set(a, to: "one")
-        let report = try source.copy([a, b], to: destination, onConflict: .keepDestination)
+        let report = try source.copy([a, b], to: destination, onConflict: .keepDestination, tracking: .untracked)
 
-        XCTAssertEqual(report.outcomes.map(\.keyID), ["a", "b"])
+        XCTAssertEqual(report.outcomes.map(\.sourceKeyID), ["a", "b"])
         XCTAssertEqual(destination.get(a), "one")
         if case .sourceAbsent = report.outcomes[1].status {
         } else {
@@ -117,21 +117,32 @@ final class MigrationAdapterTests: XCTestCase {
 
         source.set(key, to: 1)
         destination.set(key, to: 2)
-        if case .keptDestination = try source.copy(key, to: destination, onConflict: .keepDestination).outcomes[0]
-            .status
-        {
+        if case .keptDestination = try source.copy(
+            key,
+            to: destination,
+            onConflict: .keepDestination,
+            tracking: .untracked
+        ).outcomes[0].status {
         } else {
             XCTFail()
         }
 
-        if case .keptDestination = try source.move(key, to: destination, onConflict: .keepBoth).outcomes[0].status {
+        if case .keptDestination = try source.move(
+            key,
+            to: destination,
+            onConflict: .keepBoth,
+            tracking: .untracked
+        ).outcomes[0].status {
         } else {
             XCTFail()
         }
 
-        if case .discardedSource = try source.move(key, to: destination, onConflict: .keepDestinationAndRemoveSource)
-            .outcomes[0].status
-        {
+        if case .discardedSource = try source.move(
+            key,
+            to: destination,
+            onConflict: .keepDestinationAndRemoveSource,
+            tracking: .untracked
+        ).outcomes[0].status {
         } else {
             XCTFail()
         }
@@ -146,9 +157,20 @@ final class MigrationAdapterTests: XCTestCase {
 
         source.set(key, to: 42)
 
-        XCTAssertEqual(try source.copy(key, to: destination, onConflict: .keepDestination).outcomes.count, 1)
+        XCTAssertEqual(
+            try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked).outcomes.count,
+            1
+        )
         XCTAssertEqual(destination.get(key), 42)
-        XCTAssertEqual(try source.move(key, to: destination, onConflict: .overwriteDestination).outcomes.count, 1)
+        XCTAssertEqual(
+            try source.move(
+                key,
+                to: destination,
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            ).outcomes.count,
+            1
+        )
         XCTAssertNil(try source.migrationSnapshot(for: key.id))
     }
 
@@ -176,7 +198,7 @@ final class MigrationAdapterTests: XCTestCase {
         )
         source.set(key, to: NonEquatableValue(value: "ok"))
 
-        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .keepDestination))
+        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked))
         XCTAssertEqual(destination.get(key).value, "ok")
     }
 
@@ -188,14 +210,14 @@ final class MigrationAdapterTests: XCTestCase {
         source.set(optional, to: nil)
 
         XCTAssertNotNil(try source.migrationSnapshot(for: optional.id))
-        XCTAssertNoThrow(try source.copy(optional, to: destination, onConflict: .keepDestination))
+        XCTAssertNoThrow(try source.copy(optional, to: destination, onConflict: .keepDestination, tracking: .untracked))
         XCTAssertNil(destination.get(optional))
 
         let absent = PersistentKey("absent", defaultValue: 8)
 
         XCTAssertNil(try source.migrationSnapshot(for: absent.id))
 
-        let absentReport = try source.copy(absent, to: destination, onConflict: .keepDestination)
+        let absentReport = try source.copy(absent, to: destination, onConflict: .keepDestination, tracking: .untracked)
 
         if case .sourceAbsent = absentReport.outcomes[0].status {
         } else {
@@ -217,7 +239,7 @@ final class MigrationAdapterTests: XCTestCase {
 
         defaults.set(1, forKey: key.id)
 
-        XCTAssertThrowsError(try a.move(key, to: b, onConflict: .keepBoth))
+        XCTAssertThrowsError(try a.move(key, to: b, onConflict: .keepBoth, tracking: .untracked))
         XCTAssertEqual(defaults.integer(forKey: key.id), 1)
     }
 
@@ -240,11 +262,11 @@ final class MigrationAdapterTests: XCTestCase {
             store: raw,
             identity: .init(namespace: "test", identifier: UUID().uuidString)
         )
-        let key128 = String(repeating: "x", count: 128)
-        let key129 = String(repeating: "x", count: 129)
 
-        XCTAssertNoThrow(try store.prepareMigrationWrite(1, for: PersistentKey(key128, defaultValue: 0)))
-        XCTAssertThrowsError(try store.prepareMigrationWrite(1, for: PersistentKey(key129, defaultValue: 0)))
+        XCTAssertFalse(store.migrationKeyIDExceedsLimit(String(repeating: "x", count: 128)))
+        XCTAssertTrue(store.migrationKeyIDExceedsLimit(String(repeating: "x", count: 129)))
+        XCTAssertFalse(store.migrationKeyIDExceedsLimit(String(repeating: "\u{1F600}", count: 64)))
+        XCTAssertTrue(store.migrationKeyIDExceedsLimit(String(repeating: "\u{1F600}", count: 65)))
     }
 
     @available(watchOS 9.0, *)
@@ -274,7 +296,7 @@ final class MigrationAdapterTests: XCTestCase {
 
         source.set(key, to: 1)
         raw.rejectWrites = true
-        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination)
+        let report = try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         if case .failed = report.outcomes[0].status {
         } else {
@@ -296,7 +318,7 @@ final class MigrationAdapterTests: XCTestCase {
         raw.set(Int64(4), forKey: key.id)
         let destination = InMemoryPersistentKeyValueStore()
 
-        XCTAssertNoThrow(try store.copy(key, to: destination, onConflict: .keepDestination))
+        XCTAssertNoThrow(try store.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked))
         XCTAssertEqual(raw.synchronizeCount, 0)
     }
 
@@ -311,7 +333,7 @@ final class MigrationAdapterTests: XCTestCase {
         )
         source.userDefaults.set(try JSONEncoder().encode(CodableValue(name: "encoded", count: 9)), forKey: key.id)
 
-        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .keepDestination))
+        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked))
 
         let data = try XCTUnwrap(destination.userDefaults.data(forKey: key.id))
 
@@ -338,9 +360,9 @@ final class MigrationAdapterTests: XCTestCase {
 
         sourceDefaults.set("hello", forKey: key.id)
 
-        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .keepDestination))
+        XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked))
         XCTAssertEqual(destinationDefaults.string(forKey: key.id), "hello")
-        XCTAssertNoThrow(try source.move(key, to: destination, onConflict: .overwriteDestination))
+        XCTAssertNoThrow(try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked))
         XCTAssertNil(sourceDefaults.object(forKey: key.id))
     }
 

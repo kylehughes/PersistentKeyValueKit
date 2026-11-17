@@ -15,6 +15,8 @@ public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
 public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
     /// Preserves both the existing destination value and the source value, reporting
     /// ``PersistentKeyMigrationReport/Status/keptDestination``.
+    ///
+    /// The source value remains in the source store after the migration completes.
     case keepBoth
 
     /// Preserves the existing destination value and removes the source value after verifying that neither snapshot has
@@ -26,21 +28,74 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
     case overwriteDestination
 }
 
-/// Controls optional persistent completion tracking for a migration.
-public enum PersistentKeyMigrationCompletionPolicy {
-    /// Records a persistent completion marker for `id` in `recordedIn` after every key in the batch resolves without
-    /// failure.
-    ///
-    /// When the marker (``PersistentKeyProtocol/isMigrationCompleted(id:)``) is already `true` in `recordedIn`, the
-    /// migration is skipped without reading or mutating any keys, and the report returns no outcomes with
-    /// ``PersistentKeyMigrationReport/Completion/alreadyRecorded``.
-    ///
-    /// Tracking is a persistent marker rather than an in-flight transaction or an exactly-once guarantee. Until the
-    /// marker is written, retrying runs the batch again under its conflict policy. Remove
-    /// ``PersistentKeyProtocol/isMigrationCompleted(id:)`` from `recordedIn` to reset tracking, or choose a new `id`
-    /// when changing the migration's keys or behavior.
-    case once(id: String, recordedIn: any PersistentKeyValueStore)
+/// Determines whether a migration checks and records a persistent completion marker.
+///
+/// With ``once(id:)`` or ``once(id:recordedIn:)``, the migration first reads the marker
+/// ``PersistentKeyProtocol/isMigrationCompleted(id:)`` from the recording store. When the marker is `true`, the
+/// migration is skipped without reading or mutating any keys, and the report has no outcomes and
+/// ``PersistentKeyMigrationReport/Completion/alreadyRecorded``. Otherwise the batch runs, and the marker is written
+/// and verified only if every item resolves without failure (``PersistentKeyMigrationReport/Completion/recorded``).
+/// An empty batch resolves without failure, so it records the marker.
+///
+/// Tracking is a persistent marker rather than an in-flight transaction or an exactly-once guarantee. Until the marker
+/// is written, retrying runs the batch again under its conflict policy. Remove
+/// ``PersistentKeyProtocol/isMigrationCompleted(id:)`` from the recording store to reset tracking, or choose a new
+/// `id` when changing the migration's keys or behavior. A marker recorded in `NSUbiquitousKeyValueStore` syncs to the
+/// user's other devices like any other value.
+///
+/// This type is not `Sendable` because ``once(id:recordedIn:)`` holds the recording store. Create the tracking value
+/// where the migration runs.
+public struct PersistentKeyMigrationTracking {
+    let mode: Mode
+
+    // MARK: Private Initialization
+
+    private init(mode: Mode) {
+        self.mode = mode
+    }
+
+    // MARK: Public Static Interface
 
     /// Runs the migration without checking or recording a completion marker.
-    case untracked
+    ///
+    /// The report's completion is ``PersistentKeyMigrationReport/Completion/untracked``. Every call runs the batch
+    /// again under its conflict policy.
+    public static var untracked: Self {
+        Self(mode: .untracked)
+    }
+
+    /// Checks and records completion for `id` in the migration's destination store.
+    ///
+    /// An empty `id` causes the migration to throw ``PersistentKeyMigrationError/invalidMigrationIdentifier`` before
+    /// any key is read or modified.
+    ///
+    /// - Parameter id: A stable identifier for this migration.
+    /// - Returns: Tracking that records the marker in the destination store.
+    public static func once(id: String) -> Self {
+        Self(mode: .once(id: id, recorder: nil))
+    }
+
+    /// Checks and records completion for `id` in `store`.
+    ///
+    /// The migration reads `store`'s ``PersistentKeyValueStore/migrationEndpoint`` once, before any key is read or
+    /// modified. An empty `id` causes the migration to throw
+    /// ``PersistentKeyMigrationError/invalidMigrationIdentifier`` before any key is read or modified.
+    ///
+    /// - Parameter id: A stable identifier for this migration.
+    /// - Parameter store: The store that holds the completion marker. It can be the source, the destination, or
+    ///   another store.
+    /// - Returns: Tracking that records the marker in `store`.
+    public static func once<Store>(id: String, recordedIn store: Store) -> Self where Store: PersistentKeyValueStore {
+        Self(mode: .once(id: id, recorder: store))
+    }
+}
+
+// MARK: - Mode Extension
+
+extension PersistentKeyMigrationTracking {
+    enum Mode {
+        /// A `nil` recorder records in the migration's destination store.
+        case once(id: String, recorder: (any PersistentKeyValueStore)?)
+        case untracked
+    }
 }

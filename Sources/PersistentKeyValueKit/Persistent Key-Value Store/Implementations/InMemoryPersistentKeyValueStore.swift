@@ -104,11 +104,11 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     ) throws -> MigrationSnapshot? {
         let result: (MigrationSnapshot, [Observation]) = try withLock {
             guard write.identity == migrationIdentity else {
-                throw PersistentKeyMigrationError.invalidSnapshot
+                throw PersistentKeyMigrationError.internalInconsistency
             }
 
             if let snapshot, snapshot.identity != migrationIdentity || snapshot.keyID != write.keyID {
-                throw PersistentKeyMigrationError.invalidSnapshot
+                throw PersistentKeyMigrationError.internalInconsistency
             }
 
             if let snapshot, storage[write.keyID]?.revision != snapshot.revision {
@@ -138,6 +138,10 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
         return result.0
     }
 
+    func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
+        false
+    }
+
     /// Captures the persisted value and revision for a key, or `nil` when the key is absent.
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         withLock {
@@ -156,7 +160,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
     func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
-            throw PersistentKeyMigrationError.invalidSnapshot
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
         return withLock {
@@ -170,7 +174,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
         in snapshot: MigrationSnapshot
     ) throws -> Key.Value where Key: PersistentKeyProtocol {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == key.id else {
-            throw PersistentKeyMigrationError.invalidSnapshot
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
         let object = snapshot.object
@@ -195,7 +199,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
     func removeMigrationValue(for keyID: String, matching snapshot: MigrationSnapshot) throws {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
-            throw PersistentKeyMigrationError.invalidSnapshot
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
         let observations = try withLock {

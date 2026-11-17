@@ -251,7 +251,9 @@ final class MigrationNativeStoreTests: XCTestCase {
 
         source.set(key, to: 42)
 
-        XCTAssertThrowsError(try source.move(key, to: destination, onConflict: .keepDestinationAndRemoveSource)) {
+        XCTAssertThrowsError(
+            try source.move(key, to: destination, onConflict: .keepDestinationAndRemoveSource, tracking: .untracked)
+        ) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
         }
 
@@ -307,7 +309,9 @@ final class MigrationNativeStoreTests: XCTestCase {
 
         configured.set(key, to: 7)
 
-        XCTAssertThrowsError(try raw.copy(key, to: configured, onConflict: .overwriteDestination)) {
+        XCTAssertThrowsError(
+            try raw.copy(key, to: configured, onConflict: .overwriteDestination, tracking: .untracked)
+        ) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingMigrationDomain)
         }
 
@@ -348,7 +352,9 @@ final class MigrationNativeStoreTests: XCTestCase {
 
         source.set(key, to: 12)
 
-        XCTAssertThrowsError(try source.copy(key, to: destination, onConflict: .overwriteDestination)) {
+        XCTAssertThrowsError(
+            try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+        ) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingMigrationDomain)
         }
 

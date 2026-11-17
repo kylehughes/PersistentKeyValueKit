@@ -46,9 +46,141 @@ private extension PersistentKeyMigrationRegistry {
 
 // MARK: - Migration Operation
 
-fileprivate enum PersistentKeyMigrationOperation {
+enum PersistentKeyMigrationOperation {
     case copy(PersistentKeyCopyConflictPolicy)
     case move(PersistentKeyMoveConflictPolicy)
+}
+
+// MARK: - Migration Mapping
+
+/// The type-erased contents of a ``PersistentKeyMigrationItem``.
+///
+/// Erasure lets a batch mix value types while each item still decodes with its source key and encodes with its
+/// destination key.
+protocol PersistentKeyMigrationMappingProtocol: Sendable {
+    var destinationKeyID: String { get }
+    var sourceKeyID: String { get }
+
+    func migrate<SourceStore, DestinationStore>(
+        from sourceStore: SourceStore,
+        to destinationStore: DestinationStore,
+        operation: PersistentKeyMigrationOperation
+    ) -> PersistentKeyMigrationReport.Outcome
+    where
+        SourceStore: PersistentKeyValueMigrationBackend,
+        DestinationStore: PersistentKeyValueMigrationBackend
+}
+
+struct PersistentKeyMigrationMapping<SourceKey, DestinationKey>: PersistentKeyMigrationMappingProtocol
+where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
+    let destination: DestinationKey
+    let source: SourceKey
+    let transform: @Sendable (SourceKey.Value) throws -> DestinationKey.Value
+
+    // MARK: Internal Initialization
+
+    init(
+        source: SourceKey,
+        destination: DestinationKey,
+        transform: @escaping @Sendable (SourceKey.Value) throws -> DestinationKey.Value
+    ) {
+        self.source = source
+        self.destination = destination
+        self.transform = transform
+    }
+
+    // MARK: Internal Instance Interface
+
+    var destinationKeyID: String {
+        destination.id
+    }
+
+    var sourceKeyID: String {
+        source.id
+    }
+
+    func migrate<SourceStore, DestinationStore>(
+        from sourceStore: SourceStore,
+        to destinationStore: DestinationStore,
+        operation: PersistentKeyMigrationOperation
+    ) -> PersistentKeyMigrationReport.Outcome
+    where
+        SourceStore: PersistentKeyValueMigrationBackend,
+        DestinationStore: PersistentKeyValueMigrationBackend
+    {
+        let sourceID = source.id
+        let destinationID = destination.id
+        guard source.isMigrationEnabled, destination.isMigrationEnabled else {
+            return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .keyDisabled)
+        }
+
+        var stage: PersistentKeyMigrationReport.FailureStage = .snapshot
+        do {
+            guard let sourceSnapshot = try sourceStore.migrationSnapshot(for: sourceID) else {
+                return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .sourceAbsent)
+            }
+
+            let destinationSnapshot = try destinationStore.migrationSnapshot(for: destinationID)
+            switch operation {
+            case .copy(let policy):
+                if destinationSnapshot != nil, policy == .keepDestination {
+                    return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .keptDestination)
+                }
+            case .move(let policy):
+                if destinationSnapshot != nil, policy == .keepBoth {
+                    return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .keptDestination)
+                }
+
+                if destinationSnapshot != nil, policy == .keepDestinationAndRemoveSource {
+                    stage = .cleanup
+                    guard let destinationSnapshot,
+                        try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID)
+                    else {
+                        throw PersistentKeyMigrationError.destinationChanged
+                    }
+
+                    guard try sourceStore.migrationSnapshotIsCurrent(sourceSnapshot, for: sourceID) else {
+                        throw PersistentKeyMigrationError.sourceChanged
+                    }
+
+                    try sourceStore.removeMigrationValue(for: sourceID, matching: sourceSnapshot)
+                    return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .discardedSource)
+                }
+            }
+
+            stage = .decode
+            let value = try sourceStore.migrationValue(for: source, in: sourceSnapshot)
+            stage = .transform
+            let destinationValue = try transform(value)
+            stage = .prepare
+            let write = try destinationStore.prepareMigrationWrite(destinationValue, for: destination)
+            stage = .write
+            let committedSnapshot = try destinationStore.commitMigrationWrite(write, replacing: destinationSnapshot)
+            if let committedSnapshot {
+                guard try destinationStore.migrationSnapshotIsCurrent(committedSnapshot, for: destinationID) else {
+                    throw PersistentKeyMigrationError.writeVerificationFailed
+                }
+            } else {
+                guard try destinationStore.migrationSnapshot(for: destinationID) == nil else {
+                    throw PersistentKeyMigrationError.writeVerificationFailed
+                }
+            }
+
+            if case .move = operation {
+                stage = .cleanup
+                guard try sourceStore.migrationSnapshotIsCurrent(sourceSnapshot, for: sourceID) else {
+                    throw PersistentKeyMigrationError.sourceChanged
+                }
+
+                try sourceStore.removeMigrationValue(for: sourceID, matching: sourceSnapshot)
+                return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .moved)
+            }
+
+            return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .copied)
+        } catch {
+            return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, failedAt: stage, error: error)
+        }
+    }
 }
 
 // MARK: - PersistentKeyValueStore Extension
@@ -56,123 +188,222 @@ fileprivate enum PersistentKeyMigrationOperation {
 extension PersistentKeyValueStore {
     // MARK: Public Instance Interface
 
-    /// Copies a persisted value for one key from this store to another store.
+    /// Copies one item's persisted value from this store to another store.
     ///
-    /// Only a value persisted in this store's own domain is copied; registered defaults, launch arguments, added
-    /// suites, and the key's ``PersistentKeyProtocol/defaultValue`` do not participate and do not count as destination
-    /// conflicts. Conversion between storage formats uses the key's ``PersistentKeyProtocol/representation``.
+    /// This is equivalent to calling ``copy(items:to:onConflict:tracking:)`` with `[item]`.
     ///
-    /// Setup failures (such as missing domain metadata or migrating a store to itself) are thrown before mutation.
-    /// Conversion or write failures for `key` are returned in the report's ``PersistentKeyMigrationReport/outcomes``.
+    /// - Parameter item: The item to copy.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle an existing persisted value for the item's destination key in `destination`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
+    /// - Returns: A report containing the item's outcome and the completion-tracking status.
+    public func copy<Destination>(
+        _ item: PersistentKeyMigrationItem,
+        to destination: Destination,
+        onConflict policy: PersistentKeyCopyConflictPolicy,
+        tracking: PersistentKeyMigrationTracking
+    ) throws -> PersistentKeyMigrationReport
+    where Destination: PersistentKeyValueStore {
+        try copy(items: [item], to: destination, onConflict: policy, tracking: tracking)
+    }
+
+    /// Copies a persisted value for one key from this store to the same key in another store.
+    ///
+    /// This is equivalent to calling ``copy(items:to:onConflict:tracking:)`` with `[.key(key)]`.
     ///
     /// - Parameter key: The key to copy.
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle an existing persisted value in `destination`.
-    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
     /// - Returns: A report containing the key's outcome and the completion-tracking status.
     public func copy<Key, Destination>(
         _ key: Key,
         to destination: Destination,
         onConflict policy: PersistentKeyCopyConflictPolicy,
-        completion: PersistentKeyMigrationCompletionPolicy = .untracked
+        tracking: PersistentKeyMigrationTracking
     ) throws -> PersistentKeyMigrationReport
     where Key: PersistentKeyProtocol, Destination: PersistentKeyValueStore {
-        try copy([key], to: destination, onConflict: policy, completion: completion)
+        try copy(items: [.key(key)], to: destination, onConflict: policy, tracking: tracking)
     }
 
-    /// Copies persisted values for the given keys to another store in input order.
+    /// Copies persisted values for the given keys from this store to the same keys in another store, in input order.
     ///
-    /// A batch can contain keys with different value types. Only values persisted in each store's own domain
-    /// participate; registered defaults, launch arguments, added suites, and key default values are ignored. Each
-    /// value is decoded from this store and encoded for `destination` using its key's
-    /// ``PersistentKeyProtocol/representation``.
-    ///
-    /// Setup failures (such as missing domain metadata, migrating a store to itself, duplicate key identifiers,
-    /// reserved completion-marker keys, or overlapping in-process migrations for the same store and key) are thrown
-    /// before any key is modified. Per-key failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the
-    /// remaining keys in `keys` continue. Completed writes are not rolled back if a later key fails.
+    /// A batch can contain keys with different value types. This is equivalent to calling
+    /// ``copy(items:to:onConflict:tracking:)`` with each key wrapped in ``PersistentKeyMigrationItem/key(_:)``.
     ///
     /// - Parameter keys: The keys to copy, processed in order.
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle existing persisted values in `destination`.
-    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
     /// - Returns: A report with one outcome per key in `keys`, or no outcomes if completion was already recorded.
     public func copy<Destination>(
         _ keys: [any PersistentKeyProtocol],
         to destination: Destination,
         onConflict policy: PersistentKeyCopyConflictPolicy,
-        completion: PersistentKeyMigrationCompletionPolicy = .untracked
+        tracking: PersistentKeyMigrationTracking
+    ) throws -> PersistentKeyMigrationReport
+    where Destination: PersistentKeyValueStore {
+        try copy(
+            items: keys.map {
+                .key($0)
+            },
+            to: destination,
+            onConflict: policy,
+            tracking: tracking
+        )
+    }
+
+    /// Copies persisted values for the given items from this store to another store, in input order.
+    ///
+    /// Each item's value is read from its source key in this store, decoded with the source key's
+    /// ``PersistentKeyProtocol/representation``, converted by the item's transform if it has one, encoded with the
+    /// destination key's representation, and written to the destination key in `destination`. The source value is left
+    /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
+    /// added suites, and key default values are neither copied nor treated as destination conflicts.
+    ///
+    /// `destination` can be this store when every item maps its source key to a different key identifier.
+    ///
+    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
+    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
+    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
+    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
+    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    ///
+    /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
+    /// Completed writes are not rolled back if a later item fails. An empty batch is valid; with completion tracking,
+    /// it records the marker.
+    ///
+    /// - Parameter items: The items to copy, processed in order.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle existing persisted values for destination keys in `destination`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
+    /// - Returns: A report with one outcome per item in `items`, or no outcomes if completion was already recorded.
+    public func copy<Destination>(
+        items: [PersistentKeyMigrationItem],
+        to destination: Destination,
+        onConflict policy: PersistentKeyCopyConflictPolicy,
+        tracking: PersistentKeyMigrationTracking
     ) throws -> PersistentKeyMigrationReport
     where Destination: PersistentKeyValueStore {
         let sourceEndpoint = try migrationEndpoint
         let destinationEndpoint = try destination.migrationEndpoint
         return try sourceEndpoint.backend.execute(
-            keys,
+            items,
             destination: destinationEndpoint.backend,
-            operation: PersistentKeyMigrationOperation.copy(policy),
-            completion: completion
+            operation: .copy(policy),
+            tracking: tracking
         )
     }
 
-    /// Moves a persisted value for one key from this store to another store, removing the source value after a
-    /// verified transfer or when ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` resolves a
-    /// conflict.
+    /// Moves one item's persisted value from this store to another store.
     ///
-    /// Only a value persisted in this store's own domain is moved; registered defaults, launch arguments, added
-    /// suites, and the key's ``PersistentKeyProtocol/defaultValue`` do not participate and do not count as destination
-    /// conflicts.
+    /// This is equivalent to calling ``move(items:to:onConflict:tracking:)`` with `[item]`.
     ///
-    /// Setup failures are thrown before mutation. Per-key conversion, write, and source-cleanup failures are returned
-    /// in the report. If source removal fails after the destination write succeeds, the copied value remains in
-    /// `destination` and the outcome fails at ``PersistentKeyMigrationReport/FailureStage/cleanup``.
+    /// - Parameter item: The item to move.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle an existing persisted value for the item's destination key in `destination`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
+    /// - Returns: A report containing the item's outcome and the completion-tracking status.
+    public func move<Destination>(
+        _ item: PersistentKeyMigrationItem,
+        to destination: Destination,
+        onConflict policy: PersistentKeyMoveConflictPolicy,
+        tracking: PersistentKeyMigrationTracking
+    ) throws -> PersistentKeyMigrationReport
+    where Destination: PersistentKeyValueStore {
+        try move(items: [item], to: destination, onConflict: policy, tracking: tracking)
+    }
+
+    /// Moves a persisted value for one key from this store to the same key in another store.
+    ///
+    /// This is equivalent to calling ``move(items:to:onConflict:tracking:)`` with `[.key(key)]`.
     ///
     /// - Parameter key: The key to move.
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle an existing persisted value in `destination`.
-    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
     /// - Returns: A report containing the key's outcome and the completion-tracking status.
     public func move<Key, Destination>(
         _ key: Key,
         to destination: Destination,
         onConflict policy: PersistentKeyMoveConflictPolicy,
-        completion: PersistentKeyMigrationCompletionPolicy = .untracked
+        tracking: PersistentKeyMigrationTracking
     ) throws -> PersistentKeyMigrationReport
     where Key: PersistentKeyProtocol, Destination: PersistentKeyValueStore {
-        try move([key], to: destination, onConflict: policy, completion: completion)
+        try move(items: [.key(key)], to: destination, onConflict: policy, tracking: tracking)
     }
 
-    /// Moves persisted values for the given keys to another store in input order.
+    /// Moves persisted values for the given keys from this store to the same keys in another store, in input order.
     ///
-    /// A batch can contain keys with different value types. Only values persisted in each store's own domain
-    /// participate; registered defaults, launch arguments, added suites, and key default values are ignored. Each
-    /// value is decoded from this store and encoded for `destination` using its key's
-    /// ``PersistentKeyProtocol/representation``.
-    ///
-    /// Setup failures (such as missing domain metadata, migrating a store to itself, duplicate key identifiers,
-    /// reserved completion-marker keys, or overlapping in-process migrations for the same store and key) are thrown
-    /// before any key is modified. Per-key failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the
-    /// remaining keys in `keys` continue. Migrations do not roll back completed keys, and a move that fails during
-    /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` leaves the copied value in `destination`.
+    /// A batch can contain keys with different value types. This is equivalent to calling
+    /// ``move(items:to:onConflict:tracking:)`` with each key wrapped in ``PersistentKeyMigrationItem/key(_:)``.
     ///
     /// - Parameter keys: The keys to move, processed in order.
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle existing persisted values in `destination`.
-    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
     /// - Returns: A report with one outcome per key in `keys`, or no outcomes if completion was already recorded.
     public func move<Destination>(
         _ keys: [any PersistentKeyProtocol],
         to destination: Destination,
         onConflict policy: PersistentKeyMoveConflictPolicy,
-        completion: PersistentKeyMigrationCompletionPolicy = .untracked
+        tracking: PersistentKeyMigrationTracking
+    ) throws -> PersistentKeyMigrationReport
+    where Destination: PersistentKeyValueStore {
+        try move(
+            items: keys.map {
+                .key($0)
+            },
+            to: destination,
+            onConflict: policy,
+            tracking: tracking
+        )
+    }
+
+    /// Moves persisted values for the given items from this store to another store, in input order.
+    ///
+    /// Each item's value is read from its source key in this store, decoded with the source key's
+    /// ``PersistentKeyProtocol/representation``, converted by the item's transform if it has one, encoded with the
+    /// destination key's representation, and written to the destination key in `destination`. After the write is
+    /// verified, or when ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` resolves a conflict, the
+    /// source value is removed. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, a conflicting source value is left
+    /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
+    /// added suites, and key default values are neither moved nor treated as destination conflicts.
+    ///
+    /// `destination` can be this store when every item maps its source key to a different key identifier, which
+    /// renames keys within the store.
+    ///
+    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
+    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
+    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
+    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
+    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    ///
+    /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
+    /// A failure before the destination write, including a transform failure, leaves the source value in place.
+    /// Migrations do not roll back completed items, and a move that fails during
+    /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` leaves the written value in `destination`. An empty batch
+    /// is valid; with completion tracking, it records the marker.
+    ///
+    /// - Parameter items: The items to move, processed in order.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle existing persisted values for destination keys in `destination`.
+    /// - Parameter tracking: Whether to check and record a completion marker for this migration.
+    /// - Returns: A report with one outcome per item in `items`, or no outcomes if completion was already recorded.
+    public func move<Destination>(
+        items: [PersistentKeyMigrationItem],
+        to destination: Destination,
+        onConflict policy: PersistentKeyMoveConflictPolicy,
+        tracking: PersistentKeyMigrationTracking
     ) throws -> PersistentKeyMigrationReport
     where Destination: PersistentKeyValueStore {
         let sourceEndpoint = try migrationEndpoint
         let destinationEndpoint = try destination.migrationEndpoint
         return try sourceEndpoint.backend.execute(
-            keys,
+            items,
             destination: destinationEndpoint.backend,
-            operation: PersistentKeyMigrationOperation.move(policy),
-            completion: completion
+            operation: .move(policy),
+            tracking: tracking
         )
     }
 }
@@ -183,75 +414,115 @@ extension PersistentKeyValueMigrationBackend {
     // MARK: Fileprivate Instance Interface
 
     fileprivate func execute<Destination>(
-        _ keys: [any PersistentKeyProtocol],
+        _ items: [PersistentKeyMigrationItem],
         destination: Destination,
         operation: PersistentKeyMigrationOperation,
-        completion: PersistentKeyMigrationCompletionPolicy
+        tracking: PersistentKeyMigrationTracking
     ) throws -> PersistentKeyMigrationReport
     where Destination: PersistentKeyValueMigrationBackend {
-        let recorderEndpoint: PersistentKeyValueMigrationEndpoint?
-        switch completion {
+        let recorder: (id: String, backend: any PersistentKeyValueMigrationBackend)?
+        switch tracking.mode {
+        case .once(let id, let store?):
+            recorder = (id, try store.migrationEndpoint.backend)
+        case .once(let id, nil):
+            recorder = (id, destination)
         case .untracked:
-            recorderEndpoint = nil
-        case .once(_, let recorder):
-            recorderEndpoint = try recorder.migrationEndpoint
+            recorder = nil
         }
 
-        guard !migrationIdentity.namespace.isEmpty,
-            !migrationIdentity.identifier.isEmpty,
-            !destination.migrationIdentity.namespace.isEmpty,
-            !destination.migrationIdentity.identifier.isEmpty
+        var identities = [migrationIdentity, destination.migrationIdentity]
+        if let recorder {
+            identities.append(recorder.backend.migrationIdentity)
+        }
+
+        guard
+            identities.allSatisfy({
+                !$0.namespace.isEmpty && !$0.identifier.isEmpty
+            })
         else {
-            throw PersistentKeyMigrationError.invalidStoreIdentifier
+            throw PersistentKeyMigrationError.internalInconsistency
         }
 
-        guard migrationIdentity != destination.migrationIdentity else {
+        let mappings = items.map(\.mapping)
+        let isSameStore = migrationIdentity == destination.migrationIdentity
+        if isSameStore,
+            mappings.contains(where: {
+                $0.sourceKeyID == $0.destinationKeyID
+            })
+        {
             throw PersistentKeyMigrationError.sameStore
         }
 
-        var ids = Set<String>()
-        for key in keys {
-            guard ids.insert(key.id).inserted else {
-                throw PersistentKeyMigrationError.duplicateKey(key.id)
+        var sourceIDs = Set<String>()
+        var destinationIDs = Set<String>()
+        for mapping in mappings {
+            let sourceID = mapping.sourceKeyID
+            let destinationID = mapping.destinationKeyID
+            for id in [sourceID, destinationID] where id.hasPrefix("PersistentKeyValueKit.MigrationCompleted.") {
+                throw PersistentKeyMigrationError.reservedKey(id)
             }
 
-            if key.id.hasPrefix("PersistentKeyValueKit.MigrationCompleted.") {
-                throw PersistentKeyMigrationError.reservedKey(key.id)
+            guard sourceIDs.insert(sourceID).inserted else {
+                throw PersistentKeyMigrationError.duplicateKey(sourceID)
+            }
+
+            guard destinationIDs.insert(destinationID).inserted else {
+                throw PersistentKeyMigrationError.duplicateKey(destinationID)
+            }
+
+            guard !migrationKeyIDExceedsLimit(sourceID) else {
+                throw PersistentKeyMigrationError.keyIdentifierTooLong(sourceID)
+            }
+
+            guard !destination.migrationKeyIDExceedsLimit(destinationID) else {
+                throw PersistentKeyMigrationError.keyIdentifierTooLong(destinationID)
             }
         }
 
-        let marker: PersistentKey<Bool>?
-        switch completion {
-        case .untracked:
-            marker = nil
-        case .once(let id, _):
-            guard !id.isEmpty else {
+        // An item that maps a key to itself was rejected above, so a match is another item's source.
+        if isSameStore,
+            let overlap = mappings.first(where: {
+                sourceIDs.contains($0.destinationKeyID)
+            })
+        {
+            throw PersistentKeyMigrationError.overlappingKeys(overlap.destinationKeyID)
+        }
+
+        let tracked: (marker: PersistentKey<Bool>, recorder: any PersistentKeyValueMigrationBackend)?
+        if let recorder {
+            guard !recorder.id.isEmpty else {
                 throw PersistentKeyMigrationError.invalidMigrationIdentifier
             }
 
-            guard let recorderBackend = recorderEndpoint?.backend,
-                !recorderBackend.migrationIdentity.namespace.isEmpty,
-                !recorderBackend.migrationIdentity.identifier.isEmpty
-            else {
-                throw PersistentKeyMigrationError.invalidStoreIdentifier
+            let marker = PersistentKey<Bool>.isMigrationCompleted(id: recorder.id)
+            guard !recorder.backend.migrationKeyIDExceedsLimit(marker.id) else {
+                throw PersistentKeyMigrationError.keyIdentifierTooLong(marker.id)
             }
 
-            marker = .isMigrationCompleted(id: id)
+            tracked = (marker, recorder.backend)
+        } else {
+            tracked = nil
         }
 
         var resources = Set(
-            keys.map {
-                PersistentKeyMigrationRegistry.Resource(identity: migrationIdentity, keyID: $0.id)
+            mappings.map {
+                PersistentKeyMigrationRegistry.Resource(identity: migrationIdentity, keyID: $0.sourceKeyID)
             }
         )
         resources.formUnion(
-            keys.map {
-                PersistentKeyMigrationRegistry.Resource(identity: destination.migrationIdentity, keyID: $0.id)
+            mappings.map {
+                PersistentKeyMigrationRegistry.Resource(
+                    identity: destination.migrationIdentity,
+                    keyID: $0.destinationKeyID
+                )
             }
         )
-        if let marker, let recorderBackend = recorderEndpoint?.backend {
+        if let tracked {
             resources.insert(
-                PersistentKeyMigrationRegistry.Resource(identity: recorderBackend.migrationIdentity, keyID: marker.id)
+                PersistentKeyMigrationRegistry.Resource(
+                    identity: tracked.recorder.migrationIdentity,
+                    keyID: tracked.marker.id
+                )
             )
         }
 
@@ -263,23 +534,26 @@ extension PersistentKeyValueMigrationBackend {
             PersistentKeyMigrationRegistry.shared.release(resources)
         }
 
-        if let marker, let recorderBackend = recorderEndpoint?.backend {
+        if let tracked {
             return try executeTracked(
-                keys,
+                mappings,
                 destination: destination,
                 operation: operation,
-                marker: marker,
-                recorder: recorderBackend
+                marker: tracked.marker,
+                recorder: tracked.recorder
             )
         }
 
-        return executeUntracked(keys, destination: destination, operation: operation)
+        return PersistentKeyMigrationReport(
+            outcomes: migrate(mappings, destination: destination, operation: operation),
+            completion: .untracked
+        )
     }
 
     // MARK: Private Instance Interface
 
     private func executeTracked<Destination, Recorder>(
-        _ keys: [any PersistentKeyProtocol],
+        _ mappings: [any PersistentKeyMigrationMappingProtocol],
         destination: Destination,
         operation: PersistentKeyMigrationOperation,
         marker: PersistentKey<Bool>,
@@ -289,8 +563,7 @@ extension PersistentKeyValueMigrationBackend {
         Destination: PersistentKeyValueMigrationBackend,
         Recorder: PersistentKeyValueMigrationBackend
     {
-        let markerSnapshot: Recorder.MigrationSnapshot?
-        markerSnapshot = try recorder.migrationSnapshot(for: marker.id)
+        let markerSnapshot = try recorder.migrationSnapshot(for: marker.id)
         if let markerSnapshot {
             do {
                 if try recorder.migrationValue(for: marker, in: markerSnapshot) {
@@ -301,17 +574,10 @@ extension PersistentKeyValueMigrationBackend {
             }
         }
 
-        let outcomes = keys.map {
-            migrate($0, destination: destination, operation: operation)
-        }
-
+        let outcomes = migrate(mappings, destination: destination, operation: operation)
         guard
             !outcomes.contains(where: {
-                if case .failed = $0.status {
-                    return true
-                }
-
-                return false
+                $0.error != nil
             })
         else {
             return PersistentKeyMigrationReport(outcomes: outcomes, completion: .notRecorded)
@@ -328,104 +594,18 @@ extension PersistentKeyValueMigrationBackend {
 
             return PersistentKeyMigrationReport(outcomes: outcomes, completion: .recorded)
         } catch {
-            return PersistentKeyMigrationReport(outcomes: outcomes, completion: .failed(error))
+            return PersistentKeyMigrationReport(outcomes: outcomes, completionError: error)
         }
     }
 
-    private func executeUntracked<Destination>(
-        _ keys: [any PersistentKeyProtocol],
+    private func migrate<Destination>(
+        _ mappings: [any PersistentKeyMigrationMappingProtocol],
         destination: Destination,
         operation: PersistentKeyMigrationOperation
-    ) -> PersistentKeyMigrationReport
+    ) -> [PersistentKeyMigrationReport.Outcome]
     where Destination: PersistentKeyValueMigrationBackend {
-        var outcomes: [PersistentKeyMigrationReport.Outcome] = []
-
-        for key in keys {
-            outcomes.append(migrate(key, destination: destination, operation: operation))
-        }
-
-        return PersistentKeyMigrationReport(outcomes: outcomes, completion: .untracked)
-    }
-
-    private func migrate<Key, Destination>(
-        _ key: Key,
-        destination: Destination,
-        operation: PersistentKeyMigrationOperation
-    ) -> PersistentKeyMigrationReport.Outcome
-    where
-        Key: PersistentKeyProtocol,
-        Destination: PersistentKeyValueMigrationBackend
-    {
-        let id = key.id
-        guard key.isMigrationEnabled else {
-            return .init(keyID: id, status: .keyDisabled)
-        }
-
-        var stage: PersistentKeyMigrationReport.FailureStage = .snapshot
-        do {
-            guard let sourceSnapshot = try migrationSnapshot(for: id) else {
-                return .init(keyID: id, status: .sourceAbsent)
-            }
-
-            let destinationSnapshot = try destination.migrationSnapshot(for: id)
-            switch operation {
-            case .copy(let policy):
-                if destinationSnapshot != nil, policy == .keepDestination {
-                    return .init(keyID: id, status: .keptDestination)
-                }
-            case .move(let policy):
-                if destinationSnapshot != nil, policy == .keepBoth {
-                    return .init(keyID: id, status: .keptDestination)
-                }
-
-                if destinationSnapshot != nil, policy == .keepDestinationAndRemoveSource {
-                    stage = .cleanup
-                    guard let destinationSnapshot,
-                        try destination.migrationSnapshotIsCurrent(destinationSnapshot, for: id)
-                    else {
-                        throw PersistentKeyMigrationError.destinationChanged
-                    }
-
-                    guard try migrationSnapshotIsCurrent(sourceSnapshot, for: id) else {
-                        throw PersistentKeyMigrationError.sourceChanged
-                    }
-
-                    try removeMigrationValue(for: id, matching: sourceSnapshot)
-                    return .init(keyID: id, status: .discardedSource)
-                }
-            }
-
-            let value: Key.Value
-            stage = .decode
-            value = try migrationValue(for: key, in: sourceSnapshot)
-            let write: Destination.MigrationWrite
-            stage = .prepare
-            write = try destination.prepareMigrationWrite(value, for: key)
-            stage = .write
-            let committedSnapshot = try destination.commitMigrationWrite(write, replacing: destinationSnapshot)
-            if let committedSnapshot {
-                guard try destination.migrationSnapshotIsCurrent(committedSnapshot, for: id) else {
-                    throw PersistentKeyMigrationError.writeVerificationFailed
-                }
-            } else {
-                guard try destination.migrationSnapshot(for: id) == nil else {
-                    throw PersistentKeyMigrationError.writeVerificationFailed
-                }
-            }
-
-            if case .move = operation {
-                stage = .cleanup
-                guard try migrationSnapshotIsCurrent(sourceSnapshot, for: id) else {
-                    throw PersistentKeyMigrationError.sourceChanged
-                }
-
-                try removeMigrationValue(for: id, matching: sourceSnapshot)
-                return .init(keyID: id, status: .moved)
-            }
-
-            return .init(keyID: id, status: .copied)
-        } catch {
-            return .init(keyID: id, status: .failed(stage: stage, error: error))
+        mappings.map {
+            $0.migrate(from: self, to: destination, operation: operation)
         }
     }
 }
