@@ -5,6 +5,7 @@
 //  Created by Kyle Hughes on 4/17/22.
 //
 
+import CryptoKit
 import Foundation
 
 /// A protocol for a key for a value in a ``PersistentKeyValueStore``.
@@ -115,12 +116,17 @@ extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
     /// Remove this key from the recording store (or set it to `false`) to allow a completed migration with the same
     /// `id` to run again.
     ///
+    /// The key's identifier has the same length for every `id`, so identifiers of any length can be recorded in any
+    /// store, including `NSUbiquitousKeyValueStore`.
+    ///
     /// - Parameter id: The migration identifier passed to ``PersistentKeyMigrationCompletionPolicy/once(id:recordedIn:)``.
     /// - Returns: A boolean key whose default value is `false`.
     public static func isMigrationCompleted(id: String) -> Self {
-        Self(
+        // A digest keeps the marker within `NSUbiquitousKeyValueStore`'s 128-unit key limit for any `id`.
+        let digest = Data(SHA256.hash(data: Data(id.utf8)))
+        return Self(
             "PersistentKeyValueKit.MigrationCompleted."
-            + Data(id.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            + digest.base64EncodedString().replacingOccurrences(of: "+", with: "-")
                     .replacingOccurrences(of: "/", with: "_")
                     .replacingOccurrences(of: "=", with: ""),
             defaultValue: false

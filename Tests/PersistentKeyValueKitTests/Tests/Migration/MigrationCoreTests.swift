@@ -113,6 +113,30 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertNotEqual(a.id, b.id)
     }
 
+    @available(watchOS 9.0, *)
+    func testLongCompletionIDIsRecordedInUbiquitousStore() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = StrictMigrationUbiquitousStore()
+        let k = key()
+        let id = String(repeating: "long-migration-identifier/", count: 20)
+
+        source.set(k, to: "value")
+
+        let report = try source.copy(
+            k,
+            to: destination,
+            onConflict: .overwriteDestination,
+            completion: .once(id: id, recordedIn: destination)
+        )
+
+        XCTAssertFalse(report.hasFailures)
+        guard case .recorded = report.completion else {
+            return XCTFail("expected recorded completion, got \(report.completion)")
+        }
+        XCTAssertLessThanOrEqual(PersistentKey<Bool>.isMigrationCompleted(id: id).id.utf16.count, 128)
+        XCTAssertTrue(destination.get(.isMigrationCompleted(id: id)))
+    }
+
     func testCompletionMarkerIsWrittenAfterMoveCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = MigrationFaultStore()
