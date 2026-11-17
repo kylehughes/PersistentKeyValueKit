@@ -178,7 +178,7 @@ You can also read values with subscript syntax (`store[.launchCount]`). Use `rem
 
 #### Define and Access a Debug Key
 
-`PersistentDebugKey<Value>` is mutable in Debug builds and locked to its release default value in Release builds for `UserDefaults` and `NSUbiquitousKeyValueStore`, where `get` always returns the release default and `set` and `remove` are no-ops. `InMemoryPersistentKeyValueStore` stores Swift values directly without calling the key's store-specific methods, so its `get`, `set`, and `remove` operations remain active in Release builds (falling back to the release default only when no value is stored). Store migrations check `isMigrationEnabled` and skip `PersistentDebugKey` with `.keyDisabled` in Release builds across all stores. Both `PersistentKey` and `PersistentDebugKey` conform to `PersistentKeyProtocol`.
+`PersistentDebugKey<Value>` is mutable in Debug builds and locked to its release default value in Release builds across `UserDefaults`, `NSUbiquitousKeyValueStore`, and `InMemoryPersistentKeyValueStore`, where `get` always returns the release default, `set` and `remove` are no-ops, and store migrations check `isMigrationEnabled` and skip the key with `.keyDisabled`. Both `PersistentKey` and `PersistentDebugKey` conform to `PersistentKeyProtocol`.
 
 > [!WARNING]
 > `PersistentDebugKey` relies on the `#if DEBUG` compilation condition when compiling `PersistentKeyValueKit` from source (such as through Swift Package Manager). Prebuilt binary distributions compiled in Release mode will always take the release path.
