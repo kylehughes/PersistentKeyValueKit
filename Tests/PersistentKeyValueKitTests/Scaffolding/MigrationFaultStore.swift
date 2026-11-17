@@ -73,7 +73,7 @@ extension MigrationFaultStore: PersistentKeyValueMigrationBackend {
         accessCount += 1
 
         if failure == .snapshot && (failureKey == nil || failureKey == keyID) {
-            throw PersistentKeyMigrationError.storeUnavailable
+            throw InjectedFailure()
         }
 
         hook?()
@@ -179,6 +179,12 @@ extension MigrationFaultStore: PersistentKeyValueStore {
     func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
         base.set(key, to: value)
     }
+}
+
+// MARK: - InjectedFailure Definition
+
+extension MigrationFaultStore {
+    struct InjectedFailure: Error {}
 }
 
 // MARK: - Point Definition

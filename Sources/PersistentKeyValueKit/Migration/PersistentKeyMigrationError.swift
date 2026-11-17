@@ -14,9 +14,6 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// `UserDefaults.standard` was used in a migration, but `Bundle.main.bundleIdentifier` is missing or empty.
     case missingApplicationIdentifier
 
-    /// The underlying store is unavailable for migration.
-    case storeUnavailable
-
     /// A non-standard `UserDefaults` instance was not created with `UserDefaults.migratable(suiteName:)`, so its
     /// writable persistent domain is unknown.
     case missingMigrationDomain
