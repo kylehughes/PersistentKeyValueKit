@@ -14,7 +14,25 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     private var observations: [Observation]
     private var registrationHandler: (() -> Void)?
     private var registrations: Int
+    private var retainedObservers: [NSObject]
     private var storage: [String: Any]
+
+    /// Whether the store keeps a strong reference to every registered observer, even after deregistration, so tests
+    /// can deliver a notification that races deregistration.
+    var retainsObservers: Bool {
+        get {
+            withLock {
+                isRetainingObservers
+            }
+        }
+        set {
+            withLock {
+                isRetainingObservers = newValue
+            }
+        }
+    }
+
+    private var isRetainingObservers: Bool
 
     var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         get throws {
@@ -27,7 +45,9 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
         lock = NSLock()
         observations = []
         registrationHandler = nil
+        isRetainingObservers = false
         registrations = 0
+        retainedObservers = []
         storage = [:]
     }
 
@@ -64,6 +84,17 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
         return storedValue as? Key.Value ?? key.defaultValue
     }
 
+    /// Notifies every observer retained by ``retainsObservers``, including deregistered ones.
+    func notifyRetainedObservers(keyPath: String?) {
+        let observers = withLock {
+            retainedObservers
+        }
+
+        for observer in observers {
+            observer.observeValue(forKeyPath: keyPath, of: self, change: nil, context: nil)
+        }
+    }
+
     func onNextRegistration(_ handler: @escaping () -> Void) {
         withLock {
             registrationHandler = handler
@@ -86,6 +117,9 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     ) where Key: PersistentKeyProtocol {
         let handler = withLock {
             registrations += 1
+            if isRetainingObservers {
+                retainedObservers.append(observer)
+            }
             observations.append(
                 Observation(
                     observer: observer,

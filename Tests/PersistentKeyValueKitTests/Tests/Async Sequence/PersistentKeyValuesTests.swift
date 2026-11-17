@@ -98,6 +98,35 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(value, "changedValue")
     }
 
+    func test_changes_ignoresNotificationDeliveredAfterCancellation() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let registered = expectation(description: "registered")
+
+        store.retainsObservers = true
+        store.onNextRegistration {
+            registered.fulfill()
+        }
+
+        let task = Task {
+            var iterator = key.changes(in: store).makeAsyncIterator()
+
+            return await iterator.next()
+        }
+
+        await fulfillment(of: [registered], timeout: 5)
+        task.cancel()
+
+        let value = await task.value
+
+        XCTAssertNil(value)
+        XCTAssertEqual(store.deregistrationCount, 1)
+
+        store.notifyRetainedObservers(keyPath: key.id)
+
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
     func test_changes_keyConvenienceSkipsInitialValue() async {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
