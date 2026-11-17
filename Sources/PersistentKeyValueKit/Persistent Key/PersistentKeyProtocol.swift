@@ -11,7 +11,12 @@ import Foundation
 /// A typed key for a value in a ``PersistentKeyValueStore``.
 ///
 /// This protocol models keys backed by `UserDefaults`, `NSUbiquitousKeyValueStore`, or
-/// ``InMemoryPersistentKeyValueStore``.
+/// ``InMemoryPersistentKeyValueStore``. Each store reads, writes, and removes a value by calling the key's
+/// `get(from:)`, `set(to:in:)`, and `remove(from:)` requirements for that store, so a conforming type controls access
+/// to every store it supports. The `UserDefaults` and `NSUbiquitousKeyValueStore` requirements have no default
+/// implementations. The ``InMemoryPersistentKeyValueStore`` requirements default to storing the Swift value directly
+/// through ``InMemoryPersistentKeyValueStore/object(forKey:)``, ``InMemoryPersistentKeyValueStore/set(_:forKey:)``,
+/// and ``InMemoryPersistentKeyValueStore/removeObject(forKey:)``.
 public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID == String {
     // MARK: Associated Types
     
@@ -87,6 +92,28 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in.
     @available(watchOS 9.0, *)
     func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore)
+
+    // MARK: Interfacing with In-Memory Store
+
+    /// Gets the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default value is returned if the key has not been set.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to get the value from.
+    /// - Returns: The value of the key in the given ``InMemoryPersistentKeyValueStore``, or the default value if the
+    ///   key has not been set.
+    func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> Value
+
+    /// Removes the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to remove the value from.
+    func remove(from inMemoryStore: InMemoryPersistentKeyValueStore)
+
+    /// Sets the value of the key to the given value in the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// - Parameter newValue: The new value for the key.
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to set the value in.
+    func set(to newValue: Value, in inMemoryStore: InMemoryPersistentKeyValueStore)
 }
 
 // MARK: - Bespoke Implementation
@@ -106,6 +133,48 @@ extension PersistentKeyProtocol {
     @inlinable
     public func registerDefault(in propertyListDictionary: inout [String: Any]) {
         representation.set(id, to: defaultValue, in: &propertyListDictionary)
+    }
+
+    // MARK: Interfacing with In-Memory Store
+
+    /// Gets the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default implementation returns the stored value when it is a `Value`, including an explicitly stored `nil`
+    /// for an optional key, and returns the default value when the key has not been set or the stored value has
+    /// another type.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to get the value from.
+    /// - Returns: The value of the key in the given ``InMemoryPersistentKeyValueStore``, or the default value if the
+    ///   key has not been set.
+    @inlinable
+    public func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> Value {
+        guard let object = inMemoryStore.object(forKey: id) else {
+            return defaultValue
+        }
+
+        return object as? Value ?? defaultValue
+    }
+
+    /// Removes the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default implementation calls ``InMemoryPersistentKeyValueStore/removeObject(forKey:)``.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to remove the value from.
+    @inlinable
+    public func remove(from inMemoryStore: InMemoryPersistentKeyValueStore) {
+        inMemoryStore.removeObject(forKey: id)
+    }
+
+    /// Sets the value of the key to the given value in the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default implementation calls ``InMemoryPersistentKeyValueStore/set(_:forKey:)``, so setting an optional
+    /// key to `nil` records an explicit entry.
+    ///
+    /// - Parameter newValue: The new value for the key.
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to set the value in.
+    @inlinable
+    public func set(to newValue: Value, in inMemoryStore: InMemoryPersistentKeyValueStore) {
+        inMemoryStore.set(newValue, forKey: id)
     }
 }
 

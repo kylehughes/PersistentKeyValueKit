@@ -120,6 +120,30 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(defaults.get(scalarKey), PublicLayout(columns: 7))
     }
 
+    func testCustomKeyInMemoryAccessIsHonoredByTheStore() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PublicNamespacedKey(id: "custom", defaultValue: "default")
+        let existentialKey: any PersistentKeyProtocol<String> = key
+
+        XCTAssertEqual(store.get(key), "default")
+
+        store.set(key, to: "value")
+
+        XCTAssertEqual(store.object(forKey: "namespace.custom") as? String, "value")
+        XCTAssertNil(store.object(forKey: "custom"))
+        XCTAssertEqual(store.get(key), "value")
+        XCTAssertEqual(store.get(existentialKey), "value")
+
+        store.set(existentialKey, to: "existential")
+
+        XCTAssertEqual(store.object(forKey: "namespace.custom") as? String, "existential")
+
+        store.remove(key)
+
+        XCTAssertNil(store.object(forKey: "namespace.custom"))
+        XCTAssertEqual(store.get(key), "default")
+    }
+
     func testGenericMigrationAndExistentialMigrationUseTheSameContract() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -717,6 +741,67 @@ private enum PublicMode: String, KeyValuePersistible {
 
     static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         RawRepresentablePersistentKeyValueRepresentation()
+    }
+}
+
+// MARK: - Public Namespaced Key Definition
+
+/// A key that stores its in-memory value under a namespaced identifier.
+private struct PublicNamespacedKey {
+    let id: String
+    let defaultValue: String
+}
+
+// MARK: - PersistentKeyProtocol Extension
+
+extension PublicNamespacedKey: PersistentKeyProtocol {
+    var representation: any PersistentKeyValueRepresentation<String> {
+        String.persistentKeyValueRepresentation
+    }
+
+    // MARK: Interfacing with User Defaults
+
+    func get(from userDefaults: UserDefaults) -> String {
+        representation.get(id, from: userDefaults) ?? defaultValue
+    }
+
+    func remove(from userDefaults: UserDefaults) {
+        userDefaults.removeObject(forKey: id)
+    }
+
+    func set(to newValue: String, in userDefaults: UserDefaults) {
+        representation.set(id, to: newValue, in: userDefaults)
+    }
+
+    // MARK: Interfacing with Ubiquitous Key-Value Store
+
+    @available(watchOS 9.0, *)
+    func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> String {
+        representation.get(id, from: ubiquitousStore) ?? defaultValue
+    }
+
+    @available(watchOS 9.0, *)
+    func remove(from ubiquitousStore: NSUbiquitousKeyValueStore) {
+        ubiquitousStore.removeObject(forKey: id)
+    }
+
+    @available(watchOS 9.0, *)
+    func set(to newValue: String, in ubiquitousStore: NSUbiquitousKeyValueStore) {
+        representation.set(id, to: newValue, in: ubiquitousStore)
+    }
+
+    // MARK: Interfacing with In-Memory Store
+
+    func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> String {
+        inMemoryStore.object(forKey: "namespace.\(id)") as? String ?? defaultValue
+    }
+
+    func remove(from inMemoryStore: InMemoryPersistentKeyValueStore) {
+        inMemoryStore.removeObject(forKey: "namespace.\(id)")
+    }
+
+    func set(to newValue: String, in inMemoryStore: InMemoryPersistentKeyValueStore) {
+        inMemoryStore.set(newValue, forKey: "namespace.\(id)")
     }
 }
 

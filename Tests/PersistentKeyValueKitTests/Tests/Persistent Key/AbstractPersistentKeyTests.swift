@@ -71,6 +71,74 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
     }
     
     // MARK: PersistentKeyProtocol Tests
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_get_defaultValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        XCTAssertEqual(target.get(from: inMemoryStore), defaultValue)
+        XCTAssertEqual(inMemoryStore.get(target), defaultValue)
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_get_storedValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(storedValue, forKey: id)
+
+        if supportsStoredValues {
+            XCTAssertEqual(target.get(from: inMemoryStore), storedValue)
+            XCTAssertEqual(inMemoryStore.get(target), storedValue)
+        } else {
+            XCTAssertEqual(target.get(from: inMemoryStore), defaultValue)
+            XCTAssertEqual(inMemoryStore.get(target), defaultValue)
+        }
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_get_storedValueOfOtherType() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(UUID(), forKey: id)
+
+        XCTAssertEqual(target.get(from: inMemoryStore), defaultValue)
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_remove_noValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        target.remove(from: inMemoryStore)
+
+        XCTAssertNil(inMemoryStore.object(forKey: id))
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_remove_storedValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(storedValue, forKey: id)
+        inMemoryStore.remove(target)
+
+        if supportsStoredValues {
+            XCTAssertNil(inMemoryStore.object(forKey: id))
+        } else {
+            XCTAssertEqual(inMemoryStore.object(forKey: id) as? Key.Value, storedValue)
+        }
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_set() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(target, to: storedValue)
+
+        if supportsStoredValues {
+            XCTAssertEqual(inMemoryStore.object(forKey: id) as? Key.Value, storedValue)
+        } else {
+            XCTAssertNil(inMemoryStore.object(forKey: id))
+        }
+    }
     
     @available(watchOS 9.0, *)
     @MainActor

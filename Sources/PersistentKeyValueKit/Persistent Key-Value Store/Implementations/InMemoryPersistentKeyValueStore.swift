@@ -44,6 +44,65 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
         )
     }
 
+    // MARK: Public Instance Interface
+
+    /// Returns the stored value for the given key, or `nil` if the store has no entry for the key.
+    ///
+    /// An entry recorded by setting an optional value to `nil` is returned as a non-`nil` `Any` that wraps `nil`;
+    /// cast the result to the optional type to read it. Arrays and dictionaries of optionals are returned without
+    /// their `nil` elements.
+    ///
+    /// Use this method to implement a custom key's in-memory `get(from:)` requirement of ``PersistentKeyProtocol``.
+    /// Typed call sites should use ``get(_:)`` instead.
+    ///
+    /// - Parameter key: The identifier of the entry.
+    /// - Returns: The stored value, or `nil` if the store has no entry for the key.
+    public func object(forKey key: String) -> Any? {
+        withLock {
+            storage[key]?.object
+        }
+    }
+
+    /// Removes the entry for the given key and notifies observers of the key.
+    ///
+    /// Use this method to implement a custom key's in-memory `remove(from:)` requirement of
+    /// ``PersistentKeyProtocol``. Typed call sites should use ``remove(_:)`` instead.
+    ///
+    /// - Parameter key: The identifier of the entry.
+    public func removeObject(forKey key: String) {
+        let observations = withLock {
+            storage.removeValue(forKey: key)
+
+            return liveObservations(for: key)
+        }
+
+        notify(observations, keyPath: key)
+    }
+
+    /// Stores the given value for the given key and notifies observers of the key.
+    ///
+    /// The store keeps the Swift value itself, without converting it to a property-list type, and removes `nil`
+    /// elements from arrays and dictionaries of optionals. Passing an optional that is `nil` records an explicit entry
+    /// that ``object(forKey:)`` returns; call ``removeObject(forKey:)`` to delete the entry.
+    ///
+    /// Use this method to implement a custom key's in-memory `set(to:in:)` requirement of ``PersistentKeyProtocol``.
+    /// Typed call sites should use ``set(_:to:)`` instead.
+    ///
+    /// - Parameter value: The value to store.
+    /// - Parameter key: The identifier of the entry.
+    public func set(_ value: Any, forKey key: String) {
+        let storedValue = Self.normalizedValue(value)
+
+        let observations = withLock {
+            nextRevision &+= 1
+            storage[key] = StoredValue(object: storedValue, revision: nextRevision)
+
+            return liveObservations(for: key)
+        }
+
+        notify(observations, keyPath: key)
+    }
+
     // MARK: Private Static Interface
 
     private static func normalizedValue<T>(_ value: T) -> Any {
@@ -230,41 +289,19 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     // MARK: Getting Values
 
     public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        let value = withLock {
-            storage[key.id]?.object
-        }
-
-        return value as? Key.Value ?? key.defaultValue
+        key.get(from: self)
     }
 
     // MARK: Setting Values
 
     public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        let keyID = key.id
-        let storedValue = Self.normalizedValue(value)
-
-        let observations = withLock {
-            nextRevision &+= 1
-            storage[keyID] = StoredValue(object: storedValue, revision: nextRevision)
-
-            return liveObservations(for: keyID)
-        }
-
-        notify(observations, keyPath: keyID)
+        key.set(to: value, in: self)
     }
 
     // MARK: Removing Values
 
     public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        let keyID = key.id
-
-        let observations = withLock {
-            storage.removeValue(forKey: keyID)
-
-            return liveObservations(for: keyID)
-        }
-
-        notify(observations, keyPath: keyID)
+        key.remove(from: self)
     }
 
     // MARK: Observing Keys

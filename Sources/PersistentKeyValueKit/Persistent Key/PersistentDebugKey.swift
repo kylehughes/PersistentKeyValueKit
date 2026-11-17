@@ -7,14 +7,12 @@
 
 import Foundation
 
-/// A key for a value in a ``PersistentKeyValueStore`` whose `UserDefaults` and `NSUbiquitousKeyValueStore` access is
-/// only mutable in Debug builds.
+/// A key for a value in a ``PersistentKeyValueStore`` that is only mutable in Debug builds.
 ///
-/// In Release builds, `get(from:)`, `set(to:in:)`, and `remove(from:)` on `UserDefaults` and
-/// `NSUbiquitousKeyValueStore` always return the release default value and ignore writes and removals.
-/// ``InMemoryPersistentKeyValueStore`` stores Swift values directly without calling those methods, so it continues to
-/// read, write, and remove values in Release builds. Store migrations check ``isMigrationEnabled`` and skip the key
-/// with ``PersistentKeyMigrationReport/Status/keyDisabled`` in Release builds across all stores.
+/// In Release builds, `get(from:)`, `set(to:in:)`, and `remove(from:)` on `UserDefaults`,
+/// `NSUbiquitousKeyValueStore`, and ``InMemoryPersistentKeyValueStore`` always return the release default value and
+/// ignore writes and removals. Store migrations check ``isMigrationEnabled`` and skip the key with
+/// ``PersistentKeyMigrationReport/Status/keyDisabled`` in Release builds across all stores.
 ///
 /// Define reusable keys as static members on ``PersistentKeyProtocol``:
 ///
@@ -298,6 +296,58 @@ extension PersistentDebugKey {
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         #if DEBUG
         representation.set(id, to: newValue, in: ubiquitousStore)
+        #else
+        // NO-OP
+        #endif
+    }
+
+    // MARK: Interfacing with In-Memory Store
+
+    /// In debug builds, gets the value of the key from the given ``InMemoryPersistentKeyValueStore``. The default
+    /// value is returned if the key has not been set.
+    ///
+    /// In production builds, the default value is always returned.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to get the value from.
+    /// - Returns: In debug builds, the value of the key in the given ``InMemoryPersistentKeyValueStore``, or the
+    ///   default value if the key has not been set. In production builds, the default value.
+    @inlinable
+    public func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> Value {
+        #if DEBUG
+        guard let object = inMemoryStore.object(forKey: id) else {
+            return defaultValue
+        }
+
+        return object as? Value ?? defaultValue
+        #else
+        defaultValue
+        #endif
+    }
+
+    /// In debug builds, removes the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// In production builds, this method has no effect.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to remove the value from.
+    @inlinable
+    public func remove(from inMemoryStore: InMemoryPersistentKeyValueStore) {
+        #if DEBUG
+        inMemoryStore.removeObject(forKey: id)
+        #else
+        // NO-OP
+        #endif
+    }
+
+    /// In debug builds, sets the value of the key to the given value in the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// In production builds, this method has no effect.
+    ///
+    /// - Parameter newValue: The new value for the key.
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to set the value in.
+    @inlinable
+    public func set(to newValue: Value, in inMemoryStore: InMemoryPersistentKeyValueStore) {
+        #if DEBUG
+        inMemoryStore.set(newValue, forKey: id)
         #else
         // NO-OP
         #endif
