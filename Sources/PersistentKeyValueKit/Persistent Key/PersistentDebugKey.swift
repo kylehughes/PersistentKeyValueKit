@@ -192,6 +192,10 @@ where
 // MARK: - PersistentKeyProtocol Extension
 
 extension PersistentDebugKey {
+    /// Whether this debug key participates in migration operations.
+    ///
+    /// Returns `true` in Debug builds and `false` in Release builds, where migration reports
+    /// ``PersistentKeyMigrationReport/Status/keyDisabled``.
     public var isMigrationEnabled: Bool {
         #if DEBUG
         true

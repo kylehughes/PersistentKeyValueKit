@@ -21,10 +21,15 @@ import Foundation
 /// uncommon.
 /// Implementations that are not thread-safe will exhibit undefined behavior or crash when used with observation APIs.
 public protocol PersistentKeyValueStore {
-    /// The migration capability for this store. Access throws when the backing store's writable identity is unavailable.
+    /// The migration capability for this store.
     ///
-    /// Wrappers forward this capability to their backing store. Migration does not invoke a wrapper's ordinary
-    /// `get` or `set` methods.
+    /// Access throws when the backing store's writable persistent domain cannot be identified (such as a non-standard
+    /// `UserDefaults` instance not created with `UserDefaults.migratable(suiteName:)` or `UserDefaults.standard`
+    /// when `Bundle.main.bundleIdentifier` is unavailable).
+    ///
+    /// Custom store wrappers forward their backing store's endpoint (`try base.migrationEndpoint`). Forwarding
+    /// delegates migration to the backing store directly without calling the wrapper's ``get(_:)``, ``set(_:to:)``,
+    /// or ``remove(_:)`` methods.
     var migrationEndpoint: PersistentKeyValueMigrationEndpoint { get throws }
 
     // MARK: Getting Values

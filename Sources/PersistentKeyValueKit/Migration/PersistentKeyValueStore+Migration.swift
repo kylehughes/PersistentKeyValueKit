@@ -56,7 +56,20 @@ fileprivate enum PersistentKeyMigrationOperation {
 extension PersistentKeyValueStore {
     // MARK: Public Instance Interface
 
-    /// Copies one typed key to another migration-capable store.
+    /// Copies a persisted value for one key from this store to another store.
+    ///
+    /// Only a value persisted in this store's own domain is copied; registered defaults, launch arguments, added
+    /// suites, and the key's ``PersistentKeyProtocol/defaultValue`` do not participate and do not count as destination
+    /// conflicts. Conversion between storage formats uses the key's ``PersistentKeyProtocol/representation``.
+    ///
+    /// Setup failures (such as missing domain metadata or migrating a store to itself) are thrown before mutation.
+    /// Conversion or write failures for `key` are returned in the report's ``PersistentKeyMigrationReport/outcomes``.
+    ///
+    /// - Parameter key: The key to copy.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle an existing persisted value in `destination`.
+    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Returns: A report containing the key's outcome and the completion-tracking status.
     public func copy<Key, Destination>(
         _ key: Key,
         to destination: Destination,
@@ -67,9 +80,23 @@ extension PersistentKeyValueStore {
         try copy([key], to: destination, onConflict: policy, completion: completion)
     }
 
-    /// Copies keys in input order.
+    /// Copies persisted values for the given keys to another store in input order.
     ///
-    /// The report has one outcome per key, or no outcomes if completion was already recorded.
+    /// A batch can contain keys with different value types. Only values persisted in each store's own domain
+    /// participate; registered defaults, launch arguments, added suites, and key default values are ignored. Each
+    /// value is decoded from this store and encoded for `destination` using its key's
+    /// ``PersistentKeyProtocol/representation``.
+    ///
+    /// Setup failures (such as missing domain metadata, migrating a store to itself, duplicate key identifiers,
+    /// reserved completion-marker keys, or overlapping in-process migrations for the same store and key) are thrown
+    /// before any key is modified. Per-key failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the
+    /// remaining keys in `keys` continue. Completed writes are not rolled back if a later key fails.
+    ///
+    /// - Parameter keys: The keys to copy, processed in order.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle existing persisted values in `destination`.
+    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Returns: A report with one outcome per key in `keys`, or no outcomes if completion was already recorded.
     public func copy<Destination>(
         _ keys: [any PersistentKeyProtocol],
         to destination: Destination,
@@ -87,10 +114,23 @@ extension PersistentKeyValueStore {
         )
     }
 
-    /// Moves one typed key, removing the source after verified transfer or according to the selected conflict policy.
+    /// Moves a persisted value for one key from this store to another store, removing the source value after a
+    /// verified transfer or when ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` resolves a
+    /// conflict.
     ///
-    /// `keepDestinationAndRemoveSource` can remove the source without writing a destination value. If source cleanup
-    /// fails after a transfer, the copied destination value remains in place.
+    /// Only a value persisted in this store's own domain is moved; registered defaults, launch arguments, added
+    /// suites, and the key's ``PersistentKeyProtocol/defaultValue`` do not participate and do not count as destination
+    /// conflicts.
+    ///
+    /// Setup failures are thrown before mutation. Per-key conversion, write, and source-cleanup failures are returned
+    /// in the report. If source removal fails after the destination write succeeds, the copied value remains in
+    /// `destination` and the outcome fails at ``PersistentKeyMigrationReport/FailureStage/cleanup``.
+    ///
+    /// - Parameter key: The key to move.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle an existing persisted value in `destination`.
+    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Returns: A report containing the key's outcome and the completion-tracking status.
     public func move<Key, Destination>(
         _ key: Key,
         to destination: Destination,
@@ -101,12 +141,24 @@ extension PersistentKeyValueStore {
         try move([key], to: destination, onConflict: policy, completion: completion)
     }
 
-    /// Moves keys in input order.
+    /// Moves persisted values for the given keys to another store in input order.
     ///
-    /// The report has one outcome per key, or no outcomes if completion was already recorded.
+    /// A batch can contain keys with different value types. Only values persisted in each store's own domain
+    /// participate; registered defaults, launch arguments, added suites, and key default values are ignored. Each
+    /// value is decoded from this store and encoded for `destination` using its key's
+    /// ``PersistentKeyProtocol/representation``.
     ///
-    /// Setup failures are thrown before mutation. Per-key conversion, write, and cleanup failures are returned in the
-    /// report, and a partial batch is not rolled back.
+    /// Setup failures (such as missing domain metadata, migrating a store to itself, duplicate key identifiers,
+    /// reserved completion-marker keys, or overlapping in-process migrations for the same store and key) are thrown
+    /// before any key is modified. Per-key failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the
+    /// remaining keys in `keys` continue. Migrations do not roll back completed keys, and a move that fails during
+    /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` leaves the copied value in `destination`.
+    ///
+    /// - Parameter keys: The keys to move, processed in order.
+    /// - Parameter destination: The destination store.
+    /// - Parameter policy: How to handle existing persisted values in `destination`.
+    /// - Parameter completion: Optional once-only completion tracking for this migration. Defaults to `.untracked`.
+    /// - Returns: A report with one outcome per key in `keys`, or no outcomes if completion was already recorded.
     public func move<Destination>(
         _ keys: [any PersistentKeyProtocol],
         to destination: Destination,

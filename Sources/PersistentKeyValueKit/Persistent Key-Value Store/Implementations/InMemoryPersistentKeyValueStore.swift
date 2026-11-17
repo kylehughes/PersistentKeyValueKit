@@ -7,17 +7,20 @@
 
 import Foundation
 
-/// A key-value store that persists data in memory.
+/// A thread-safe key-value store that keeps values in memory for the lifetime of the instance.
 ///
-/// This store is useful for testing and development purposes, although `UserDefaults.standard` often works just as
-/// well.
+/// Use `InMemoryPersistentKeyValueStore` for unit tests, SwiftUI previews, and ephemeral storage without touching
+/// `UserDefaults` or `NSUbiquitousKeyValueStore`.
 ///
-/// There is nothing that prevents it from being used in production, but it may be a sign that you are using the library
-/// unnecessarily. The library is intended to be used exclusively as a general interface on top of the two persistent
-/// key-value stores provided by Apple platforms: `UserDefaults` and `NSUbiquitousKeyValueStore`.
+/// Unlike Foundation stores, `InMemoryPersistentKeyValueStore` stores typed Swift values directly (compacting `nil`
+/// elements out of arrays and dictionaries of optionals) and records an explicit entry when an optional key is set to
+/// `nil`. Calling ``remove(_:)`` deletes the entry. When migrating a stored `nil` from an in-memory store to
+/// `UserDefaults` or `NSUbiquitousKeyValueStore` with
+/// ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
+/// ``PersistentKeyMoveConflictPolicy/overwriteDestination``, the destination key is removed.
 ///
-/// - Important: Storage access is protected by a lock so this type can satisfy
-///   ``PersistentKeyValueStore``'s thread-safety requirement.
+/// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
+///   thread-safety requirement.
 public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// The stable identity of this in-memory store for migration operations.
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
@@ -215,6 +218,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 // MARK: - PersistentKeyValueStore Extension
 
 extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
+    /// The migration capability for this in-memory store.
     public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         PersistentKeyValueMigrationEndpoint(backend: self)
     }

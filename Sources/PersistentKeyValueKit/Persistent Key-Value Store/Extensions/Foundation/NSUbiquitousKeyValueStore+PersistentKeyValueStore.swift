@@ -16,6 +16,7 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
         "NSUbiquitousKeyValueStore.DidChangeInternally"
     )
 
+    /// The migration capability for this ubiquitous key-value store.
     public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         PersistentKeyValueMigrationEndpoint(
             backend: UbiquitousKeyValueMigrationBackend(self)

@@ -67,12 +67,13 @@ preference data, does not retain the store, and is not a public replacement for
 `UserDefaults`.
 
 `UserDefaults.standard` is recognized automatically when the application
-bundle identifier is available; without one, standard-store migration reports
-the existing missing-application-identifier error. `NSUbiquitousKeyValueStore.default` and
-`InMemoryPersistentKeyValueStore` do not need a separate migration construction
-step. A different `UserDefaults` instance created through Foundation remains
-valid for ordinary storage, but migration fails before mutation when the
-framework cannot identify its persistent domain.
+bundle identifier is available; without one, migrating `UserDefaults.standard`
+throws `PersistentKeyMigrationError.missingApplicationIdentifier`.
+`NSUbiquitousKeyValueStore.default` and `InMemoryPersistentKeyValueStore` do
+not need a separate migration construction step. A non-standard `UserDefaults`
+instance created directly through Foundation remains valid for ordinary
+storage, but migration throws `PersistentKeyMigrationError.missingMigrationDomain`
+before mutation because the framework cannot identify its persistent domain.
 
 The public migration operation stays generic. Its opaque, throwing endpoint
 requirement is part of `PersistentKeyValueStore`; wrappers forward it to their

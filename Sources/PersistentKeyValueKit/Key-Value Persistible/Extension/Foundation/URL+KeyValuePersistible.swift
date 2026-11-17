@@ -21,6 +21,13 @@ extension URL {
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension URL: PrimitiveKeyValuePersistible {
+    /// Decodes a `URL` from a stored object for the given storage format.
+    ///
+    /// - For ``PersistentKeyValueStorageFormat/propertyList``, expects an absolute URL `String`.
+    /// - For ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``, accepts an absolute URL `String` or a legacy
+    ///   `URL` object.
+    /// - For ``PersistentKeyValueStorageFormat/userDefaults``, accepts `NSKeyedArchiver` `Data`, a tilde-abbreviated
+    ///   file path `String`, or a `URL` object, matching `UserDefaults.url(forKey:)`.
     public static func decode(
         storageObject: Any,
         format: PersistentKeyValueStorageFormat
@@ -55,6 +62,12 @@ extension URL: PrimitiveKeyValuePersistible {
         return value
     }
 
+    /// Encodes the `URL` for the given storage format.
+    ///
+    /// Encodes as `absoluteString` for ``PersistentKeyValueStorageFormat/propertyList`` and
+    /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``. For
+    /// ``PersistentKeyValueStorageFormat/userDefaults``, encodes file URLs as tilde-abbreviated paths and non-file
+    /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         switch format {
         case .propertyList, .ubiquitousKeyValueStore:

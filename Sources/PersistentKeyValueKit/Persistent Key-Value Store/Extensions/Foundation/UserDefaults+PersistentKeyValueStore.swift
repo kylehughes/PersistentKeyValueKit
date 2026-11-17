@@ -11,6 +11,11 @@ import ObjectiveC
 // MARK: - PersistentKeyValueStore Extension
 
 extension UserDefaults: PersistentKeyValueStore {
+    /// The migration capability for this `UserDefaults` instance.
+    ///
+    /// Throws ``PersistentKeyMigrationError/missingApplicationIdentifier`` for `UserDefaults.standard` when
+    /// `Bundle.main.bundleIdentifier` is missing or empty, or ``PersistentKeyMigrationError/missingMigrationDomain``
+    /// for a non-standard instance that was not created with `UserDefaults.migratable(suiteName:)`.
     public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         get throws {
             let domainName = try UserDefaults.migrationDomainName(
@@ -119,11 +124,16 @@ extension PersistentKeyValueStore where Self == UserDefaults {
         .standard
     }
 
-    /// Creates a native UserDefaults instance whose persistent domain can participate in migrations.
+    /// Creates a native `UserDefaults` instance for `suiteName` that can participate in migrations.
     ///
-    /// The suite name is captured on this instance as process-local metadata. The metadata is not a preference and
-    /// does not retain the native object. Returns `nil` for empty, reserved, or application-domain names, or when
-    /// Foundation cannot create the native store.
+    /// The returned value is the native `UserDefaults` instance from `UserDefaults(suiteName:)` with `suiteName`
+    /// attached as process-local metadata. The metadata is not written to preferences, does not retain the
+    /// `UserDefaults` instance, and lasts only for the lifetime of that instance in the current process.
+    ///
+    /// - Parameter suiteName: The persistent domain identifier for the suite.
+    /// - Returns: A `UserDefaults` instance configured for migration, or `nil` if `suiteName` is empty, matches a
+    ///   reserved domain (`argumentDomain`, `registrationDomain`, `globalDomain`, `kCFPreferencesAnyApplication`, or
+    ///   `kCFPreferencesCurrentApplication`), matches the main bundle identifier, or cannot be created by Foundation.
     public static func migratable(suiteName: String) -> Self? {
         Self.migratable(
             suiteName: suiteName,

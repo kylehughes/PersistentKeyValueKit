@@ -31,10 +31,19 @@ import Foundation
 /// It is intended, but not required, that conforming types' representations are of type 
 /// ``PrimitivePersistentKeyValueRepresentation``.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
-    /// Decodes a value from store-native data.
+    /// Decodes a value from a stored object for the given storage format.
+    ///
+    /// - Parameter storageObject: The stored object read from the backing store or property-list container.
+    /// - Parameter format: The storage format of `storageObject`.
+    /// - Returns: The decoded value.
     static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Self
 
-    /// Encodes a value as store-native data. A `nil` result removes the key.
+    /// Encodes the value into a stored object for the given storage format.
+    ///
+    /// Returning `nil` removes the key from a store (or omits the element from a property-list collection).
+    ///
+    /// - Parameter format: The target storage format.
+    /// - Returns: The encoded storage object, or `nil` to remove the key.
     func encode(format: PersistentKeyValueStorageFormat) throws -> Any?
 
     // MARK: Interfacing with Property List Array

@@ -14,14 +14,25 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// The type of value that is represented in a ``PersistentKeyValueStore``.
     associatedtype Value
 
-    /// Decodes a stored object using the native format of a store.
+    /// Decodes a value from a stored object for the given storage format.
     ///
-    /// Clients may repeat conversion to validate a write. There is no guaranteed invocation count.
+    /// Callers such as migration write validation may invoke conversion more than once for the same value; do not
+    /// rely on a specific invocation count.
+    ///
+    /// - Parameter storageObject: The stored object read from the backing store or property-list container.
+    /// - Parameter format: The storage format of `storageObject`.
+    /// - Returns: The decoded value.
     func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value
 
-    /// Encodes a value using the native format of a store. A `nil` result removes the key.
+    /// Encodes a value into a stored object for the given storage format.
     ///
-    /// Clients may repeat conversion to validate a write. There is no guaranteed invocation count.
+    /// Returning `nil` removes the key from a store (or omits the element from a property-list collection). Callers
+    /// such as migration write validation may invoke conversion more than once for the same value; do not rely on a
+    /// specific invocation count.
+    ///
+    /// - Parameter value: The value to encode.
+    /// - Parameter format: The target storage format.
+    /// - Returns: The encoded storage object, or `nil` to remove the key.
     func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any?
     
     // MARK: Interfacing with Property List Array
@@ -100,17 +111,28 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore)
 }
 
-/// The native storage format used to represent a persistent value.
+/// The storage format used to encode or decode a persistent value.
 public enum PersistentKeyValueStorageFormat: Sendable {
+    /// A property-list container such as an array or dictionary.
     case propertyList
+
+    /// An `NSUbiquitousKeyValueStore` domain.
     case ubiquitousKeyValueStore
+
+    /// A `UserDefaults` persistent domain.
     case userDefaults
 }
 
-/// A failure encountered while converting a value to or from store-native data.
+/// Errors thrown by built-in representations when converting between a Swift value and a stored object.
 public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
+    /// The stored object has an unexpected runtime type, is not a valid property list, or exceeds the target store's
+    /// size limit.
     case invalidStorageValue
+
+    /// The stored or proxied value could not be converted into the target Swift type.
     case invalidValue
+
+    /// The Swift value could not be converted into its proxy or storage representation.
     case encodingFailed
 }
 

@@ -2,12 +2,16 @@ import Foundation
 
 // MARK: - Public Interface
 
-/// An opaque capability used by the migration engine.
+/// An opaque migration capability for a ``PersistentKeyValueStore``.
 ///
-/// The endpoint keeps storage mechanics private while allowing generic client abstractions to forward migration
-/// operations without knowing whether the store is backed by UserDefaults, iCloud, or memory. Forwarding an endpoint
-/// forwards migration work to the backing store; it does not route individual reads or writes through a wrapper's
-/// ordinary ``PersistentKeyValueStore`` methods.
+/// Built-in stores (`UserDefaults`, `NSUbiquitousKeyValueStore`, and ``InMemoryPersistentKeyValueStore``) provide an
+/// endpoint through ``PersistentKeyValueStore/migrationEndpoint``. Custom store wrappers can support migration by
+/// forwarding their backing store's endpoint (`try base.migrationEndpoint`) without exposing backend identity or
+/// snapshot mechanics.
+///
+/// Forwarding an endpoint delegates migration directly to the backing store; migration does not route individual reads,
+/// writes, or removals through a wrapper's ``PersistentKeyValueStore/get(_:)``,
+/// ``PersistentKeyValueStore/set(_:to:)``, or ``PersistentKeyValueStore/remove(_:)`` methods.
 public struct PersistentKeyValueMigrationEndpoint {
     let backend: any PersistentKeyValueMigrationBackend
 

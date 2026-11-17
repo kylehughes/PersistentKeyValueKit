@@ -38,6 +38,9 @@ public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: Per
 // MARK: - PersistentKeyValueRepresentation Extension
 
 extension ProxyPersistentKeyValueRepresentationProtocol {
+    /// Decodes a stored object into `Proxy` and converts it to `Value` using ``from(_:)``.
+    ///
+    /// Throws ``PersistentKeyValueConversionError/invalidValue`` when ``from(_:)`` returns `nil`.
     public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
         let proxy = try Proxy.persistentKeyValueRepresentation.decode(
             storageObject: storageObject,
@@ -49,6 +52,9 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
         return value
     }
 
+    /// Converts `value` into `Proxy` using ``to(_:)`` and encodes it for `format`.
+    ///
+    /// Throws ``PersistentKeyValueConversionError/encodingFailed`` when ``to(_:)`` returns `nil`.
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
         guard let proxy = to(value) else {
             throw PersistentKeyValueConversionError.encodingFailed

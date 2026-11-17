@@ -8,15 +8,14 @@
 import Combine
 import Foundation
 
-/// A representation of a value in a ``PersistentKeyValueStore`` for types that participate in Swift's protocols for 
-/// encoding and decoding.
+/// A representation of a value in a ``PersistentKeyValueStore`` for types that conform to `Encodable` and `Decodable`.
 ///
-/// This is a proxy representation. The `Value` type will be persisted as the `Input`/`Output` of the given
-/// `Encoder` and `Decoder`, which must itself be persistible.
+/// This is a proxy representation. `Value` is persisted as the `Input`/`Output` type of the supplied `Encoder` and
+/// `Decoder`, which must itself conform to ``KeyValuePersistible``.
 ///
-/// Ordinary store access preserves the existing non-throwing behavior: failure to encode results in no value being
-/// stored and failure to decode returns `nil`. The checked representation interface reports the underlying encoder
-/// and decoder errors.
+/// Ordinary store reads and writes remain non-throwing: encoding failures leave the store unchanged and decoding
+/// failures fall back to the key's default value. Checked conversion via ``decode(storageObject:format:)`` and
+/// ``encode(_:format:)`` rethrows the underlying `Encoder` and `Decoder` errors.
 public struct CodablePersistentKeyValueRepresentation<Value, Encoder, Decoder>
 where
     Value: Decodable & Encodable,

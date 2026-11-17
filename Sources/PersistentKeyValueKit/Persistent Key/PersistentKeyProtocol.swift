@@ -32,7 +32,10 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     var id: ID { get }
 
-    /// Whether this key participates in migration operations. The default implementation returns `true`.
+    /// Whether this key participates in migration operations.
+    ///
+    /// When `false`, migration skips the key without accessing the source or destination store and reports
+    /// ``PersistentKeyMigrationReport/Status/keyDisabled``. The default implementation returns `true`.
     var isMigrationEnabled: Bool { get }
     
     /// The representation of the key-value pair in the ``PersistentKeyValueStore``.
@@ -106,7 +109,14 @@ extension PersistentKeyProtocol {
 }
 
 extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
-    /// The persistent completion marker for a migration identifier.
+    /// Returns the persistent boolean key used to record completion for a migration identifier with
+    /// ``PersistentKeyMigrationCompletionPolicy/once(id:recordedIn:)``.
+    ///
+    /// Remove this key from the recording store (or set it to `false`) to allow a completed migration with the same
+    /// `id` to run again.
+    ///
+    /// - Parameter id: The migration identifier passed to ``PersistentKeyMigrationCompletionPolicy/once(id:recordedIn:)``.
+    /// - Returns: A boolean key whose default value is `false`.
     public static func isMigrationCompleted(id: String) -> Self {
         Self(
             "PersistentKeyValueKit.MigrationCompleted."
