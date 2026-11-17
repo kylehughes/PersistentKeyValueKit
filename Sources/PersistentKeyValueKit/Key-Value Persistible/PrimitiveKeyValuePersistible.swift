@@ -154,7 +154,8 @@ extension PrimitiveKeyValuePersistible {
     /// Replaces `propertyListArray` with the objects returned by ``encode(format:)``, omitting elements that encode
     /// to `nil`.
     ///
-    /// Leaves `propertyListArray` unchanged if encoding any element throws.
+    /// Leaves `propertyListArray` unchanged if encoding any element throws or returns an object that is not a property
+    /// list.
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         var objects: [Any] = []
 
@@ -184,7 +185,7 @@ extension PrimitiveKeyValuePersistible {
     }
 
     /// Writes the object returned by ``encode(format:)``, removes `dictionaryKey` when it returns `nil`, and leaves
-    /// `propertyListDictionary` unchanged when it throws.
+    /// `propertyListDictionary` unchanged when it throws or returns an object that is not a property list.
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
         guard let object = encodedObject(for: value, format: .propertyList) else {
             return
@@ -211,7 +212,7 @@ extension PrimitiveKeyValuePersistible {
     }
 
     /// Writes the object returned by ``encode(format:)``, removes the key when it returns `nil`, and leaves
-    /// `userDefaults` unchanged when it throws.
+    /// `userDefaults` unchanged when it throws or returns an object that is not a property list.
     public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
         guard let object = encodedObject(for: value, format: .userDefaults) else {
             return
@@ -236,7 +237,7 @@ extension PrimitiveKeyValuePersistible {
     }
 
     /// Writes the object returned by ``encode(format:)``, removes the key when it returns `nil`, and leaves
-    /// `ubiquitousStore` unchanged when it throws.
+    /// `ubiquitousStore` unchanged when it throws or returns an object that is not a property list.
     @available(watchOS 9.0, *)
     public static func set(
         _ ubiquitousStoreKey: String,
@@ -256,11 +257,11 @@ extension PrimitiveKeyValuePersistible {
 
     // MARK: Private Static Interface
 
-    // `try?` would flatten `Any??`, conflating a thrown error with a request to remove the key. The outer `nil` means
-    // `encode` threw; `.some(nil)` means remove.
+    // `try?` would flatten `Any??`, conflating a failed encoding with a request to remove the key. The outer `nil`
+    // means `encode` threw or produced an object that is not a property list; `.some(nil)` means remove.
     private static func encodedObject(for value: Self, format: PersistentKeyValueStorageFormat) -> Any?? {
         do {
-            return .some(try value.encode(format: format))
+            return storableEncoding(try value.encode(format: format))
         } catch {
             return nil
         }

@@ -121,8 +121,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 /// ``PersistentKeyValueRepresentation/encode(_:format:)``.
 ///
 /// Reads return `nil` when the stored object is absent or fails to decode. Writes remove the key when `encode`
-/// returns `nil` and leave the store or container unchanged when `encode` throws. Property-list containers use
-/// ``PersistentKeyValueStorageFormat/propertyList``.
+/// returns `nil` and leave the store or container unchanged when `encode` throws or returns an object that is not a
+/// property list. Property-list containers use ``PersistentKeyValueStorageFormat/propertyList``.
 ///
 /// These defaults read the effective `UserDefaults` object without inspecting `UserDefaults.argumentDomain`, so they do
 /// not coerce string launch arguments into typed values. Built-in representations implement these methods themselves
@@ -149,7 +149,8 @@ extension PersistentKeyValueRepresentation {
 
     /// Replaces `propertyListArray` with the encoded `values`, omitting elements whose `encode` returns `nil`.
     ///
-    /// Leaves `propertyListArray` unchanged if encoding any element throws.
+    /// Leaves `propertyListArray` unchanged if encoding any element throws or returns an object that is not a property
+    /// list.
     public func set(_ values: [Value], to propertyListArray: inout [Any]) {
         var objects: [Any] = []
 
@@ -178,7 +179,7 @@ extension PersistentKeyValueRepresentation {
     }
 
     /// Writes the encoded object, removes `dictionaryKey` when `encode` returns `nil`, and leaves
-    /// `propertyListDictionary` unchanged when `encode` throws.
+    /// `propertyListDictionary` unchanged when `encode` throws or returns an object that is not a property list.
     public func set(_ dictionaryKey: String, to value: Value, in propertyListDictionary: inout [String: Any]) {
         guard let object = encodedObject(for: value, format: .propertyList) else {
             return
@@ -248,11 +249,11 @@ extension PersistentKeyValueRepresentation {
         try? decode(storageObject: object, format: format)
     }
 
-    // `try?` would flatten `Any??`, conflating a thrown error with a request to remove the key. The outer `nil` means
-    // `encode` threw; `.some(nil)` means remove.
+    // `try?` would flatten `Any??`, conflating a failed encoding with a request to remove the key. The outer `nil`
+    // means `encode` threw or produced an object that is not a property list; `.some(nil)` means remove.
     private func encodedObject(for value: Value, format: PersistentKeyValueStorageFormat) -> Any?? {
         do {
-            return .some(try encode(value, format: format))
+            return storableEncoding(try encode(value, format: format))
         } catch {
             return nil
         }
@@ -282,6 +283,22 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 
     /// The Swift value could not be converted into its proxy or storage representation.
     case encodingFailed
+}
+
+/// Returns `object` wrapped for storage, or `nil` when it is not a property list that a store accepts.
+///
+/// Foundation stores raise an Objective-C exception for non-property-list objects, so the default write paths treat
+/// such an object as a failed encoding.
+internal func storableEncoding(_ object: Any?) -> Any?? {
+    guard let object else {
+        return .some(nil)
+    }
+
+    guard PropertyListSerialization.propertyList(object, isValidFor: .binary) else {
+        return nil
+    }
+
+    return .some(object)
 }
 
 internal func checkedStorageValue<Value>(from object: Any, as type: Value.Type = Value.self) throws -> Value {

@@ -171,6 +171,26 @@ extension PersistentKeyValueRepresentationDefaultsTests {
         XCTAssertNil(store.object(forKey: "removed"))
         XCTAssertEqual(store.object(forKey: "unchanged") as? Int, 2)
     }
+
+    func test_writes_leaveStoresUnchangedWhenEncodeReturnsNonPropertyList() {
+        let invalid = ConversionOnlyValue(conversionOnlyNonPropertyListRawValue)
+        let ubiquitousStore = MockUbiquitousKeyValueStore()
+        var array: [Any] = [1]
+        var dictionary: [String: Any] = ["key": 1]
+
+        userDefaults.set(1, forKey: "key")
+        ubiquitousStore.set(1, forKey: "key")
+
+        representation.set([.init(2), invalid], to: &array)
+        representation.set("key", to: invalid, in: &dictionary)
+        representation.set("key", to: invalid, in: userDefaults)
+        representation.set("key", to: invalid, in: ubiquitousStore)
+
+        XCTAssertEqual(array as? [Int], [1])
+        XCTAssertEqual(dictionary["key"] as? Int, 1)
+        XCTAssertEqual(userDefaults.object(forKey: "key") as? Int, 1)
+        XCTAssertEqual(ubiquitousStore.object(forKey: "key") as? Int, 1)
+    }
 }
 
 // MARK: - Witness Resolution Tests

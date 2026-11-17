@@ -12,6 +12,13 @@ import PersistentKeyValueKit
 public struct ConversionOnlyEncodingFailure: Error {
 }
 
+/// An object that `encode` returns for `conversionOnlyNonPropertyListRawValue` and that no store accepts.
+public struct ConversionOnlyNonPropertyList: Sendable {
+}
+
+/// The raw value whose encoding is not a valid property list.
+public let conversionOnlyNonPropertyListRawValue = 999
+
 /// A representation that implements only the conversion requirements, so every store-specific method uses the
 /// protocol's default implementation.
 ///
@@ -37,6 +44,10 @@ public struct ConversionOnlyPersistentKeyValueRepresentation: PersistentKeyValue
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
         if value.rawValue < 0 {
             throw ConversionOnlyEncodingFailure()
+        }
+
+        if value.rawValue == conversionOnlyNonPropertyListRawValue {
+            return ConversionOnlyNonPropertyList()
         }
 
         return value.rawValue == 0 ? nil : value.rawValue
@@ -92,6 +103,10 @@ public struct ConversionOnlyPrimitive: Equatable, PrimitiveKeyValuePersistible, 
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         if rawValue < 0 {
             throw ConversionOnlyEncodingFailure()
+        }
+
+        if rawValue == conversionOnlyNonPropertyListRawValue {
+            return ConversionOnlyNonPropertyList()
         }
 
         return rawValue == 0 ? nil : rawValue
