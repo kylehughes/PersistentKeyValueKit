@@ -6,13 +6,14 @@ cd "$repo_root"
 
 swift build
 build_path=$(swift build --show-bin-path)
+# The native build system emits modules under `Modules`; Swift Build emits them in the bin path itself.
 module_path="$build_path/Modules"
 
 check_fixture() {
     local fixture="$1"
     local expected="$2"
     local output
-    if output=$(swiftc -warnings-as-errors -typecheck -I "$module_path" "$fixture" 2>&1); then
+    if output=$(swiftc -warnings-as-errors -typecheck -I "$module_path" -I "$build_path" "$fixture" 2>&1); then
         echo "Expected compilation to fail: $fixture" >&2
         exit 1
     fi

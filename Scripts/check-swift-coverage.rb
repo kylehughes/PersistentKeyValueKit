@@ -25,17 +25,24 @@ coverage_paths.each do |json_path|
   abort("Coverage JSON does not exist: #{json_path}") unless File.file?(json_path)
 
   configuration = File.dirname(File.dirname(json_path))
-  binary = File.join(configuration, "PersistentKeyValueKitPackageTests.xctest/Contents/MacOS/PersistentKeyValueKitPackageTests")
+  # The native build system links one combined test bundle; Swift Build links one bundle per test target.
+  combined = File.join(configuration, "PersistentKeyValueKitPackageTests.xctest")
+  bundles = File.directory?(combined) ? [combined] : Dir.glob(File.join(configuration, "*.xctest")).sort
+  abort("No test bundles found in #{configuration}") if bundles.empty?
+  binaries = bundles.map { |bundle| File.join(bundle, "Contents/MacOS", File.basename(bundle, ".xctest")) }
   profile = File.join(configuration, "codecov/default.profdata")
-  [binary, profile].each do |path|
+  [*binaries, profile].each do |path|
     abort("Coverage artifact does not exist: #{path}") unless File.file?(path)
   end
-  if source_mtime > File.mtime(binary) || File.mtime(binary) > File.mtime(profile) || File.mtime(binary) > File.mtime(json_path)
-    abort("Coverage artifacts are stale: #{json_path}; rerun swift test --enable-code-coverage")
+  binaries.each do |binary|
+    if source_mtime > File.mtime(binary) || File.mtime(binary) > File.mtime(profile) || File.mtime(binary) > File.mtime(json_path)
+      abort("Coverage artifacts are stale: #{json_path}; rerun swift test --enable-code-coverage")
+    end
   end
+  objects = [binaries.first, *binaries.drop(1).flat_map { |binary| ["-object", binary] }]
 
   sources.each do |path|
-    output = capture("xcrun", "llvm-cov", "show", binary, "-instr-profile=#{profile}", "-use-color=false", path)
+    output = capture("xcrun", "llvm-cov", "show", *objects, "-instr-profile=#{profile}", "-use-color=false", path)
     output.each_line do |line|
       match = line.match(/^\s*(\d+)\|\s*(\d+(?:\.\d+)?[kMGT]?)\|/)
       next unless match
