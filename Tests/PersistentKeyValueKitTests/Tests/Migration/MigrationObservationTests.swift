@@ -131,6 +131,25 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(destination.get(key), 1)
     }
 
+    func testMemoryCommittedReferenceMutatedByObserverFailsVerification() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = MutableArrayKey(id: "key:\(#function)")
+        var subscriptions = Set<AnyCancellable>()
+
+        source.set(key, to: NSMutableArray(array: [1, 2]))
+        destination.changesPublisher(for: key).sink {
+            // In-memory stores share the reference, so this mutates the value both stores hold.
+            $0.add(3)
+        }.store(in: &subscriptions)
+
+        let report = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(source.get(key), NSMutableArray(array: [1, 2, 3]))
+    }
+
     func testMemoryCopyPublishesExactlyOneDestinationChange() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -178,6 +197,36 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(sourceValues, [0])
         XCTAssertEqual(destinationValues, [7])
         XCTAssertTrue(unrelatedValues.isEmpty)
+    }
+
+    func testMemorySourceReferenceMutatedByDestinationObserverFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let suiteName = stableSuiteName("MigrationObservation")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let key = MutableArrayKey(id: "key:\(#function)")
+        var subscriptions = Set<AnyCancellable>()
+
+        defer {
+            destination.removePersistentDomain(forName: suiteName)
+        }
+
+        source.set(key, to: NSMutableArray(array: [1, 2]))
+        destination.changesPublisher(for: key).sink { _ in
+            source.get(key).add(3)
+        }.store(in: &subscriptions)
+
+        let report = try source.move(
+            key,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .sourceChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.get(key), NSMutableArray(array: [1, 2, 3]))
+        XCTAssertEqual(destination.get(key), NSMutableArray(array: [1, 2]))
     }
 
     func testUnrelatedMemoryObservationStaysQuiet() throws {

@@ -14,9 +14,10 @@ internal enum PropertyListMigrationStorage {
     /// Whether two frozen storage objects have the same property-list types and values, recursively.
     ///
     /// A format-aware representation can decode objects differently when only their type differs, so verification
-    /// distinguishes booleans from numbers and integers from reals even when they compare equal numerically. Strings
-    /// and dictionary keys compare by their literal UTF-16 contents, as Foundation stores them, rather than by Swift's
-    /// canonical equivalence.
+    /// distinguishes booleans from numbers, integers from reals, and single-precision from double-precision reals,
+    /// which a frozen property list preserves, even when they compare equal numerically. Strings and dictionary keys
+    /// compare by their literal UTF-16 contents, as Foundation stores them, rather than by Swift's canonical
+    /// equivalence.
     static func equal(_ lhs: Any?, _ rhs: Any?) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil):
@@ -74,6 +75,11 @@ internal enum PropertyListMigrationStorage {
 
         guard lhsIsReal else {
             return lhs.isEqual(to: rhs)
+        }
+
+        // A binary property list keeps a real's width, which a representation can observe through `objCType`.
+        guard CFNumberGetByteSize(lhs as CFNumber) == CFNumberGetByteSize(rhs as CFNumber) else {
+            return false
         }
 
         let lhsValue = lhs.doubleValue

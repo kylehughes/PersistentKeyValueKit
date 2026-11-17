@@ -39,13 +39,14 @@ import Foundation
 /// element is older than one emitted before it. Changes that occur close together, such as a change made by another
 /// observer while it handles an earlier change, can be observed as one value, and consecutive elements can be equal.
 ///
-/// - Important: The sequence continues producing values until the iteration is cancelled or the `Task` is cancelled.
-///   Always iterate within a cancellable context.
+/// - Important: The sequence continues producing values until the iterating `Task` is cancelled or the iterator is
+///   released. After cancellation, ``Iterator/next()`` returns `nil` without returning pending values, and the
+///   iterator deregisters from the store. Always iterate within a cancellable context.
 /// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the
 ///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` to keep every observed value.
 /// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
 ///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
-///   delivered.
+///   delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 /// - SeeAlso: ``PersistentKeyProtocol/changes(in:bufferingPolicy:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentValue`` for observation relying on SwiftUI `View` and environment.
 public struct PersistentKeyValues<Key> where Key: PersistentKeyProtocol {
@@ -120,6 +121,8 @@ extension PersistentKeyValues {
     public struct Iterator: AsyncIteratorProtocol {
         private let observer: Observer<Key>
 
+        private var isFinished: Bool
+
         private var pendingInitialValue: Key.Value?
 
         private var streamIterator: AsyncStream<Key.Value>.Iterator
@@ -140,20 +143,47 @@ extension PersistentKeyValues {
                 emitsInitialValue: emitsInitialValue
             )
 
+            isFinished = false
             pendingInitialValue = initialValue
             streamIterator = stream.makeAsyncIterator()
         }
 
         // MARK: AsyncIteratorProtocol Implementation
 
+        /// Returns the next value, or `nil` when iteration has ended.
+        ///
+        /// Iteration ends when the calling task is cancelled, whether cancellation happens before the call or while it
+        /// waits. A call made after cancellation returns `nil` without returning the pending initial value or any
+        /// buffered change, deregisters from the store, and every later call returns `nil`.
         public mutating func next() async -> Key.Value? {
+            guard !isFinished, !Task.isCancelled else {
+                return finish()
+            }
+
             if let pendingInitialValue {
                 self.pendingInitialValue = nil
 
                 return pendingInitialValue
             }
 
-            return await streamIterator.next()
+            let value = await streamIterator.next()
+
+            // The stream can return a value buffered before a cancellation that happened while this call waited.
+            guard let value, !Task.isCancelled else {
+                return finish()
+            }
+
+            return value
+        }
+
+        // MARK: Private Instance Interface
+
+        private mutating func finish() -> Key.Value? {
+            isFinished = true
+            pendingInitialValue = nil
+            observer.deregister()
+
+            return nil
         }
     }
 }
@@ -264,15 +294,22 @@ private final class Observer<Key>: NSObject, Sendable where Key: PersistentKeyPr
         valueDidChange()
     }
 
-    // MARK: Private Instance Interface
+    /// Stops observing the store. Only the first call deregisters.
+    internal nonisolated func deregister() {
+        let (isFirstDeregistration, continuation) = state.markDeregistered()
 
-    private nonisolated func deregister() {
-        guard state.markDeregistered() else {
+        // Releasing the continuation can release the stream's storage and run its termination handler, which
+        // deregisters again, so release it only after the state lock is unlocked.
+        withExtendedLifetime(continuation) {}
+
+        guard isFirstDeregistration else {
             return
         }
 
         store.deregister(self, for: key, context: nil)
     }
+
+    // MARK: Private Instance Interface
 
     /// Reads and yields the current value until no change is pending.
     ///
@@ -319,16 +356,21 @@ extension Observer {
             }
         }
 
-        func markDeregistered() -> Bool {
+        /// Marks the observer deregistered, returning whether this call did so and the continuation it released.
+        ///
+        /// The caller releases the continuation after the lock is unlocked.
+        func markDeregistered() -> (isFirstDeregistration: Bool, released: AsyncStream<Key.Value>.Continuation?) {
             withLock {
                 guard !isDeregistered else {
-                    return false
+                    return (false, nil)
                 }
+
+                let released = continuation
 
                 isDeregistered = true
                 continuation = nil
 
-                return true
+                return (true, released)
             }
         }
 

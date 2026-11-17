@@ -19,15 +19,25 @@ internal protocol StoreKeyObservation: AnyObject {
     /// The registered observer, or `nil` after it has been deallocated.
     var observer: NSObject? { get }
 
+    /// Starts delivering changes to the observer.
+    ///
+    /// The registry calls this once, after the observation is registered, so a callback delivered during activation
+    /// can deregister it. Activation must have no lasting effect when ``invalidate()`` is called before or during it.
+    func activate()
+
     /// Stops delivering changes to the observer.
+    ///
+    /// The registry calls this once, after the observation is removed. It can run before, during, or after
+    /// ``activate()``, on any thread.
     func invalidate()
 }
 
 /// The observations registered with one Foundation store instance that are not delivered by key-value observation.
 ///
 /// Registrations are tracked per observer, key, and context so deregistering one key leaves the observer's other
-/// registrations intact. Registrations whose observer has been deallocated are released on the next registration or
-/// deregistration.
+/// registrations intact. Key identifiers are compared literally, as Foundation compares keys, so canonically equivalent
+/// spellings are different keys. Registrations whose observer has been deallocated are released on the next
+/// registration or deregistration.
 internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     private let lock: NSLock
     private var observations: [any StoreKeyObservation]
@@ -60,8 +70,20 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
         return registry
     }
 
+    /// Returns whether two key identifiers name the same Foundation store key.
+    ///
+    /// Foundation compares keys by their UTF-16 code units, while Swift `String` equality treats canonically
+    /// equivalent spellings, such as precomposed and decomposed accents, as equal.
+    internal static func keyIDsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.utf16.elementsEqual(rhs.utf16)
+    }
+
     // MARK: Internal Instance Interface
 
+    /// Registers `observation`, then activates it.
+    ///
+    /// The observation is registered before it is activated, so a callback delivered during activation can deregister
+    /// it.
     internal func insert(_ observation: any StoreKeyObservation) {
         let released = withLock {
             let released = observations.filter {
@@ -80,6 +102,8 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
         for observation in released {
             observation.invalidate()
         }
+
+        observation.activate()
     }
 
     internal func remove(_ observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
@@ -91,7 +115,7 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
                 }
 
                 return registeredObserver === observer
-                    && observation.keyID == keyID
+                    && Self.keyIDsMatch(observation.keyID, keyID)
                     && observation.context == context
             }
 

@@ -526,6 +526,55 @@ extension PersistentKeyValuePublisherTests {
         }
     }
 
+    func test_publisher_cancellationReleasingSubscriberThatCancelsInDeinitDoesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let finished = DispatchSemaphore(value: 0)
+        let subscriptionBox = SubscriptionBox()
+
+        // A deadlock blocks this thread forever, so cancel elsewhere and bound the wait. The store is private to this
+        // test, so a deadlock cannot block other tests.
+        Thread.detachNewThread {
+            key.publisher(in: store).subscribe(CancellingOnDeinitSubscriber<Int>(subscriptionBox: subscriptionBox))
+            subscriptionBox.subscription?.cancel()
+            finished.signal()
+        }
+
+        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success, "Cancellation deadlocked.")
+        XCTAssertTrue(subscriptionBox.didCancelInDeinit)
+    }
+
+    @available(watchOS 9.0, *)
+    func test_publisher_decoderCancellingSubscriptionPreventsDelivery() {
+        let subscriber = DemandControlledSubscriber<Int>()
+        // The in-memory store does not decode values, so use a store that does.
+        let store: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey(
+            "key:\(#function)",
+            defaultValue: 0,
+            representation: ProxyPersistentKeyValueRepresentation<Int, Int>(
+                to: { $0 },
+                from: { value in
+                    if value == 6 {
+                        subscriber.cancel()
+                    }
+
+                    return value
+                }
+            )
+        )
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+        subscriber.request(.unlimited)
+
+        store.set(key, to: 5)
+        store.set(key, to: 6)
+        store.set(key, to: 7)
+
+        // The mock reports each write twice, so `5` can be delivered more than once.
+        XCTAssertEqual(Set(subscriber.values), [5])
+    }
+
     func test_publisher_ignoresCallbackCapturedBeforeCancellation() {
         let store = CallbackRetainingPersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -702,6 +751,44 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
         }
 
         return body()
+    }
+}
+
+// MARK: - Subscription Box Definition
+
+/// Holds a subscription strongly for a subscriber that cancels it from `deinit`.
+private final class SubscriptionBox: @unchecked Sendable {
+    var didCancelInDeinit = false
+    var subscription: Subscription?
+}
+
+// MARK: - Cancelling On Deinit Subscriber Definition
+
+/// A subscriber that cancels its subscription when it is deinitialized, which happens when the subscription releases
+/// it during cancellation.
+private final class CancellingOnDeinitSubscriber<Input>: Subscriber {
+    typealias Failure = Never
+
+    private let subscriptionBox: SubscriptionBox
+
+    init(subscriptionBox: SubscriptionBox) {
+        self.subscriptionBox = subscriptionBox
+    }
+
+    deinit {
+        subscriptionBox.subscription?.cancel()
+        subscriptionBox.didCancelInDeinit = true
+    }
+
+    func receive(_ input: Input) -> Subscribers.Demand {
+        .none
+    }
+
+    func receive(completion: Subscribers.Completion<Never>) {
+    }
+
+    func receive(subscription: Subscription) {
+        subscriptionBox.subscription = subscription
     }
 }
 

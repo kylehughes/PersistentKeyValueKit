@@ -174,6 +174,50 @@ final class MigrationAdapterTests: XCTestCase {
         XCTAssertNil(try source.migrationSnapshot(for: key.id))
     }
 
+    func testMemoryMutableReferenceSnapshotComparesContents() throws {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = MutableArrayKey(id: "key:\(#function)")
+        let optionalID = "key:\(#function).optional"
+        let opaqueID = "key:\(#function).opaque"
+        let array = NSMutableArray(array: [1, 2])
+        let optionalArray = NSMutableArray(array: [3])
+        let opaqueArray = NSMutableArray(array: [NSNull()])
+
+        store.set(key, to: array)
+        store.set(Optional(optionalArray), forKey: optionalID)
+        store.set(opaqueArray, forKey: opaqueID)
+
+        let snapshot = try XCTUnwrap(store.migrationSnapshot(for: key.id))
+        let optionalSnapshot = try XCTUnwrap(store.migrationSnapshot(for: optionalID))
+        let opaqueSnapshot = try XCTUnwrap(store.migrationSnapshot(for: opaqueID))
+
+        array.add(3)
+        optionalArray.add(4)
+        opaqueArray.add(NSNull())
+
+        XCTAssertFalse(try store.migrationSnapshotIsCurrent(snapshot, for: key.id))
+        XCTAssertFalse(try store.migrationSnapshotIsCurrent(optionalSnapshot, for: optionalID))
+        // A reference that is not a property list cannot be copied, so it verifies by revision only.
+        XCTAssertTrue(try store.migrationSnapshotIsCurrent(opaqueSnapshot, for: opaqueID))
+
+        let write = try store.prepareMigrationWrite(NSMutableArray(array: [9]), for: key)
+
+        XCTAssertThrowsError(try store.commitMigrationWrite(write, replacing: snapshot)) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .destinationChanged)
+        }
+
+        XCTAssertThrowsError(try store.removeMigrationValue(for: key.id, matching: snapshot)) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .sourceChanged)
+        }
+
+        XCTAssertEqual(store.get(key), NSMutableArray(array: [1, 2, 3]))
+
+        let current = try XCTUnwrap(store.migrationSnapshot(for: key.id))
+
+        XCTAssertTrue(try store.migrationSnapshotIsCurrent(current, for: key.id))
+        XCTAssertNoThrow(try store.removeMigrationValue(for: key.id, matching: current))
+    }
+
     func testMutablePayloadSnapshotIsFrozen() throws {
         let defaults = try defaults()
         let key = PersistentKey("data", defaultValue: Data())

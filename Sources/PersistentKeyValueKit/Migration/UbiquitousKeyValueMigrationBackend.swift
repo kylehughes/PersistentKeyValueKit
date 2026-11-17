@@ -37,6 +37,10 @@ final class UbiquitousKeyValueMigrationBackend: @unchecked Sendable {
 extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend {
     // MARK: Internal Instance Interface
 
+    var migrationHandle: ObjectIdentifier {
+        ObjectIdentifier(ubiquitousStore)
+    }
+
     func commitMigrationWrite(
         _ write: MigrationWrite,
         replacing snapshot: MigrationSnapshot?
@@ -70,6 +74,10 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
 
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
         keyID.utf16.count > 128
+    }
+
+    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
+        .literal(keyID)
     }
 
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {

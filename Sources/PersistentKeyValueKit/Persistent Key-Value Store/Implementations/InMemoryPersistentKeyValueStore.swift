@@ -23,6 +23,9 @@ import Foundation
 /// Because the store keeps the Swift value itself rather than an encoded copy, a class-typed value is shared, not
 /// copied: every read returns the same instance that was written, and mutating it changes the stored value. Use
 /// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
+/// A migration detects a mutated Foundation property-list object stored as a key's value, such as an `NSMutableArray`,
+/// by its contents, so the migration fails instead of removing or overwriting it. It detects other references only
+/// when they are replaced, so do not mutate them while a migration runs.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
 ///   thread-safety requirement. The lock is not held while key identifiers are evaluated, observers are notified, or
@@ -58,8 +61,9 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// cast the result to the optional type to read it. Swift arrays and dictionaries of optionals are returned without
     /// their `nil` elements.
     ///
-    /// Use this method to implement a custom key's in-memory `get(from:)` requirement of ``PersistentKeyProtocol``.
-    /// Typed call sites should use ``get(_:)`` instead.
+    /// Use this method to implement a custom key's in-memory `get(from:)` requirement of ``PersistentKeyProtocol``,
+    /// passing the key's ``PersistentKeyProtocol/id``, because observation and migration find the key's entry by its
+    /// identifier. Typed call sites should use ``get(_:)`` instead.
     ///
     /// - Parameter key: The identifier of the entry.
     /// - Returns: The stored value, or `nil` if the store has no entry for the key.
@@ -72,7 +76,8 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// Removes the entry for the given key and notifies observers of the key.
     ///
     /// Use this method to implement a custom key's in-memory `remove(from:)` requirement of
-    /// ``PersistentKeyProtocol``. Typed call sites should use ``remove(_:)`` instead.
+    /// ``PersistentKeyProtocol``, passing the key's ``PersistentKeyProtocol/id``, because observation and migration
+    /// find the key's entry by its identifier. Typed call sites should use ``remove(_:)`` instead.
     ///
     /// - Parameter key: The identifier of the entry.
     public func removeObject(forKey key: String) {
@@ -94,8 +99,9 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// `NSMutableArray`, are stored unchanged. Passing an optional that is `nil` records an explicit entry that
     /// ``object(forKey:)`` returns; call ``removeObject(forKey:)`` to delete the entry.
     ///
-    /// Use this method to implement a custom key's in-memory `set(to:in:)` requirement of ``PersistentKeyProtocol``.
-    /// Typed call sites should use ``set(_:to:)`` instead.
+    /// Use this method to implement a custom key's in-memory `set(to:in:)` requirement of ``PersistentKeyProtocol``,
+    /// passing the key's ``PersistentKeyProtocol/id``, because observation and migration find the key's entry by its
+    /// identifier. Typed call sites should use ``set(_:to:)`` instead.
     ///
     /// - Parameter value: The value to store.
     /// - Parameter key: The identifier of the entry.
@@ -174,20 +180,31 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
 extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     // MARK: Internal Instance Interface
 
+    var migrationHandle: ObjectIdentifier {
+        ObjectIdentifier(self)
+    }
+
     /// Commits a prepared write only when the replacement snapshot is still current.
+    ///
+    /// Contents are compared before taking the lock, because comparing a Foundation collection can run code outside
+    /// this store.
     func commitMigrationWrite(
         _ write: MigrationWrite,
         replacing snapshot: MigrationSnapshot?
     ) throws -> MigrationSnapshot? {
-        let result: (MigrationSnapshot, [Observation], StoredValue?) = try withLock {
-            guard write.identity == migrationIdentity else {
-                throw PersistentKeyMigrationError.internalInconsistency
-            }
+        guard write.identity == migrationIdentity else {
+            throw PersistentKeyMigrationError.internalInconsistency
+        }
 
-            if let snapshot, snapshot.identity != migrationIdentity || snapshot.keyID != write.keyID {
-                throw PersistentKeyMigrationError.internalInconsistency
-            }
+        if let snapshot, snapshot.identity != migrationIdentity || snapshot.keyID != write.keyID {
+            throw PersistentKeyMigrationError.internalInconsistency
+        }
 
+        if let snapshot, !snapshot.hasContents(of: object(forKey: write.keyID)) {
+            throw PersistentKeyMigrationError.destinationChanged
+        }
+
+        let result: (UInt64, [Observation], StoredValue?) = try withLock {
             if let snapshot, storage[write.keyID]?.revision != snapshot.revision {
                 throw PersistentKeyMigrationError.destinationChanged
             }
@@ -201,40 +218,40 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
                 StoredValue(object: write.object, revision: nextRevision),
                 forKey: write.keyID
             )
-            let committed = MigrationSnapshot(
-                identity: migrationIdentity,
-                keyID: write.keyID,
-                revision: nextRevision,
-                object: write.object
-            )
-            return (committed, liveObservations(for: write.keyID), replacedValue)
+            return (nextRevision, liveObservations(for: write.keyID), replacedValue)
         }
 
+        let committed = MigrationSnapshot(
+            identity: migrationIdentity,
+            keyID: write.keyID,
+            revision: result.0,
+            object: write.object
+        )
         notify(result.1, keyPath: write.keyID)
-        guard try migrationSnapshotIsCurrent(result.0, for: write.keyID) else {
+        guard try migrationSnapshotIsCurrent(committed, for: write.keyID) else {
             throw PersistentKeyMigrationError.writeVerificationFailed
         }
 
-        return result.0
+        return committed
     }
 
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
         false
     }
 
+    /// Storage is keyed by Swift `String`, so canonically equivalent identifiers name one entry.
+    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
+        .canonical(keyID)
+    }
+
     /// Captures the persisted value and revision for a key, or `nil` when the key is absent.
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
-        withLock {
-            guard let storedValue = storage[keyID] else {
-                return nil
-            }
+        let storedValue = withLock {
+            storage[keyID]
+        }
 
-            return MigrationSnapshot(
-                identity: migrationIdentity,
-                keyID: keyID,
-                revision: storedValue.revision,
-                object: storedValue.object
-            )
+        return storedValue.map {
+            MigrationSnapshot(identity: migrationIdentity, keyID: keyID, revision: $0.revision, object: $0.object)
         }
     }
 
@@ -243,9 +260,11 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             throw PersistentKeyMigrationError.internalInconsistency
         }
 
-        return withLock {
-            storage[keyID]?.revision == snapshot.revision
+        let storedValue = withLock {
+            storage[keyID]
         }
+
+        return storedValue?.revision == snapshot.revision && snapshot.hasContents(of: storedValue?.object)
     }
 
     /// Decodes a captured value for the requested typed key.
@@ -275,6 +294,10 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     func removeMigrationValue(for keyID: String, matching snapshot: MigrationSnapshot) throws {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
             throw PersistentKeyMigrationError.internalInconsistency
+        }
+
+        guard snapshot.hasContents(of: object(forKey: keyID)) else {
+            throw PersistentKeyMigrationError.sourceChanged
         }
 
         let (removedValue, observations) = try withLock {
@@ -368,14 +391,63 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
 // MARK: - MigrationSnapshot Extension
 
 extension InMemoryPersistentKeyValueStore {
+    /// A captured entry, which is current while the store holds the same revision with the same contents.
+    ///
+    /// Mutating a stored reference changes the entry without a new revision. A Foundation property-list object, such
+    /// as an `NSMutableArray`, is therefore also captured as a frozen copy whose contents must still match. Other
+    /// references, including ones inside Swift values, are retained but not copied, so they verify by revision only.
     struct MigrationSnapshot {
         /// The store and key this snapshot belongs to.
         let identity: PersistentKeyValueMigrationStoreIdentity
         let keyID: String
         /// Monotonically increasing revision used for conditional writes and removals.
         let revision: UInt64
-        /// The captured value. Reference values are retained, not deep-copied; callers must keep them stable.
+        /// The captured value.
         let object: Any
+        /// A frozen copy of `object` when it is a Foundation property-list object, or `nil` otherwise.
+        let contents: Any?
+
+        // MARK: Internal Initialization
+
+        init(identity: PersistentKeyValueMigrationStoreIdentity, keyID: String, revision: UInt64, object: Any) {
+            self.identity = identity
+            self.keyID = keyID
+            self.revision = revision
+            self.object = object
+            contents = Self.frozenContents(of: object)
+        }
+
+        // MARK: Internal Instance Interface
+
+        /// Whether `object`, the entry's current value, still has the captured contents.
+        func hasContents(of object: Any?) -> Bool {
+            guard let contents else {
+                return true
+            }
+
+            return PropertyListMigrationStorage.equal(contents, object)
+        }
+
+        // MARK: Private Static Interface
+
+        /// Returns a frozen copy of `object` when it, or the value an optional wraps, is a Foundation property-list
+        /// object, whose contents can change without a store write.
+        private static func frozenContents(of object: Any) -> Any? {
+            var value = object
+            while let optional = value as? any OptionalElement {
+                guard let wrapped = optional.wrappedObject else {
+                    return nil
+                }
+
+                value = wrapped
+            }
+
+            guard type(of: value) is AnyClass else {
+                return nil
+            }
+
+            return try? PropertyListMigrationStorage.freeze(value)
+        }
     }
 }
 
@@ -413,6 +485,15 @@ private protocol OptionalElement {
     associatedtype Wrapped
 
     var optionalValue: Wrapped? { get }
+}
+
+extension OptionalElement {
+    /// The wrapped value, if any, as `Any`.
+    fileprivate var wrappedObject: Any? {
+        optionalValue.map {
+            $0 as Any
+        }
+    }
 }
 
 extension Optional: OptionalElement {

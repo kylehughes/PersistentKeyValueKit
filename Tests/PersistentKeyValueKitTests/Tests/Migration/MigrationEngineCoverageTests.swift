@@ -63,8 +63,16 @@ extension ScriptedMigrationStore: PersistentKeyValueMigrationBackend {
         }
     }
 
+    var migrationHandle: ObjectIdentifier {
+        base.migrationHandle
+    }
+
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
         false
+    }
+
+    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
+        base.migrationKeyIdentity(keyID)
     }
 
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
@@ -415,11 +423,6 @@ final class MigrationEngineCoverageTests: XCTestCase {
     }
 
     func testReportCompletenessFlags() {
-        let failure = PersistentKeyMigrationReport(outcomes: [], completion: .notRecorded)
-
-        XCTAssertFalse(failure.hasFailures)
-        XCTAssertFalse(failure.isComplete)
-
         let failedOutcome = PersistentKeyMigrationReport(
             outcomes: [
                 .init(

@@ -62,7 +62,8 @@ public protocol PersistentKeyValueStore {
     /// Removes an observer for the given key.
     ///
     /// Only the registration matching `observer`, `key`, and `context` is removed; the observer's registrations for
-    /// other keys or contexts remain active.
+    /// other keys or contexts remain active. `UserDefaults` and `NSUbiquitousKeyValueStore` match key identifiers
+    /// literally, as Foundation compares keys, so canonically equivalent spellings are different keys.
     ///
     /// - Parameter observer: The object to remove as an observer.
     /// - Parameter key: The key to stop observing.
@@ -83,9 +84,12 @@ public protocol PersistentKeyValueStore {
     /// If `Self` is `UserDefaults` then `target` is notified directly through
     /// `observeValue(forKeyPath:of:change:context:)` with the key's identifier as the key path. Key-value observation
     /// is used for identifiers without a period (`.`). Key-value observation treats a period as a key-path separator,
-    /// so a key whose identifier contains one is observed through `UserDefaults.didChangeNotification` instead, and
-    /// `target` is notified when the key's stored value changes. Foundation posts that notification only for changes
-    /// made in the current process, so changes to such a key made by another process might not be delivered.
+    /// so a key whose identifier contains one is observed through `UserDefaults.didChangeNotification` instead. After
+    /// each such notification, the key is read from this instance, and `target` is notified when the property-list
+    /// value read differs from the previous read. Foundation posts that notification only for changes made in the
+    /// current process, and not for `addSuite(named:)` or `removeSuite(named:)`, so changes to such a key made by
+    /// another process, or caused only by a suite-list change, might not be delivered. For these keys `target` can be
+    /// notified on a thread other than the one that made the change, while that thread delivers concurrent changes.
     ///
     /// If `Self` is `NSUbiquitousKeyValueStore` then notifications will be used and `target` will be notified through
     /// the `selector` with the store's change notification. `target` is notified when the notification lists `key`, and

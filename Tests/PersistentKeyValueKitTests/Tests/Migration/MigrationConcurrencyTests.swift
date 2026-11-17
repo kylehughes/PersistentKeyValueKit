@@ -81,8 +81,16 @@ extension GateMigrationStore: PersistentKeyValueMigrationBackend {
         return try base.commitMigrationWrite(write, replacing: snapshot)
     }
 
+    var migrationHandle: ObjectIdentifier {
+        base.migrationHandle
+    }
+
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
         false
+    }
+
+    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
+        base.migrationKeyIdentity(keyID)
     }
 
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {

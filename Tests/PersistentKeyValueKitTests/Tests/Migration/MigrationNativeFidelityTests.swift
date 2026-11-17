@@ -77,6 +77,32 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(report.isComplete)
     }
 
+    func testDefaultsDictionaryWithKeysThatSwiftMergesFailsToDecode() throws {
+        let sourceName = stableSuiteName("MigrationNativeFidelityTests.mergedKeys")
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey<[String: Int]>("key:\(#function)", defaultValue: [:])
+
+        defer {
+            source.removePersistentDomain(forName: sourceName)
+        }
+
+        source.set(dictionary(5, 7), forKey: key.id)
+
+        let report = try source.move(
+            key,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.decode)])
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual((source.object(forKey: key.id) as? NSDictionary)?.count, 2)
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
     func testDefaultsDestinationLookupDistinguishesNormalizationForms() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.destination")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
@@ -241,6 +267,64 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertTypeChangeIsDetected(in: source)
     }
 
+    func testDefaultsSnapshotRejectsSingleReplacedByEqualDouble() throws {
+        let sourceName = stableSuiteName("MigrationNativeFidelityTests.width")
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+
+        defer {
+            source.removePersistentDomain(forName: sourceName)
+        }
+
+        try assertWidthChangeIsDetected(in: source)
+    }
+
+    func testFileURLThatDefaultsCannotReproduceFailsBeforeMutation() throws {
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.fileURL")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
+        let source = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: URL(string: "https://example.com")!)
+        let optionalKey = PersistentKey<URL?>("key:\(#function).optional", defaultValue: nil)
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("prospective-\(UUID().uuidString)", isDirectory: true)
+
+        defer {
+            destination.removePersistentDomain(forName: destinationName)
+        }
+
+        // A defaults path loses a directory's trailing slash and a file URL's host.
+        for url in [directory, URL(string: "file://fileserver/shared/folder/doc")!] {
+            source.set(key, to: url)
+            source.set(optionalKey, to: url)
+
+            let report = try source.move(
+                [key, optionalKey],
+                to: destination,
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            )
+
+            XCTAssertEqual(report.outcomes.map(\.status), [.failed(.prepare), .failed(.prepare)], url.absoluteString)
+            XCTAssertEqual(
+                report.outcomes.map { $0.error as? PersistentKeyValueConversionError },
+                [.encodingFailed, .encodingFailed],
+                url.absoluteString
+            )
+            XCTAssertEqual(source.get(key), url)
+            XCTAssertNil(destination.persistentDomain(forName: destinationName)?[key.id], url.absoluteString)
+        }
+
+        let file = directory.appendingPathComponent("file", isDirectory: false)
+
+        source.set(key, to: file)
+        source.set(optionalKey, to: nil)
+
+        let report = try source.move([key, optionalKey], to: destination, onConflict: .keepBoth, tracking: .untracked)
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved, .moved])
+        XCTAssertEqual(destination.get(key), file)
+        XCTAssertNil(destination.get(optionalKey))
+    }
+
     func testPropertyListEqualityComparesTypesAndLiteralKeys() {
         let date = Date(timeIntervalSinceReferenceDate: 12)
         let url = URL(string: "https://example.com")!
@@ -256,6 +340,10 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertTrue(equal(1.5, 1.5))
         XCTAssertFalse(equal(1.5, 2.5))
         XCTAssertFalse(equal(0.0, -0.0))
+        XCTAssertTrue(equal(Float(1.25), Float(1.25)))
+        XCTAssertFalse(equal(Float(1.25), 1.25))
+        XCTAssertFalse(equal(1.25, Float(1.25)))
+        XCTAssertFalse(equal([Float(1.25)], [1.25]))
         XCTAssertTrue(equal(Double.nan, Double.nan))
         XCTAssertFalse(equal(Double.nan, 1.0))
         XCTAssertFalse(equal(1.0, Double.nan))
@@ -286,27 +374,35 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertTypeChangeIsDetected(in: StrictMigrationUbiquitousStore())
     }
 
+    @available(watchOS 9.0, *)
+    func testUbiquitousSnapshotRejectsSingleReplacedByEqualDouble() throws {
+        try assertWidthChangeIsDetected(in: StrictMigrationUbiquitousStore())
+    }
+
     // MARK: Private Instance Interface
 
-    /// Moves a boolean setting while the transform replaces it with a numerically equal integer setting.
+    /// Moves a value while the transform replaces it in the source with a value that Core Foundation considers equal.
     ///
     /// `UserDefaults` ignores a write that Core Foundation considers equal to the stored value, so the replacement
     /// removes the value first, as a write from another process can.
-    private func assertTypeChangeIsDetected<Store>(
+    private func assertReplacementIsDetected<Store, Value>(
         in source: Store,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) throws where Store: PersistentKeyValueStore {
+        original: Value,
+        replacement: Value,
+        representation: some PersistentKeyValueRepresentation<Value>,
+        file: StaticString,
+        line: UInt
+    ) throws where Store: PersistentKeyValueStore, Value: Equatable & Sendable {
         let destination = InMemoryPersistentKeyValueStore()
-        let key = PersistentKey("key:\(#function)", defaultValue: Setting.limit(99), representation: SettingCodec())
+        let key = PersistentKey("key:\(#function)", defaultValue: replacement, representation: representation)
         let sourceBox = UncheckedStore(source)
 
-        source.set(key, to: .enabled(true))
+        source.set(key, to: original)
 
         let report = try source.move(
             .key(key, to: key) {
                 sourceBox.store.remove(key)
-                sourceBox.store.set(key, to: .limit(1))
+                sourceBox.store.set(key, to: replacement)
                 return $0
             },
             to: destination,
@@ -321,9 +417,41 @@ final class MigrationNativeFidelityTests: XCTestCase {
             file: file,
             line: line
         )
-        XCTAssertEqual(source.get(key), .limit(1), file: file, line: line)
-        XCTAssertEqual(destination.get(key), .enabled(true), file: file, line: line)
+        XCTAssertEqual(source.get(key), replacement, file: file, line: line)
+        XCTAssertEqual(destination.get(key), original, file: file, line: line)
         source.remove(key)
+    }
+
+    /// Moves a boolean setting while the transform replaces it with a numerically equal integer setting.
+    private func assertTypeChangeIsDetected<Store>(
+        in source: Store,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws where Store: PersistentKeyValueStore {
+        try assertReplacementIsDetected(
+            in: source,
+            original: Setting.enabled(true),
+            replacement: .limit(1),
+            representation: SettingCodec(),
+            file: file,
+            line: line
+        )
+    }
+
+    /// Moves a single-precision setting while the transform replaces it with an equal double-precision setting.
+    private func assertWidthChangeIsDetected<Store>(
+        in source: Store,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws where Store: PersistentKeyValueStore {
+        try assertReplacementIsDetected(
+            in: source,
+            original: Width.single,
+            replacement: .double,
+            representation: WidthCodec(),
+            file: file,
+            line: line
+        )
     }
 
     /// Returns a dictionary whose keys Swift's `String` would merge: the composed and decomposed spellings of "café".
@@ -400,6 +528,35 @@ private struct SettingCodec: PersistentKeyValueRepresentation {
             NSNumber(value: isEnabled)
         case .limit(let limit):
             NSNumber(value: limit)
+        }
+    }
+}
+
+// MARK: - Width Definition
+
+private enum Width: Equatable, Sendable {
+    case double
+    case single
+}
+
+// MARK: - Width Codec Definition
+
+/// Decodes a stored number by its floating-point width, which a binary property list preserves.
+private struct WidthCodec: PersistentKeyValueRepresentation {
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Width {
+        guard let number = storageObject as? NSNumber else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return CFNumberGetByteSize(number) == 4 ? .single : .double
+    }
+
+    func encode(_ value: Width, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        switch value {
+        case .double:
+            NSNumber(value: 1.25 as Double)
+        case .single:
+            NSNumber(value: 1.25 as Float)
         }
     }
 }

@@ -11,21 +11,29 @@ import Foundation
 /// A Combine `Publisher` that produces values for a key in a ``PersistentKeyValueStore`` as changes occur.
 ///
 /// `PersistentKeyValuePublisher` observes the same store changes as ``PersistentKeyValues``. By default, each
-/// subscription emits the current value when demand is requested, followed by subsequent changes. To observe only
-/// changes without the initial value, pass `emitsInitialValue: false`.
+/// subscription emits the current value, followed by subsequent changes. The current value is read when the publisher
+/// receives its subscriber, and it is delivered when the subscriber first requests demand, even if the key changed in
+/// between; any such change is delivered after it. To observe only changes without the initial value, pass
+/// `emitsInitialValue: false`.
 ///
 /// If downstream demand is exhausted, subsequent changes are coalesced. When more demand is requested, the publisher
 /// emits the latest current value instead of replaying every intermediate transition.
 ///
 /// Each change value is read from the store after the store reports a change, and values are delivered serially in
 /// the order they are read. Changes that occur close together can be observed as one value, and consecutive values can
-/// be equal. A representation may write the observed key while decoding; that write is delivered as a later value.
+/// be equal. A representation may write the observed key while decoding; that write is delivered as a later value. A
+/// subscription that is cancelled while its value is being read, including by the representation, does not deliver
+/// that value.
 ///
+/// - Important: The publisher does not schedule delivery on any queue. Values are delivered synchronously on the
+///   thread that requests demand or that reports a store change, which can be a background thread. While one thread
+///   is delivering values, changes reported on other threads are delivered by that thread. Use
+///   `receive(on: DispatchQueue.main)` before updating UI.
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
 /// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
 ///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
-///   delivered.
+///   delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 /// - SeeAlso: ``PersistentKeyProtocol/changesPublisher(in:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentKeyValues`` for observing changes from async code.
 public struct PersistentKeyValuePublisher<Key> where Key: PersistentKeyProtocol {
@@ -197,9 +205,13 @@ extension PersistentKeyValuePublisher {
         }
 
         internal func cancel() {
-            guard markCancelled() else {
+            guard let released = markCancelled() else {
                 return
             }
+
+            // Releasing the subscriber can run a `deinit` that cancels this subscription again, so release it only
+            // after the lock is unlocked.
+            withExtendedLifetime(released) {}
 
             store.deregister(self, for: key, context: nil)
         }
@@ -255,45 +267,60 @@ extension PersistentKeyValuePublisher {
             lock.unlock()
 
             while let emission = nextEmission() {
-                let value: Key.Value
-
-                switch emission.value {
-                case .current:
-                    // Read outside the lock: decoding can write the observed key and report a change synchronously.
-                    value = store.get(key)
-                case let .initial(initialValue):
-                    value = initialValue
+                // The emission can hold the last reference to the subscriber after a concurrent cancellation, so keep
+                // it alive until the lock is unlocked.
+                withExtendedLifetime(emission) {
+                    deliver(emission)
                 }
-
-                let additionalDemand = emission.downstream.receive(value)
-
-                lock.lock()
-
-                if !isCancelled {
-                    demand += additionalDemand
-                }
-
-                lock.unlock()
             }
         }
 
-        private nonisolated func markCancelled() -> Bool {
-            lock.lock()
-            defer {
-                lock.unlock()
+        private nonisolated func deliver(_ emission: Emission) {
+            let value: Key.Value
+
+            switch emission.value {
+            case .current:
+                // Read outside the lock: decoding can write the observed key and report a change synchronously.
+                value = store.get(key)
+            case let .initial(initialValue):
+                value = initialValue
             }
 
-            guard !isCancelled else {
-                return false
+            // Decoding runs consumer code that can cancel this subscription.
+            guard !withLock({ isCancelled }) else {
+                return
             }
 
-            demand = .none
-            downstream = nil
-            hasPendingChange = false
-            isCancelled = true
-            pendingInitialValue = nil
+            let additionalDemand = emission.downstream.receive(value)
 
-            return true
+            withLock {
+                if !isCancelled {
+                    demand += additionalDemand
+                }
+            }
+        }
+
+        /// Marks the subscription cancelled and returns the references it released, or `nil` if it was already
+        /// cancelled.
+        ///
+        /// The caller releases the returned references after the lock is unlocked, because their deinitializers can
+        /// run consumer code.
+        private nonisolated func markCancelled() -> (Downstream?, Key.Value?)? {
+            withLock {
+                guard !isCancelled else {
+                    return nil
+                }
+
+                let released = (downstream, pendingInitialValue)
+
+                demand = .none
+                downstream = nil
+                hasPendingChange = false
+                isCancelled = true
+                pendingInitialValue = nil
+
+                return released
+            }
         }
 
         private nonisolated func nextEmission() -> Emission? {
@@ -340,6 +367,15 @@ extension PersistentKeyValuePublisher {
             lock.unlock()
 
             emitPendingValues()
+        }
+
+        private nonisolated func withLock<Result>(_ body: () -> Result) -> Result {
+            lock.lock()
+            defer {
+                lock.unlock()
+            }
+
+            return body()
         }
     }
 }

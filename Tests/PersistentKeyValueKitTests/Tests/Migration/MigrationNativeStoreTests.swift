@@ -182,6 +182,11 @@ final class MigrationNativeStoreTests: XCTestCase {
             "\(suiteName)/",
             "~/Library/Preferences/\(suiteName)",
             "~\(suiteName)",
+            // Swift reads a delimiter followed by a combining mark, or a `.` preceded by a prepended mark, as part of
+            // another character, while Core Foundation still sees the delimiter.
+            ".\u{2F}\u{301}\(suiteName)",
+            "~\u{301}\(suiteName)",
+            "\(suiteName)\u{600}.plist",
         ]
 
         for name in names {

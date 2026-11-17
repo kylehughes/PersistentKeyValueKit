@@ -551,6 +551,78 @@ extension PersistentKeyValuesTests {
         }
     }
 
+    func test_values_cancelledTaskDoesNotReturnPendingInitialValueAndDeregisters() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = await Task {
+            var iterator = key.values(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            let first = await iterator.next()
+            store.set(key, to: "changedValue")
+            let second = await iterator.next()
+
+            return [first, second]
+        }.value
+
+        XCTAssertEqual(values, [nil, nil])
+        XCTAssertEqual(store.registrationCount, 1)
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_values_cancelledTaskDoesNotReturnBufferedChangesAndDeregisters() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = await Task {
+            var iterator = key.changes(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+            store.set(key, to: "firstChangedValue")
+            store.set(key, to: "secondChangedValue")
+
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            let first = await iterator.next()
+            let second = await iterator.next()
+
+            return [first, second]
+        }.value
+
+        XCTAssertEqual(values, [nil, nil])
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_values_iteratorReturnsNilInLaterTaskAfterCancellationEndsIteration() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        // The iterator is used by one task at a time, but it is not `Sendable`.
+        nonisolated(unsafe) var iterator = key.values(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+        let cancelledValue = await Task {
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            return await iterator.next()
+        }.value
+
+        store.set(key, to: "changedValue")
+
+        let laterValue = await Task {
+            await iterator.next()
+        }.value
+
+        XCTAssertNil(cancelledValue)
+        XCTAssertNil(laterValue)
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
     func test_values_deregistersWhenIteratorDeinitializes() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")

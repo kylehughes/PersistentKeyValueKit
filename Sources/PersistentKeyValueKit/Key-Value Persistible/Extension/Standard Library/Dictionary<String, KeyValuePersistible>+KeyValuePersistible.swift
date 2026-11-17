@@ -18,6 +18,10 @@ extension Dictionary: KeyValuePersistible where Key == String, Value: KeyValuePe
     /// write never partially overwrites a stored dictionary. Values that encode to `nil` are omitted. Ordinary reads
     /// keep every entry that decodes and omit entries that fail to decode, because entries are independent. Checked
     /// conversion through ``decode(storageObject:format:)``, which migration uses, fails if any entry fails to decode.
+    ///
+    /// Foundation keeps keys that are canonically equivalent but spelled differently, such as composed and decomposed
+    /// "café", as separate entries, while a Swift dictionary holds at most one of them. An ordinary read of a stored
+    /// dictionary with such keys keeps one of the entries; which one is unspecified. Checked conversion fails instead.
     @inlinable
     public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()
@@ -31,11 +35,13 @@ where
     Key == String,
     Value: KeyValuePersistible
 {
-    /// Decodes a dictionary from a stored `[String: Any]` dictionary using
-    /// ``PersistentKeyValueStorageFormat/propertyList``.
+    /// Decodes a dictionary from a stored `[String: Any]` dictionary with the value representation's
+    /// ``PersistentKeyValueRepresentation/get(_:from:)``, as ordinary reads do.
     ///
-    /// Throws if any entry fails to decode. This checked conversion is stricter than ordinary reads, which omit
-    /// entries that fail to decode, so a migration reports the failure instead of dropping data.
+    /// Throws if any entry fails to decode, or if the stored dictionary has keys that are canonically equivalent but
+    /// spelled differently, which a Swift dictionary cannot hold separately. This checked conversion is stricter than
+    /// ordinary reads, which omit entries that fail to decode, so a migration reports the failure instead of dropping
+    /// data.
     public static func decode(
         storageObject: Any,
         format: PersistentKeyValueStorageFormat
@@ -43,31 +49,22 @@ where
         guard let objects = storageObject as? [String: Any] else {
             throw PersistentKeyValueConversionError.invalidStorageValue
         }
-        var values: [String: Value] = [:]
-        for (key, object) in objects {
-            values[key] = try Value.persistentKeyValueRepresentation.decode(
-                storageObject: object,
-                format: .propertyList
-            )
+
+        // Bridging to a Swift dictionary merges canonically equivalent keys that Foundation stores separately.
+        if let nativeObjects = storageObject as? NSDictionary, nativeObjects.count != objects.count {
+            throw PersistentKeyValueConversionError.invalidStorageValue
         }
-        return values
+
+        return try Value.persistentKeyValueRepresentation.checkedDictionary(decoding: objects)
     }
 
-    /// Encodes the dictionary into a `[String: Any]` dictionary using ``PersistentKeyValueStorageFormat/propertyList``,
-    /// omitting entries whose value encodes to `nil`.
+    /// Encodes the dictionary into a `[String: Any]` dictionary with the value representation's
+    /// ``PersistentKeyValueRepresentation/set(_:to:in:)``, as ordinary writes do, omitting entries whose value
+    /// encodes to `nil`.
+    ///
+    /// Throws if any value fails to encode.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
-        var objects: [String: Any] = [:]
-        for (key, value) in self {
-            if let object = try encodeStorageRepresentation(
-                Value.persistentKeyValueRepresentation,
-                value: value,
-                format: .propertyList
-            )
-            {
-                objects[key] = object
-            }
-        }
-        return objects
+        try Value.persistentKeyValueRepresentation.checkedPropertyListDictionary(encoding: self)
     }
 
     // MARK: Interfacing with Property List Array
@@ -75,8 +72,16 @@ where
     /// Decodes every element of `propertyListArray` as a dictionary, returning `nil` if any element is not a
     /// dictionary.
     ///
-    /// Entries of each dictionary that fail to decode are omitted, as in other dictionary reads.
+    /// Entries of each dictionary that fail to decode are omitted, as in other dictionary reads. During checked
+    /// conversion, such as migration, each element is decoded with ``decode(storageObject:format:)`` instead, so any
+    /// failing entry fails the read.
     public static func get(from propertyListArray: [Any]) -> [Self]? {
+        if CheckedConversion.isActive {
+            return try? propertyListArray.map {
+                try decode(storageObject: $0, format: .propertyList)
+            }
+        }
+
         let representation = Value.persistentKeyValueRepresentation
 
         var originalArray: [Self] = []
@@ -120,9 +125,17 @@ where
 
     /// Decodes the dictionary at `dictionaryKey`, returning `nil` if it is absent or is not a dictionary.
     ///
-    /// Entries that fail to decode are omitted so the readable entries survive a read-modify-write.
+    /// Entries that fail to decode are omitted so the readable entries survive a read-modify-write. During checked
+    /// conversion, such as migration, the dictionary is decoded with ``decode(storageObject:format:)`` instead, so any
+    /// failing entry fails the read.
     @inlinable
     public static func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Self? {
+        if CheckedConversion.isActive {
+            return propertyListDictionary[dictionaryKey].flatMap {
+                try? decode(storageObject: $0, format: .propertyList)
+            }
+        }
+
         guard let propertyListDictionary = propertyListDictionary[dictionaryKey] as? [String: Any] else {
             return nil
         }

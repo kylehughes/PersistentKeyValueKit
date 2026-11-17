@@ -41,7 +41,7 @@ import SwiftUI
 ///   removals.
 /// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
 ///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
-///   delivered.
+///   delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 /// - Attention: We use `@preconcurrency` to conform to `DynamicProperty` because otherwise `update()` is forced to
 ///   be nonisolated in order to meet the conformance. Apple uses `@preconcurrency` for their `@MainActor`-isolated
 ///   property wrappers as of 2024-10-22.
@@ -79,12 +79,19 @@ public struct PersistentValue<Key> where Key: PersistentKeyProtocol {
     ///
     /// This property allows SwiftUI to automatically update the value when used in controls like `TextField`.
     /// To get the `projectedValue`, use the `$` operator on the property variable.
-    @inlinable
+    ///
+    /// The binding reads and writes the key and store that the property uses when the binding is created. A binding
+    /// that is kept after the view is updated with a different key or store, such as one captured by an escaping
+    /// closure, keeps reading and writing its original key and store.
     public var projectedValue: Binding<Key.Value> {
-        Binding {
-            wrappedValue
-        } set: {
-            wrappedValue = $0
+        let observer = observer
+        let key = observer.key
+        let store = observer.store
+
+        return Binding {
+            observer.value(for: key, in: store)
+        } set: { newValue in
+            observer.setValue(newValue, for: key, in: store)
         }
     }
     

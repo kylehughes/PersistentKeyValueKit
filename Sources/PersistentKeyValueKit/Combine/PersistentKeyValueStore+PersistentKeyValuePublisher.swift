@@ -40,12 +40,14 @@ extension PersistentKeyValueStore {
     ///
     /// By default, each subscription emits the current value when demand is first requested, followed by subsequent
     /// changes. If downstream demand is exhausted, later changes are coalesced and the latest current value is emitted
-    /// when more demand is requested.
+    /// when more demand is requested. Values are delivered on the thread that reports each change, so schedule UI work
+    /// on the main queue.
     ///
     /// e.g.
     ///
     /// ```swift
     /// let cancellable = UserDefaults.standard.publisher(for: .username)
+    ///     .receive(on: DispatchQueue.main)
     ///     .sink { username in
     ///         usernameLabel.text = username
     ///     }

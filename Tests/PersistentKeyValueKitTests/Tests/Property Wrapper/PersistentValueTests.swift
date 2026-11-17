@@ -699,6 +699,110 @@ extension PersistentValueTests {
         await waitForRenderedValue(9, in: recorder)
     }
 
+    @MainActor
+    func test_inputChange_canonicallyEquivalentKey_observesNewKey() async {
+        let viewController = ViewController()
+        let composedKey = PersistentKey("caf\u{E9}:\(#function)", defaultValue: 0)
+        let decomposedKey = PersistentKey("cafe\u{301}:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: composedKey.id, store: userDefaults, environmentStore: userDefaults)
+        let recorder = SwitchingRecorder()
+
+        userDefaults.set(composedKey, to: 1)
+        userDefaults.set(decomposedKey, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        model.keyID = decomposedKey.id
+        await waitForRenderedValue(2, in: recorder)
+
+        userDefaults.set(decomposedKey, to: 42)
+        await waitForRenderedValue(42, in: recorder)
+
+        XCTAssertEqual(userDefaults.get(composedKey), 1)
+    }
+
+    @MainActor
+    func test_inputChange_environmentStore_retainedBindingWritesOriginalStore() async {
+        let viewController = ViewController()
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: key.id, environmentStore: firstStore)
+        let recorder = SwitchingRecorder()
+
+        firstStore.set(key, to: 1)
+        secondStore.set(key, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        let retainedBinding = recorder.binding
+
+        model.environmentStore = secondStore
+        await waitForRenderedValue(2, in: recorder)
+
+        retainedBinding?.wrappedValue = 73
+
+        XCTAssertEqual(retainedBinding?.wrappedValue, 73)
+        XCTAssertEqual(firstStore.get(key), 73)
+        XCTAssertEqual(secondStore.get(key), 2)
+    }
+
+    @MainActor
+    func test_inputChange_explicitStore_retainedBindingWritesOriginalStore() async {
+        let viewController = ViewController()
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: key.id, store: firstStore, environmentStore: userDefaults)
+        let recorder = SwitchingRecorder()
+
+        firstStore.set(key, to: 1)
+        secondStore.set(key, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        let retainedBinding = recorder.binding
+
+        model.store = secondStore
+        await waitForRenderedValue(2, in: recorder)
+
+        retainedBinding?.wrappedValue = 93
+
+        XCTAssertEqual(retainedBinding?.wrappedValue, 93)
+        XCTAssertEqual(firstStore.get(key), 93)
+        XCTAssertEqual(secondStore.get(key), 2)
+    }
+
+    @MainActor
+    func test_inputChange_key_retainedBindingWritesOriginalKey() async {
+        let viewController = ViewController()
+        let store = InMemoryPersistentKeyValueStore()
+        let firstKey = PersistentKey("firstKey:\(#function)", defaultValue: 0)
+        let secondKey = PersistentKey("secondKey:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: firstKey.id, store: store, environmentStore: userDefaults)
+        let recorder = SwitchingRecorder()
+
+        store.set(firstKey, to: 1)
+        store.set(secondKey, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        let retainedBinding = recorder.binding
+
+        model.keyID = secondKey.id
+        await waitForRenderedValue(2, in: recorder)
+
+        retainedBinding?.wrappedValue = 73
+
+        XCTAssertEqual(retainedBinding?.wrappedValue, 73)
+        XCTAssertEqual(store.get(firstKey), 73)
+        XCTAssertEqual(store.get(secondKey), 2)
+    }
+
     // MARK: Private Instance Interface
 
     /// Waits until the row renders `value`, failing after a bounded timeout.

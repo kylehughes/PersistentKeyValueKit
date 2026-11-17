@@ -82,7 +82,7 @@ extension UserDefaults: PersistentKeyValueStore {
                     observer: target,
                     keyID: keyID,
                     context: context,
-                    userDefaults: self
+                    monitor: .monitor(for: self)
                 )
             )
 
@@ -108,15 +108,21 @@ extension UserDefaults {
     
     /// Registers the given keys with their default values.
     ///
+    /// Identifiers are compared literally, as `UserDefaults` compares them, so identifiers that are canonically
+    /// equivalent but spelled differently register separately. When two keys have the same identifier, the later one
+    /// wins.
+    ///
     /// - Parameter keys: The keys to register.
     public func register(_ keys: [any PersistentKeyProtocol]) {
-        var defaults: [String: Any] = Dictionary(minimumCapacity: keys.count)
-        
+        // `register(defaults:)` takes a Swift dictionary, which merges canonically equivalent identifiers. Sending the
+        // Objective-C message with Foundation's own dictionary keeps them separate.
+        let defaults = NSMutableDictionary(capacity: keys.count)
+
         for key in keys {
-            key.registerDefault(in: &defaults)
+            key.registerDefault(inLiteralDictionary: defaults)
         }
-        
-        register(defaults: defaults)
+
+        _ = perform(#selector(UserDefaults.register(defaults:)), with: defaults)
     }
 
     // MARK: Internal Static Interface
@@ -143,100 +149,21 @@ extension UserDefaults {
 
         // A managed (forced) preference outranks the argument domain, so the visible string may be the managed
         // value even when a launch argument exists. Parse only a visible value that is the launch argument.
+        // Swift's `volatileDomain(forName:)` bridges the domain to a Swift dictionary, whose lookup also matches a
+        // canonically equivalent but differently spelled argument. Foundation's own dictionary matches literally.
         guard
-            let argument = volatileDomain(forName: UserDefaults.argumentDomain)[key] as? String,
-            argument == visibleString,
+            let argumentDomain = perform(
+                #selector(UserDefaults.volatileDomain(forName:)),
+                with: UserDefaults.argumentDomain
+            )?.takeUnretainedValue() as? NSDictionary,
+            let argument = argumentDomain.object(forKey: key) as? String,
+            (argument as NSString).isEqual(to: visibleString),
             !objectIsForced(forKey: key)
         else {
             return nil
         }
 
         return argument
-    }
-}
-
-// MARK: - UserDefaultsKeyChangeObservation Definition
-
-/// Delivers changes to a defaults key that key-value observation cannot observe.
-///
-/// The observation listens for `UserDefaults.didChangeNotification` from every `UserDefaults` instance, because
-/// instances for the same suite share values, and notifies the observer only when the key's property-list value
-/// differs from the last value it saw. Foundation posts the notification only for changes made in the current process.
-///
-/// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Access to
-///   the last observed value is protected by `lock`, its other stored properties are immutable after initialization,
-///   and `observer` and `userDefaults` are weak references.
-private final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObservation, @unchecked Sendable {
-    let context: UnsafeMutableRawPointer?
-    let keyID: String
-    private(set) weak var observer: NSObject?
-
-    private let lock: NSLock
-    private var lastObject: Any?
-    // The store retains this observation through its registry, so a strong reference would form a cycle.
-    private weak var userDefaults: UserDefaults?
-
-    // MARK: Internal Initialization
-
-    init(
-        observer: NSObject,
-        keyID: String,
-        context: UnsafeMutableRawPointer?,
-        userDefaults: UserDefaults
-    ) {
-        self.context = context
-        self.keyID = keyID
-        self.observer = observer
-        self.userDefaults = userDefaults
-
-        lastObject = userDefaults.object(forKey: keyID)
-        lock = NSLock()
-
-        super.init()
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(userDefaultsDidChange(_:)),
-            name: UserDefaults.didChangeNotification,
-            object: nil
-        )
-    }
-
-    // MARK: StoreKeyObservation Implementation
-
-    func invalidate() {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    // MARK: Private Instance Interface
-
-    private func recordObject(_ object: Any?) -> Bool {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        guard !PropertyListMigrationStorage.equal(lastObject, object) else {
-            return false
-        }
-
-        lastObject = object
-
-        return true
-    }
-
-    @objc
-    private func userDefaultsDidChange(_ notification: Notification) {
-        guard let observer, let userDefaults, recordObject(userDefaults.object(forKey: keyID)) else {
-            return
-        }
-
-        observer.observeValue(
-            forKeyPath: keyID,
-            of: userDefaults,
-            change: [.kindKey: NSKeyValueChange.setting.rawValue],
-            context: context
-        )
     }
 }
 
@@ -315,12 +242,13 @@ extension UserDefaults {
 
         // Core Foundation resolves a name containing `/` as a preferences file path, and it removes a `.plist` suffix
         // in any case, so these names can open another name's preferences file under a different identity. A leading
-        // `~` is rejected as path-shaped too.
+        // `~` is rejected as path-shaped too. Core Foundation reads these delimiters as code units, while Swift's
+        // `Character` comparison would miss one followed by a combining mark.
         guard
             !name.isEmpty,
-            !name.contains("/"),
-            !name.hasPrefix("~"),
-            !foldedName.hasSuffix(".plist")
+            !name.utf8.contains(UInt8(ascii: "/")),
+            name.utf8.first != UInt8(ascii: "~"),
+            !foldedName.utf8.reversed().starts(with: ".plist".utf8.reversed())
         else {
             return false
         }

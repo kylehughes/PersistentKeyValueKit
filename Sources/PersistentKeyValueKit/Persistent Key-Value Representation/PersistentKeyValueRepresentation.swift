@@ -43,22 +43,32 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     
     /// Decodes the elements of `propertyListArray` as ``Value``.
     ///
+    /// Array reads and migration decode a stored array with this method, so it must accept the arrays that
+    /// ``set(_:to:)`` writes.
+    ///
     /// - Parameter propertyListArray: The array to decode values from.
     /// - Returns: The decoded values, or `nil` if any element cannot be decoded as ``Value``.
     func get(from propertyListArray: [Any]) -> [Value]?
 
-    /// Replaces `propertyListArray` with the encoded representations of `values`.
+    /// Writes the encoded representations of `values` into `propertyListArray`.
     ///
-    /// If any value fails to encode, leave `propertyListArray` unchanged. Array and dictionary writes rely on this to
-    /// keep the stored collection when one of its elements cannot be encoded.
+    /// Array writes, registration, and migration call this method with an empty `propertyListArray`, and an
+    /// implementation may either assign the encoded array or append the encoded elements to it. The result is the
+    /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
+    /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
+    /// cannot be encoded: an empty result for nonempty `values` counts as a failure unless ``encode(_:format:)``
+    /// returns `nil` for every value.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
-    /// - Parameter propertyListArray: The array to replace with the encoded values.
+    /// - Parameter propertyListArray: The array to write the encoded values into.
     func set(_ values: [Value], to propertyListArray: inout [Any])
     
     // MARK: Interfacing with Property List Dictionary
 
     /// Decodes the value at `dictionaryKey` in `propertyListDictionary`, if present and representable as ``Value``.
+    ///
+    /// Dictionary reads and migration decode a stored entry with this method, so it must accept the objects that
+    /// ``set(_:to:in:)`` writes.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.
@@ -69,8 +79,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Sets the value at `dictionaryKey` in `propertyListDictionary`.
     ///
     /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
-    /// `dictionaryKey`. Dictionary writes rely on this to keep the stored dictionary when one of its values cannot be
-    /// encoded.
+    /// `dictionaryKey`. Dictionary writes, registration, and migration call this method for a `dictionaryKey` that
+    /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
+    /// values cannot be encoded: an absent entry counts as a failure unless ``encode(_:format:)`` returns `nil`.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -259,25 +270,38 @@ extension PersistentKeyValueRepresentation {
     }
 }
 
-// MARK: - Container Encoding
+// MARK: - Container Conversion
 
 extension PersistentKeyValueRepresentation {
     // MARK: Internal Instance Interface
 
     /// Returns the property-list array that ``set(_:to:)`` produces for `values`, or `nil` if any element fails to
     /// encode.
-    ///
-    /// `set(_:to:)` reports a failed element by leaving the array unchanged, which is indistinguishable from success
-    /// when the array starts empty. Seeding the array with a marker that no encoding produces makes the failure
-    /// observable, so callers can leave a store's existing collection in place instead of overwriting it.
     @usableFromInline
     internal func propertyListArray(encoding values: [Value]) -> [Any]? {
-        var objects: [Any] = [UnencodedContainerMarker()]
+        try? checkedPropertyListArray(encoding: values)
+    }
+
+    /// Returns the property-list array that ``set(_:to:)`` produces for `values`, throwing if any element fails to
+    /// encode.
+    ///
+    /// `set(_:to:)` receives an empty array, which it may assign or append to, and reports a failed element by leaving
+    /// the array empty. An empty result for nonempty `values` is therefore a failure unless every value encodes to
+    /// `nil`, which omits it. Only that case consults ``encode(_:format:)`` element by element, so the
+    /// representation's own array format stays authoritative.
+    internal func checkedPropertyListArray(encoding values: [Value]) throws -> [Any] {
+        var objects: [Any] = []
 
         set(values, to: &objects)
 
-        guard !(objects.first is UnencodedContainerMarker) else {
-            return nil
+        guard objects.isEmpty else {
+            return objects
+        }
+
+        for value in values {
+            guard try encode(value, format: .propertyList) == nil else {
+                throw PersistentKeyValueConversionError.encodingFailed
+            }
         }
 
         return objects
@@ -286,23 +310,74 @@ extension PersistentKeyValueRepresentation {
     /// Returns the property-list dictionary that ``set(_:to:in:)`` produces for every entry of `values`, or `nil` if
     /// any value fails to encode.
     ///
-    /// Entries whose value encodes to `nil` are omitted. Each entry is seeded with a marker before it is encoded, so a
-    /// value that fails to encode (leaving the entry unchanged) is distinguishable from one that removes it.
+    /// Entries whose value encodes to `nil` are omitted.
     @usableFromInline
     internal func propertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
+        try? checkedPropertyListDictionary(encoding: values)
+    }
+
+    /// Returns the property-list dictionary that ``set(_:to:in:)`` produces for every entry of `values`, throwing if
+    /// any value fails to encode.
+    ///
+    /// `set(_:to:in:)` receives a dictionary that does not yet contain the entry's key and reports a failed value by
+    /// leaving it absent. An absent entry is therefore a failure unless the value encodes to `nil`, which omits it.
+    internal func checkedPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
         var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
 
         for (key, value) in values {
-            objects[key] = UnencodedContainerMarker()
-
             set(key, to: value, in: &objects)
 
-            if objects[key] is UnencodedContainerMarker {
-                return nil
+            guard objects[key] == nil else {
+                continue
+            }
+
+            guard try encode(value, format: .propertyList) == nil else {
+                throw PersistentKeyValueConversionError.encodingFailed
             }
         }
 
         return objects
+    }
+
+    /// Returns the values that ``get(from:)`` decodes from `propertyListArray`, throwing if it cannot decode them.
+    ///
+    /// Decoding runs as checked conversion, so built-in containers fail instead of omitting dictionary entries. When
+    /// `get(from:)` fails, the first error that ``decode(storageObject:format:)`` throws for an element is rethrown.
+    internal func checkedValues(decoding propertyListArray: [Any]) throws -> [Value] {
+        try CheckedConversion.perform {
+            guard let values = get(from: propertyListArray) else {
+                for object in propertyListArray {
+                    _ = try decode(storageObject: object, format: .propertyList)
+                }
+
+                throw PersistentKeyValueConversionError.invalidStorageValue
+            }
+
+            return values
+        }
+    }
+
+    /// Returns the entries of `propertyListDictionary` that ``get(_:from:)`` decodes, throwing if any entry fails to
+    /// decode.
+    ///
+    /// Decoding runs as checked conversion, so built-in containers fail instead of omitting dictionary entries. When
+    /// `get(_:from:)` fails, the error that ``decode(storageObject:format:)`` throws for the entry is rethrown.
+    internal func checkedDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
+        try CheckedConversion.perform {
+            var values: [String: Value] = Dictionary(minimumCapacity: propertyListDictionary.count)
+
+            for (key, object) in propertyListDictionary {
+                guard let value = get(key, from: propertyListDictionary) else {
+                    _ = try decode(storageObject: object, format: .propertyList)
+
+                    throw PersistentKeyValueConversionError.invalidStorageValue
+                }
+
+                values[key] = value
+            }
+
+            return values
+        }
     }
 
     /// Returns the entries of `propertyListDictionary` that decode with ``get(_:from:)``, omitting entries that fail
@@ -320,6 +395,35 @@ extension PersistentKeyValueRepresentation {
 
         return values
     }
+}
+
+// MARK: - Checked Conversion Definition
+
+/// The scope of a checked container conversion, such as the one migration uses.
+///
+/// Checked conversion reads containers through the same representation hooks as ordinary reads, so a representation's
+/// own container format is honored. Within this scope, built-in dictionary reads fail instead of omitting entries that
+/// fail to decode, so a checked conversion reports the failure instead of dropping data. The scope is task-local
+/// (thread-local outside a task), so it does not affect conversions running concurrently elsewhere.
+@usableFromInline
+internal enum CheckedConversion {
+    // MARK: Internal Static Interface
+
+    /// Whether the current conversion is checked.
+    @usableFromInline
+    internal static var isActive: Bool {
+        isActiveValue
+    }
+
+    /// Runs `body` as checked conversion.
+    internal static func perform<Result>(_ body: () throws -> Result) rethrows -> Result {
+        try $isActiveValue.withValue(true, operation: body)
+    }
+
+    // MARK: Private Static Interface
+
+    @TaskLocal
+    private static var isActiveValue = false
 }
 
 /// The storage format used to encode or decode a persistent value.
@@ -345,10 +449,6 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 
     /// The Swift value could not be converted into its proxy or storage representation.
     case encodingFailed
-}
-
-/// A placeholder that no representation produces, used to detect a container element that was left unencoded.
-private struct UnencodedContainerMarker {
 }
 
 /// Returns `object` wrapped for storage, or `nil` when it is not a property list that a store accepts.

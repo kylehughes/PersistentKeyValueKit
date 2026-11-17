@@ -51,6 +51,10 @@ extension UserDefaultsMigrationBackend {
 extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
     // MARK: Internal Instance Interface
 
+    var migrationHandle: ObjectIdentifier {
+        ObjectIdentifier(userDefaults)
+    }
+
     func commitMigrationWrite(
         _ write: MigrationWrite,
         replacing snapshot: MigrationSnapshot?
@@ -75,6 +79,10 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
                 CFEqual(snapshot.object as AnyObject, object as AnyObject)
             {
                 userDefaults.removeObject(forKey: write.keyID)
+                // Observers notified of the removal can write the key, and the replacement must not overwrite that.
+                guard try migrationSnapshot(for: write.keyID) == nil else {
+                    throw PersistentKeyMigrationError.destinationChanged
+                }
             }
 
             userDefaults.set(object, forKey: write.keyID)
@@ -92,6 +100,10 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
 
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
         false
+    }
+
+    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
+        .literal(keyID)
     }
 
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
@@ -132,11 +144,17 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
     ) throws -> MigrationWrite where Key: PersistentKeyProtocol {
         let object = try encodeStorageValue(value, for: key, format: .userDefaults)
         if let object {
-            return MigrationWrite(
-                identity: migrationIdentity,
-                keyID: key.id,
-                object: try PropertyListMigrationStorage.freeze(object)
-            )
+            let frozen = try PropertyListMigrationStorage.freeze(object)
+            // UserDefaults stores a file URL as its path, which drops a host or a trailing slash that later relative
+            // resolution depends on, so a URL that the ordinary reader cannot reproduce fails before any mutation.
+            if let url = value as? URL,
+                (try decodeStorageValue(for: key, object: frozen, format: .userDefaults) as? URL)?.absoluteString
+                    != url.absoluteString
+            {
+                throw PersistentKeyValueConversionError.encodingFailed
+            }
+
+            return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: frozen)
         }
 
         return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: nil)

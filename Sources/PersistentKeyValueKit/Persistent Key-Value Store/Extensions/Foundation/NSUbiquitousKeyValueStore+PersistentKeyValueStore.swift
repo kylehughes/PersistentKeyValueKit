@@ -12,6 +12,10 @@ import Foundation
 @available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     /// The notification that is posted when the value of a key changes internally.
+    ///
+    /// `PersistentKeyValueKit` posts this notification for local writes and removals, with the writing store as the
+    /// notification's object, so only observation registered with that same instance is notified. Use
+    /// `NSUbiquitousKeyValueStore.default` for every read, write, and observation, as Apple requires.
     public static let didChangeInternallyNotification = NSNotification.Name(
         "NSUbiquitousKeyValueStore.DidChangeInternally"
     )
@@ -80,7 +84,8 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     /// Returns whether a change notification from this store may have changed the value for `keyID`.
     ///
     /// Apple permits external change notifications without a changed-keys list, and an account change replaces every
-    /// value in the local store, so both are treated as changes to every key.
+    /// value in the local store, so both are treated as changes to every key. Changed keys are compared literally, as
+    /// the store compares keys, so a change to one spelling of a canonically equivalent key does not match another.
     internal static func changeNotification(_ notification: Notification, mayAffectKeyID keyID: String) -> Bool {
         let userInfo = notification.userInfo
 
@@ -92,7 +97,9 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
             return true
         }
 
-        return changedKeyIDs.contains(keyID)
+        return changedKeyIDs.contains {
+            StoreKeyObservationRegistry.keyIDsMatch($0, keyID)
+        }
     }
 
     @usableFromInline
@@ -124,14 +131,21 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
 
 /// Forwards a store's change notifications for one key to a registered observer's selector.
 ///
-/// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Its stored
-///   properties are immutable after initialization, and `observer` is a weak reference.
+/// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Access to
+///   `isInvalidated` is protected by `lock`, its other stored properties are immutable after initialization, and
+///   `observer` is a weak reference.
 @available(watchOS 9.0, *)
 private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObservation, @unchecked Sendable {
     let context: UnsafeMutableRawPointer?
     let keyID: String
     private(set) weak var observer: NSObject?
+
+    private var isInvalidated: Bool
+    private let lock: NSLock
     private let selector: Selector
+    // The store retains this observation through its registry, so a strong reference would form a cycle. Only
+    // `activate()` reads it, and the store's own registration calls that.
+    private unowned let store: NSUbiquitousKeyValueStore
 
     // MARK: Internal Initialization
 
@@ -146,9 +160,17 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
         self.keyID = keyID
         self.observer = observer
         self.selector = selector
+        self.store = store
+
+        isInvalidated = false
+        lock = NSLock()
 
         super.init()
+    }
 
+    // MARK: StoreKeyObservation Implementation
+
+    func activate() {
         for name in [
             NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             NSUbiquitousKeyValueStore.didChangeInternallyNotification,
@@ -160,11 +182,18 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
                 object: store
             )
         }
+
+        // Invalidation that raced installation could have run before an observer was added, so remove it again.
+        if isInvalidatedWithLock() {
+            NotificationCenter.default.removeObserver(self)
+        }
     }
 
-    // MARK: StoreKeyObservation Implementation
-
     func invalidate() {
+        lock.lock()
+        isInvalidated = true
+        lock.unlock()
+
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -173,6 +202,7 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
     @objc
     private func didReceive(_ notification: Notification) {
         guard
+            !isInvalidatedWithLock(),
             let observer,
             NSUbiquitousKeyValueStore.changeNotification(notification, mayAffectKeyID: keyID)
         else {
@@ -180,6 +210,15 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
         }
 
         _ = observer.perform(selector, with: notification)
+    }
+
+    private func isInvalidatedWithLock() -> Bool {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        return isInvalidated
     }
 }
 

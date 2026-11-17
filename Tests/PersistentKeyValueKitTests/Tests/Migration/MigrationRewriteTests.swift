@@ -1,3 +1,4 @@
+import Combine
 import CoreFoundation
 import Foundation
 import XCTest
@@ -68,6 +69,57 @@ final class MigrationRewriteTests: XCTestCase {
             }
 
             XCTAssertEqual(store.store.get(key), 4, store.name)
+        }
+    }
+
+    func testRewriteBetweenDistinctInstancesOfOneStoreThrowsSameStore() throws {
+        let suiteName = stableSuiteName("MigrationRewriteTests", function: #function)
+        let aliasName = suiteName.uppercased()
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let pairs: [(String, any PersistentKeyValueStore, any PersistentKeyValueStore)] = [
+            ("same suite", defaults, try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))),
+            ("case alias", defaults, try XCTUnwrap(UserDefaults.migratable(suiteName: aliasName))),
+            ("cloud", StrictMigrationUbiquitousStore(), StrictMigrationUbiquitousStore()),
+        ]
+        let legacy = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
+        let current = PersistentKey<String>(legacy.id, defaultValue: "")
+
+        addTeardownBlock {
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+            UserDefaults(suiteName: aliasName)?.removePersistentDomain(forName: aliasName)
+        }
+
+        for (name, source, destination) in pairs {
+            source.set(legacy, to: 42)
+
+            XCTAssertThrowsError(
+                try source.move(
+                    .key(legacy, to: current) {
+                        String($0)
+                    },
+                    to: destination,
+                    onConflict: .overwriteDestination,
+                    tracking: .untracked
+                ),
+                name
+            ) {
+                XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore, name)
+            }
+
+            XCTAssertEqual(source.get(legacy), 42, name)
+
+            let rewritten = try source.move(
+                .key(legacy, to: current) {
+                    String($0)
+                },
+                to: source,
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            )
+
+            XCTAssertEqual(rewritten.outcomes.map(\.status), [.rewritten], name)
+            XCTAssertEqual(source.get(current), "42", name)
+            source.remove(current)
         }
     }
 
@@ -189,6 +241,49 @@ final class MigrationRewriteTests: XCTestCase {
         XCTAssertEqual(store.get(stringKey), "text")
     }
 
+    func testRewriteOfBooleanAsIntegerKeepsAnObserverWriteDuringReplacement() throws {
+        let suiteName = stableSuiteName("MigrationRewriteTests", function: #function)
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let legacy = PersistentKey<Bool>("key:\(#function)", defaultValue: false)
+        let current = PersistentKey<Int>(legacy.id, defaultValue: -1)
+        var emissions: [Int] = []
+
+        addTeardownBlock {
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        }
+
+        defaults.set(legacy, to: true)
+
+        let subscription = defaults.changesPublisher(for: current).sink {
+            emissions.append($0)
+
+            // Replacing a Foundation-equal value removes it first, which observers see as the key being absent.
+            if defaults.persistentDomain(forName: suiteName)?[current.id] == nil {
+                defaults.set(current, to: 99)
+            }
+        }
+
+        defer {
+            subscription.cancel()
+        }
+
+        let report = try defaults.move(
+            .key(legacy, to: current) {
+                $0 ? 1 : 0
+            },
+            to: defaults,
+            onConflict: .keepBoth,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(defaults.get(current), 99)
+        XCTAssertEqual(emissions.last, 99)
+        XCTAssertFalse(defaults.get(.isMigrationCompleted(id: #function)))
+    }
+
     func testRewriteOfBooleanAsIntegerReplacesFoundationEqualValue() throws {
         for store in try stores() {
             let id = "key:\(#function)"
@@ -213,6 +308,62 @@ final class MigrationRewriteTests: XCTestCase {
 
             XCTAssertNotEqual(CFGetTypeID(raw), CFBooleanGetTypeID(), store.name)
             store.store.remove(current)
+        }
+    }
+
+    func testRewriteRetriedAfterALaterFailureFindsTheValueAlreadyRewritten() throws {
+        for store in try stores() {
+            let legacy = PersistentKey<Int>("key:\(#function).weight", defaultValue: 0)
+            let current = PersistentKey<String>(legacy.id, defaultValue: "")
+            let gate = PersistentKey<Int>("key:\(#function).gate", defaultValue: 0)
+            let renamed = PersistentKey<Int>("key:\(#function).renamed", defaultValue: 0)
+            let migrationID = "\(#function).\(store.name)"
+            let runs = Counter()
+            let items: [PersistentKeyMigrationItem] = [
+                .key(legacy, to: current) {
+                    runs.increment()
+                    return String($0 * 10)
+                },
+                .key(gate, to: renamed) {
+                    guard $0 != 0 else {
+                        throw RewriteFailure()
+                    }
+
+                    return $0
+                },
+            ]
+
+            store.store.set(legacy, to: 2)
+            store.store.set(gate, to: 0)
+
+            let failed = try store.store.move(
+                items: items,
+                to: store.store,
+                onConflict: .keepBoth,
+                tracking: .once(id: migrationID)
+            )
+
+            XCTAssertEqual(failed.outcomes.map(\.status), [.rewritten, .failed(.transform)], store.name)
+            XCTAssertEqual(failed.completion, .notRecorded, store.name)
+            XCTAssertEqual(store.store.get(current), "20", store.name)
+
+            store.store.set(gate, to: 1)
+
+            let retried = try store.store.move(
+                items: items,
+                to: store.store,
+                onConflict: .keepBoth,
+                tracking: .once(id: migrationID)
+            )
+
+            XCTAssertEqual(retried.outcomes.map(\.status), [.rewritten, .moved], store.name)
+            XCTAssertEqual(retried.completion, .recorded, store.name)
+            XCTAssertEqual(runs.value, 1, store.name)
+            XCTAssertEqual(store.rawValue(legacy.id) as? String, "20", store.name)
+            XCTAssertEqual(store.store.get(renamed), 1, store.name)
+            store.store.remove(current)
+            store.store.remove(renamed)
+            store.store.remove(.isMigrationCompleted(id: migrationID))
         }
     }
 
@@ -266,27 +417,53 @@ final class MigrationRewriteTests: XCTestCase {
         }
     }
 
-    func testTransformItemsBetweenNormalizationVariantsThrowSameStore() throws {
-        let store = InMemoryPersistentKeyValueStore()
-        let composed = PersistentKey<Int>("caf\u{E9}", defaultValue: 0)
-        let decomposed = PersistentKey<Int>("cafe\u{301}", defaultValue: 0)
+    func testTransformItemsBetweenNormalizationVariantsFollowTheStoreKeyIdentity() throws {
+        let composed = PersistentKey<Int>("key:\(#function).caf\u{E9}", defaultValue: 0)
+        let decomposed = PersistentKey<Int>("key:\(#function).cafe\u{301}", defaultValue: 0)
+        let other = PersistentKey<Int>("key:\(#function).other", defaultValue: 0)
+        let rename = PersistentKeyMigrationItem.key(composed, to: decomposed) {
+            $0
+        }
+        let memory = InMemoryPersistentKeyValueStore()
+        let suiteName = stableSuiteName("MigrationRewriteTests", function: #function)
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
 
-        store.set(composed, to: 3)
+        addTeardownBlock {
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        }
+
+        // The in-memory store keys entries by Swift `String`, so the two spellings name one entry.
+        memory.set(composed, to: 3)
 
         XCTAssertThrowsError(
-            try store.move(
-                .key(composed, to: decomposed) {
-                    $0
-                },
-                to: store,
-                onConflict: .overwriteDestination,
-                tracking: .untracked
-            )
+            try memory.move(rename, to: memory, onConflict: .overwriteDestination, tracking: .untracked)
         ) {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
         }
 
-        XCTAssertEqual(store.get(composed), 3)
+        XCTAssertThrowsError(
+            try memory.move(
+                items: [.key(composed, to: other), .key(decomposed, to: other)],
+                to: InMemoryPersistentKeyValueStore(),
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            )
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .duplicateKey(decomposed.id))
+        }
+
+        XCTAssertEqual(memory.get(composed), 3)
+
+        // UserDefaults keeps literally different spellings as different keys.
+        defaults.set(composed, to: 3)
+
+        let report = try defaults.move(rename, to: defaults, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(report.outcome(for: composed)?.status, .moved)
+        XCTAssertNil(report.outcome(for: decomposed))
+        XCTAssertNil(defaults.object(forKey: composed.id))
+        XCTAssertEqual(defaults.object(forKey: decomposed.id) as? Int, 3)
     }
 
     // MARK: Private Instance Interface

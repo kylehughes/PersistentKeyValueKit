@@ -30,6 +30,12 @@ protocol PersistentKeyValueMigrationBackend {
     associatedtype MigrationSnapshot
     associatedtype MigrationWrite
 
+    /// The object whose state this backend reads and writes.
+    ///
+    /// Backends with equal identities share a backing store, but different objects for that store, such as
+    /// `UserDefaults` instances for suite names that differ only by case, can cache different values for a key.
+    var migrationHandle: ObjectIdentifier { get }
+
     var migrationIdentity: PersistentKeyValueMigrationStoreIdentity { get }
 
     func commitMigrationWrite(
@@ -39,6 +45,11 @@ protocol PersistentKeyValueMigrationBackend {
 
     /// Whether `keyID` exceeds this store's key identifier limit. The engine checks every identifier before mutation.
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool
+
+    /// Returns the identity under which this store keeps the value for `keyID`.
+    ///
+    /// Two identifiers name the same stored value in this store exactly when their identities are equal.
+    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity
 
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot?
 
@@ -63,6 +74,34 @@ protocol PersistentKeyValueMigrationBackend {
 }
 
 // MARK: - Internal Identity
+
+/// The identity a store gives a key identifier.
+///
+/// Foundation stores compare key identifiers by their UTF-16 code units, so canonically equivalent spellings, such as
+/// composed and decomposed "café", name different keys. A store keyed by Swift `String` treats them as one key.
+struct PersistentKeyMigrationKeyIdentity: Hashable {
+    private let value: AnyHashable
+
+    // MARK: Private Initialization
+
+    private init(value: AnyHashable) {
+        self.value = value
+    }
+
+    // MARK: Internal Static Interface
+
+    /// An identity that equals another exactly when the identifiers are canonically equivalent, as Swift `String`
+    /// equality defines.
+    static func canonical(_ keyID: String) -> Self {
+        Self(value: keyID)
+    }
+
+    /// An identity that equals another exactly when the identifiers have the same UTF-16 code units.
+    static func literal(_ keyID: String) -> Self {
+        Self(value: Array(keyID.utf16))
+    }
+}
+
 
 struct PersistentKeyValueMigrationStoreIdentity: Hashable, Sendable {
     let identifier: String

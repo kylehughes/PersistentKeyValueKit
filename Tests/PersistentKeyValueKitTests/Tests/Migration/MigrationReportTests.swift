@@ -134,18 +134,31 @@ final class MigrationReportTests: XCTestCase {
     }
 
     func testReportInitializersPreserveTheCompletionErrorInvariant() {
-        let completions: [PersistentKeyMigrationReport.Completion] = [
-            .alreadyRecorded, .notRecorded, .recorded, .untracked,
-        ]
+        let completions: [PersistentKeyMigrationReport.Completion] = [.alreadyRecorded, .recorded, .untracked]
 
         for completion in completions {
             let report = PersistentKeyMigrationReport(outcomes: [], completion: completion)
 
             XCTAssertEqual(report.completion, completion)
             XCTAssertNil(report.completionError)
-            XCTAssertEqual(report.isComplete, completion != .notRecorded)
+            XCTAssertTrue(report.isComplete)
             XCTAssertFalse(report.hasFailures)
         }
+
+        let failure = PersistentKeyMigrationReport.Outcome(
+            sourceKeyID: "a",
+            failedAt: .write,
+            error: PersistentKeyMigrationError.writeVerificationFailed
+        )
+        let notRecorded = PersistentKeyMigrationReport(
+            outcomes: [failure, .init(sourceKeyID: "b", status: .copied)],
+            completion: .notRecorded
+        )
+
+        XCTAssertNil(notRecorded.completionError)
+        XCTAssertTrue(notRecorded.hasFailures)
+        XCTAssertFalse(notRecorded.isComplete)
+        XCTAssertTrue(PersistentKeyMigrationReport(outcomes: [failure], completion: .untracked).hasFailures)
 
         let failed = PersistentKeyMigrationReport(
             outcomes: [.init(sourceKeyID: "a", status: .copied)],
@@ -194,7 +207,12 @@ final class MigrationReportTests: XCTestCase {
                 ],
                 completion: .untracked
             ),
-            PersistentKeyMigrationReport(outcomes: [], completion: .notRecorded),
+            PersistentKeyMigrationReport(
+                outcomes: [
+                    .init(sourceKeyID: "a", failedAt: .decode, error: PersistentKeyValueConversionError.invalidValue)
+                ],
+                completion: .notRecorded
+            ),
             PersistentKeyMigrationReport(outcomes: [], completionError: PersistentKeyMigrationError.destinationChanged),
         ]
 
@@ -233,6 +251,24 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
+    func test_failedCompletionWithFailedOutcomeTraps() throws {
+        if ChildProcessTrap.isRunningInTrapChildProcess {
+            _ = PersistentKeyMigrationReport(
+                outcomes: [
+                    .init(sourceKeyID: "a", failedAt: .write, error: PersistentKeyMigrationError.destinationChanged)
+                ],
+                completionError: PersistentKeyMigrationError.writeVerificationFailed
+            )
+            return
+        }
+
+        try ChildProcessTrap.assertTraps(
+            test: #function,
+            in: self,
+            message: "A report whose completion failed cannot have a failed outcome."
+        )
+    }
+
     func test_failedCompletionWithoutErrorTraps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(outcomes: [], completion: .failed)
@@ -256,6 +292,40 @@ final class MigrationReportTests: XCTestCase {
             test: #function,
             in: self,
             message: "Use init(sourceKeyID:destinationKeyID:failedAt:error:) to create a failed outcome."
+        )
+    }
+
+    func test_notRecordedCompletionWithoutFailedOutcomeTraps() throws {
+        if ChildProcessTrap.isRunningInTrapChildProcess {
+            _ = PersistentKeyMigrationReport(
+                outcomes: [.init(sourceKeyID: "a", status: .copied)],
+                completion: .notRecorded
+            )
+            return
+        }
+
+        try ChildProcessTrap.assertTraps(
+            test: #function,
+            in: self,
+            message: "A report whose completion was not recorded must have a failed outcome."
+        )
+    }
+
+    func test_recordedCompletionWithFailedOutcomeTraps() throws {
+        if ChildProcessTrap.isRunningInTrapChildProcess {
+            _ = PersistentKeyMigrationReport(
+                outcomes: [
+                    .init(sourceKeyID: "a", failedAt: .write, error: PersistentKeyMigrationError.destinationChanged)
+                ],
+                completion: .recorded
+            )
+            return
+        }
+
+        try ChildProcessTrap.assertTraps(
+            test: #function,
+            in: self,
+            message: "A report whose completion was recorded cannot have a failed outcome."
         )
     }
 

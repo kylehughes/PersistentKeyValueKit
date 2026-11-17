@@ -120,28 +120,64 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(defaults.get(scalarKey), PublicLayout(columns: 7))
     }
 
-    func testCustomKeyInMemoryAccessIsHonoredByTheStore() {
+    func testCustomKeyHooksShareTheStorageLocationWithObservationAndMigration() throws {
         let store = InMemoryPersistentKeyValueStore()
-        let key = PublicNamespacedKey(id: "custom", defaultValue: "default")
-        let existentialKey: any PersistentKeyProtocol<String> = key
+        let key = PublicClampedKey(id: "PublicAPI.clamped", defaultValue: 50, range: 0...100)
+        let existentialKey: any PersistentKeyProtocol<Int> = key
+        var emissions: [Int] = []
+        let subscription = store.changesPublisher(for: key).sink {
+            emissions.append($0)
+        }
 
-        XCTAssertEqual(store.get(key), "default")
+        defer {
+            subscription.cancel()
+        }
 
-        store.set(key, to: "value")
+        XCTAssertEqual(store.get(key), 50)
 
-        XCTAssertEqual(store.object(forKey: "namespace.custom") as? String, "value")
-        XCTAssertNil(store.object(forKey: "custom"))
-        XCTAssertEqual(store.get(key), "value")
-        XCTAssertEqual(store.get(existentialKey), "value")
+        store.set(key, to: 500)
 
-        store.set(existentialKey, to: "existential")
+        XCTAssertEqual(store.object(forKey: key.id) as? Int, 100)
+        XCTAssertEqual(store.get(existentialKey), 100)
 
-        XCTAssertEqual(store.object(forKey: "namespace.custom") as? String, "existential")
+        store.set(existentialKey, to: -5)
+
+        XCTAssertEqual(store.get(key), 0)
+
+        store.set(true, forKey: key.lockID)
+        store.set(key, to: 70)
+        store.remove(key)
+
+        XCTAssertEqual(store.get(key), 0)
+
+        store.removeObject(forKey: key.lockID)
+        store.set(key, to: 70)
+
+        XCTAssertEqual(emissions, [100, 0, 70])
+
+        let suiteName = publicAPISuiteName("PublicAPI.clamped")
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let copied = try store.copy(key, to: defaults, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(copied.outcomes.map(\.status), [.copied])
+        XCTAssertEqual(defaults.get(key), 70)
+
+        let destination = InMemoryPersistentKeyValueStore()
+        let moved = try defaults.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(moved.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(destination.get(key), 70)
+        XCTAssertEqual(defaults.get(key), 50)
 
         store.remove(key)
 
-        XCTAssertNil(store.object(forKey: "namespace.custom"))
-        XCTAssertEqual(store.get(key), "default")
+        XCTAssertEqual(store.get(key), 50)
+        XCTAssertEqual(emissions, [100, 0, 70, 50])
     }
 
     func testGenericMigrationAndExistentialMigrationUseTheSameContract() throws {
@@ -775,40 +811,56 @@ private enum PublicMode: String, KeyValuePersistible {
     }
 }
 
-// MARK: - Public Namespaced Key Definition
+// MARK: - Public Clamped Key Definition
 
-/// A key that stores its in-memory value under a namespaced identifier.
-private struct PublicNamespacedKey {
+/// A key that clamps its value to `range` in every store and ignores in-memory writes while `isLocked` is set.
+///
+/// Its store-specific requirements customize how the value is read and written, and keep it under `id` as the
+/// storage contract requires.
+private struct PublicClampedKey {
     let id: String
-    let defaultValue: String
+    let defaultValue: Int
+    let range: ClosedRange<Int>
+
+    // MARK: Internal Instance Interface
+
+    var lockID: String {
+        "\(id).isLocked"
+    }
+
+    // MARK: Private Instance Interface
+
+    private func clamped(_ value: Int) -> Int {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
 }
 
 // MARK: - PersistentKeyProtocol Extension
 
-extension PublicNamespacedKey: PersistentKeyProtocol {
-    var representation: any PersistentKeyValueRepresentation<String> {
-        String.persistentKeyValueRepresentation
+extension PublicClampedKey: PersistentKeyProtocol {
+    var representation: any PersistentKeyValueRepresentation<Int> {
+        Int.persistentKeyValueRepresentation
     }
 
     // MARK: Interfacing with User Defaults
 
-    func get(from userDefaults: UserDefaults) -> String {
-        representation.get(id, from: userDefaults) ?? defaultValue
+    func get(from userDefaults: UserDefaults) -> Int {
+        representation.get(id, from: userDefaults).map(clamped) ?? defaultValue
     }
 
     func remove(from userDefaults: UserDefaults) {
         userDefaults.removeObject(forKey: id)
     }
 
-    func set(to newValue: String, in userDefaults: UserDefaults) {
-        representation.set(id, to: newValue, in: userDefaults)
+    func set(to newValue: Int, in userDefaults: UserDefaults) {
+        representation.set(id, to: clamped(newValue), in: userDefaults)
     }
 
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
     @available(watchOS 9.0, *)
-    func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> String {
-        representation.get(id, from: ubiquitousStore) ?? defaultValue
+    func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Int {
+        representation.get(id, from: ubiquitousStore).map(clamped) ?? defaultValue
     }
 
     @available(watchOS 9.0, *)
@@ -817,22 +869,30 @@ extension PublicNamespacedKey: PersistentKeyProtocol {
     }
 
     @available(watchOS 9.0, *)
-    func set(to newValue: String, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        representation.set(id, to: newValue, in: ubiquitousStore)
+    func set(to newValue: Int, in ubiquitousStore: NSUbiquitousKeyValueStore) {
+        representation.set(id, to: clamped(newValue), in: ubiquitousStore)
     }
 
     // MARK: Interfacing with In-Memory Store
 
-    func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> String {
-        inMemoryStore.object(forKey: "namespace.\(id)") as? String ?? defaultValue
+    func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> Int {
+        (inMemoryStore.object(forKey: id) as? Int).map(clamped) ?? defaultValue
     }
 
     func remove(from inMemoryStore: InMemoryPersistentKeyValueStore) {
-        inMemoryStore.removeObject(forKey: "namespace.\(id)")
+        guard inMemoryStore.object(forKey: lockID) as? Bool != true else {
+            return
+        }
+
+        inMemoryStore.removeObject(forKey: id)
     }
 
-    func set(to newValue: String, in inMemoryStore: InMemoryPersistentKeyValueStore) {
-        inMemoryStore.set(newValue, forKey: "namespace.\(id)")
+    func set(to newValue: Int, in inMemoryStore: InMemoryPersistentKeyValueStore) {
+        guard inMemoryStore.object(forKey: lockID) as? Bool != true else {
+            return
+        }
+
+        inMemoryStore.set(clamped(newValue), forKey: id)
     }
 }
 

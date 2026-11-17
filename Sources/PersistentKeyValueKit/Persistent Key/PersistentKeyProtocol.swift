@@ -17,6 +17,11 @@ import Foundation
 /// implementations. The ``InMemoryPersistentKeyValueStore`` requirements default to storing the Swift value directly
 /// through ``InMemoryPersistentKeyValueStore/object(forKey:)``, ``InMemoryPersistentKeyValueStore/set(_:forKey:)``,
 /// and ``InMemoryPersistentKeyValueStore/removeObject(forKey:)``.
+///
+/// - Important: A key's value lives under its ``id`` in every store. Observation watches that identifier for changes,
+///   and migration reads, writes, and removes the value there without calling these requirements. An implementation
+///   can change how a value is read, written, or gated, such as by clamping values or ignoring writes, but must keep
+///   the value under ``id``.
 public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID == String {
     // MARK: Associated Types
     
@@ -33,7 +38,8 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
 
     /// The unique identifier for the key.
     ///
-    /// This is the string key used in the underlying stores.
+    /// This is the string key used in the underlying stores, and the store-specific requirements must keep the value
+    /// under it.
     ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     var id: ID { get }
@@ -133,17 +139,13 @@ extension PersistentKeyProtocol {
     /// Leaves `propertyListDictionary` unchanged when encoding the default value fails, and removes the entry when it
     /// encodes to `nil`.
     ///
+    /// A Swift dictionary treats identifiers that are canonically equivalent but spelled differently, such as composed
+    /// and decomposed "café", as one key. `UserDefaults.register(_:)` keeps such identifiers separate, as
+    /// `UserDefaults` does.
+    ///
     /// - Parameter propertyListDictionary: The dictionary to register the default value in.
     public func registerDefault(in propertyListDictionary: inout [String: Any]) {
-        let object: Any?
-
-        do {
-            object = try representation.encode(defaultValue, format: .userDefaults)
-        } catch {
-            return
-        }
-
-        guard let object = storableEncoding(object) else {
+        guard let object = registeredDefaultObject() else {
             return
         }
 
@@ -194,6 +196,36 @@ extension PersistentKeyProtocol {
     @inlinable
     public func set(to newValue: Value, in inMemoryStore: InMemoryPersistentKeyValueStore) {
         inMemoryStore.set(newValue, forKey: id)
+    }
+
+    // MARK: Internal Instance Interface
+
+    /// Registers the default value for the key in the given Foundation registration dictionary, which keys entries by
+    /// their literal identifiers.
+    ///
+    /// Behaves like ``registerDefault(in:)`` otherwise.
+    internal func registerDefault(inLiteralDictionary propertyListDictionary: NSMutableDictionary) {
+        guard let object = registeredDefaultObject() else {
+            return
+        }
+
+        if let object {
+            propertyListDictionary[id as NSString] = object
+        } else {
+            propertyListDictionary.removeObject(forKey: id as NSString)
+        }
+    }
+
+    // MARK: Private Instance Interface
+
+    /// Returns the object to register for the default value: `nil` when encoding fails, or `.some(nil)` when the
+    /// default value encodes to `nil` and its entry should be removed.
+    private func registeredDefaultObject() -> Any?? {
+        do {
+            return storableEncoding(try representation.encode(defaultValue, format: .userDefaults))
+        } catch {
+            return nil
+        }
     }
 }
 

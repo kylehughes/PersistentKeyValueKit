@@ -27,7 +27,11 @@ extension Array: KeyValuePersistible where Element: KeyValuePersistible {
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible {
-    /// Decodes an array of elements from a stored `[Any]` array using ``PersistentKeyValueStorageFormat/propertyList``.
+    /// Decodes an array of elements from a stored `[Any]` array with the element representation's
+    /// ``PersistentKeyValueRepresentation/get(from:)``, as ordinary reads do.
+    ///
+    /// Throws if the array cannot be decoded. This checked conversion is stricter than ordinary reads: a nested
+    /// dictionary fails instead of omitting an entry that fails to decode or merging canonically equivalent keys.
     public static func decode(
         storageObject: Any,
         format: PersistentKeyValueStorageFormat
@@ -35,24 +39,17 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         guard let objects = storageObject as? [Any] else {
             throw PersistentKeyValueConversionError.invalidStorageValue
         }
-        return try objects.map {
-            try Element.persistentKeyValueRepresentation.decode(
-                storageObject: $0,
-                format: .propertyList
-            )
-        }
+
+        return try Element.persistentKeyValueRepresentation.checkedValues(decoding: objects)
     }
 
-    /// Encodes the elements into a `[Any]` array using ``PersistentKeyValueStorageFormat/propertyList``, omitting
-    /// elements whose encoding returns `nil`.
+    /// Encodes the elements into a `[Any]` array with the element representation's
+    /// ``PersistentKeyValueRepresentation/set(_:to:)``, as ordinary writes do, omitting elements whose encoding
+    /// returns `nil`.
+    ///
+    /// Throws if any element fails to encode.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
-        try compactMap { value in
-            try encodeStorageRepresentation(
-                Element.persistentKeyValueRepresentation,
-                value: value,
-                format: .propertyList
-            )
-        }
+        try Element.persistentKeyValueRepresentation.checkedPropertyListArray(encoding: self)
     }
 
     // MARK: Interfacing with Property List Array

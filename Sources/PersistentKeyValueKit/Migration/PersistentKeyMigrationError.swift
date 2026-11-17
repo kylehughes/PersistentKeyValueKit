@@ -18,16 +18,21 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// writable persistent domain is unknown.
     case missingMigrationDomain
 
-    /// The source and destination refer to the same backing store, and at least one item without a transform migrates
-    /// a key to the same key identifier.
+    /// The source and destination refer to the same backing store, and at least one item migrates a key to the same
+    /// key without rewriting it in place.
     ///
     /// Migrating within one store is allowed when every item either maps its source key to a different destination key
-    /// identifier or was created with ``PersistentKeyMigrationItem/key(_:to:transform:)``, which rewrites the value in
-    /// place under the same identifier.
+    /// or was created with ``PersistentKeyMigrationItem/key(_:to:transform:)``, which rewrites the value in place under
+    /// the same identifier. Keys are the same when the store treats their identifiers as one key: `UserDefaults` and
+    /// `NSUbiquitousKeyValueStore` compare identifiers by their UTF-16 code units, while
+    /// ``InMemoryPersistentKeyValueStore`` treats canonically equivalent identifiers as one key. A rewrite also
+    /// requires that the source and destination are the same instance, because different instances for one backing
+    /// store, such as `UserDefaults` instances for suite names that differ only by case, can hold different cached
+    /// values.
     case sameStore
 
     /// The batch contains more than one item with the given source key identifier, or more than one item with the given
-    /// destination key identifier.
+    /// destination key identifier, as the store holding those keys compares identifiers.
     ///
     /// Duplicate source identifiers are rejected even when the items map to different destination keys.
     case duplicateKey(String)
@@ -60,8 +65,9 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// The source value changed between the initial snapshot and source removal during a move.
     case sourceChanged
 
-    /// The destination value changed between the initial snapshot and the destination write or source cleanup, or no
-    /// longer matched the migrated value after the source was removed during a move.
+    /// The destination value changed between the initial snapshot and the destination write or source cleanup,
+    /// including when an observer wrote it while a write replaced it, or no longer matched the migrated value after the
+    /// source was removed during a move.
     case destinationChanged
 
     /// The destination store did not retain the expected value after writing.

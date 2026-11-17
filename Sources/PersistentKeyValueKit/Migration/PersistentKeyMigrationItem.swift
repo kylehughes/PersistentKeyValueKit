@@ -4,8 +4,10 @@ import Foundation
 ///
 /// The source value is read from the source store and decoded with the source key's
 /// ``PersistentKeyProtocol/representation``. A transform, if any, converts it, and the result is encoded with the
-/// destination key's representation and written to the destination key. Conflict detection and the conflict policy
-/// apply to the destination key in the destination store. An item whose source or destination key has
+/// destination key's representation and written to the destination key. ``InMemoryPersistentKeyValueStore`` keeps
+/// Swift values rather than encoded objects, so it skips the representation on its side of a migration; a migration
+/// between two in-memory stores transfers the Swift value without decoding or encoding it. Conflict detection and the
+/// conflict policy apply to the destination key in the destination store. An item whose source or destination key has
 /// ``PersistentKeyProtocol/isMigrationEnabled`` set to `false` reports
 /// ``PersistentKeyMigrationReport/Status/keyDisabled``.
 ///
@@ -53,7 +55,8 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// Migrates `source` to `destination`, a key with the same value type.
     ///
     /// The value is decoded with `source`'s representation and encoded with `destination`'s representation, so the two
-    /// keys can use different storage formats.
+    /// keys can use different storage formats. An ``InMemoryPersistentKeyValueStore`` source or destination keeps the
+    /// Swift value and skips the corresponding representation.
     ///
     /// - Parameter source: The key to read from the source store.
     /// - Parameter destination: The key to write in the destination store.
@@ -84,7 +87,16 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// when `destination`'s representation stores no object for the result, such as `nil` for an optional key in a
     /// Foundation store. Pass `{ $0 }` as `transform` to change only the representation. Items created with
     /// ``key(_:)`` or ``key(_:to:)`` never rewrite in place; mapping a key to its own identifier within one store with
-    /// them throws ``PersistentKeyMigrationError/sameStore``.
+    /// them throws ``PersistentKeyMigrationError/sameStore``, as does a rewrite between two different instances for one
+    /// store.
+    ///
+    /// A tracked migration runs its whole batch again after any item fails, so an in-place rewrite can find a value it
+    /// already rewrote. A stored value that fails to decode with `source`'s representation but decodes with
+    /// `destination`'s is treated as already rewritten: the item reports
+    /// ``PersistentKeyMigrationReport/Status/rewritten`` without running `transform` or writing. A rewrite must
+    /// therefore either change the stored representation, such as from an integer to a string, or be idempotent. To
+    /// change a value without changing its representation, such as converting dollars to cents, move it to a new key
+    /// with ``key(_:to:transform:)`` instead, so a repeated run finds no source value.
     ///
     /// - Parameter source: The key to read from the source store.
     /// - Parameter destination: The key to write in the destination store.

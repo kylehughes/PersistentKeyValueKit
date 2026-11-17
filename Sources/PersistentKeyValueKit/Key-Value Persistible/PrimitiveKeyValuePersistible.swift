@@ -51,22 +51,32 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     
     /// Decodes the elements of `propertyListArray` as `Self`.
     ///
+    /// Array reads and migration decode a stored array with this method, so it must accept the arrays that
+    /// ``set(_:to:)`` writes.
+    ///
     /// - Parameter propertyListArray: The array to decode values from.
     /// - Returns: The decoded values, or `nil` if any element cannot be decoded as `Self`.
     static func get(from propertyListArray: [Any]) -> [Self]?
     
-    /// Replaces `propertyListArray` with the encoded representations of `values`.
+    /// Writes the encoded representations of `values` into `propertyListArray`.
     ///
-    /// If any value fails to encode, leave `propertyListArray` unchanged. Array and dictionary writes rely on this to
-    /// keep the stored collection when one of its elements cannot be encoded.
+    /// Array writes, registration, and migration call this method with an empty `propertyListArray`, and an
+    /// implementation may either assign the encoded array or append the encoded elements to it. The result is the
+    /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
+    /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
+    /// cannot be encoded: an empty result for nonempty `values` counts as a failure unless ``encode(format:)``
+    /// returns `nil` for every value.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
-    /// - Parameter propertyListArray: The array to replace with the encoded values.
+    /// - Parameter propertyListArray: The array to write the encoded values into.
     static func set(_ values: [Self], to propertyListArray: inout [Any])
     
     // MARK: Interfacing with Property List Dictionary
     
     /// Decodes the value at `dictionaryKey` in `propertyListDictionary`, if present and representable as `Self`.
+    ///
+    /// Dictionary reads and migration decode a stored entry with this method, so it must accept the objects that
+    /// ``set(_:to:in:)`` writes.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.
@@ -77,8 +87,9 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Sets the value at `dictionaryKey` in `propertyListDictionary`.
     ///
     /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
-    /// `dictionaryKey`. Dictionary writes rely on this to keep the stored dictionary when one of its values cannot be
-    /// encoded.
+    /// `dictionaryKey`. Dictionary writes, registration, and migration call this method for a `dictionaryKey` that
+    /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
+    /// values cannot be encoded: an absent entry counts as a failure unless ``encode(format:)`` returns `nil`.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.

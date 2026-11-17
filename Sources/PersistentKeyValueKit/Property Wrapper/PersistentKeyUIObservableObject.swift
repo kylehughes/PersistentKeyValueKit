@@ -22,7 +22,7 @@ import Foundation
 ///   removals.
 /// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
 ///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
-///   delivered.
+///   delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 @MainActor
 public final class PersistentKeyUIObservableObject<Key>: ObservableObject where Key: PersistentKeyProtocol {
     /// The key being observed.
@@ -69,28 +69,23 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     /// The value of the key in the store.
     public var value: Key.Value {
         get {
-            assertStoreExists(_store)
-            
-            return _store?.get(key) ?? key.defaultValue
+            value(for: key, in: _store)
         }
         set {
-            assertStoreExists(_store)
-            
-            objectWillChange.send()
-            
-            _store?.set(key, to: newValue)
+            setValue(newValue, for: key, in: _store)
         }
     }
-    
+
     // MARK: Internal Instance Interface
 
     /// Observes `key` in `store`, replacing the current observation when the key identifier or store changes.
     ///
     /// The latest key is always adopted so reads use its current default value and representation. The observation is
     /// replaced only when the key identifier or the store instance differs, so repeated view updates with the same
-    /// inputs keep the existing registration.
+    /// inputs keep the existing registration. Key identifiers are compared literally, as Foundation stores compare
+    /// keys, so a change between canonically equivalent spellings observes the new key.
     internal func update(key newKey: Key, store newStore: any PersistentKeyValueStore) {
-        let keyIDChanged = newKey.id != key.id
+        let keyIDChanged = !StoreKeyObservationRegistry.keyIDsMatch(newKey.id, key.id)
 
         key = newKey
 
@@ -99,6 +94,22 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         }
 
         store = newStore
+    }
+
+    /// Returns the value of `key` in `store`, or the key's default value when there is no store.
+    internal func value(for key: Key, in store: (any PersistentKeyValueStore)?) -> Key.Value {
+        assertStoreExists(store)
+
+        return store?.get(key) ?? key.defaultValue
+    }
+
+    /// Writes `newValue` for `key` in `store` after notifying subscribers that the object will change.
+    internal func setValue(_ newValue: Key.Value, for key: Key, in store: (any PersistentKeyValueStore)?) {
+        assertStoreExists(store)
+
+        objectWillChange.send()
+
+        store?.set(key, to: newValue)
     }
 
     // MARK: Private Static Interface
