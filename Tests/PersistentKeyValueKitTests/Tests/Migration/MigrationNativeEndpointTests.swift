@@ -81,12 +81,12 @@ final class MigrationNativeEndpointTests: XCTestCase {
         XCTAssertEqual(destination.persistentDomain(forName: destinationName)?[marker.id] as? Bool, true)
         XCTAssertEqual(
             try source.migrationEndpoint.backend.migrationIdentity.identifier,
-            sourceName
+            UserDefaults.migrationDomainIdentifier(sourceName)
         )
 
         XCTAssertEqual(
             try destination.migrationEndpoint.backend.migrationIdentity.identifier,
-            destinationName
+            UserDefaults.migrationDomainIdentifier(destinationName)
         )
     }
 

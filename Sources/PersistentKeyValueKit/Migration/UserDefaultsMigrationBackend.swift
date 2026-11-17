@@ -18,7 +18,10 @@ final class UserDefaultsMigrationBackend: @unchecked Sendable {
     internal init(userDefaults: UserDefaults, domainName: String) {
         self.userDefaults = userDefaults
         self.domainName = domainName
-        migrationIdentity = PersistentKeyValueMigrationStoreIdentity(namespace: "UserDefaults", identifier: domainName)
+        migrationIdentity = PersistentKeyValueMigrationStoreIdentity(
+            namespace: "UserDefaults",
+            identifier: UserDefaults.migrationDomainIdentifier(domainName)
+        )
     }
 }
 

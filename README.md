@@ -438,7 +438,7 @@ let report = try UserDefaults.standard.copy(
 )
 ```
 
-Named `UserDefaults` suites must be created with `UserDefaults.migratable(suiteName:)` to participate in migration. It returns an ordinary `UserDefaults` instance with attached process-local domain metadata, or `nil` if creation fails or the suite name is invalid (empty, reserved, or matching the application bundle identifier). Ordinary `UserDefaults(suiteName:)` instances without migration metadata cannot be migrated and throw `PersistentKeyMigrationError.missingMigrationDomain`.
+Named `UserDefaults` suites must be created with `UserDefaults.migratable(suiteName:)` to participate in migration. It returns an ordinary `UserDefaults` instance with attached process-local domain metadata, or `nil` if creation fails or the suite name is invalid (empty, reserved, or matching the application bundle identifier, ignoring case). Ordinary `UserDefaults(suiteName:)` instances without migration metadata cannot be migrated and throw `PersistentKeyMigrationError.missingMigrationDomain`.
 
 `UserDefaults.standard` supports migration when `Bundle.main.bundleIdentifier` is available. `NSUbiquitousKeyValueStore.default` and `InMemoryPersistentKeyValueStore` require no migration-specific setup.
 

@@ -130,10 +130,14 @@ extension PersistentKeyValueStore where Self == UserDefaults {
     /// attached as process-local metadata. The metadata is not written to preferences, does not retain the
     /// `UserDefaults` instance, and lasts only for the lifetime of that instance in the current process.
     ///
+    /// Migration treats suite names that differ only by case as the same store, because they can share one
+    /// preferences file.
+    ///
     /// - Parameter suiteName: The persistent domain identifier for the suite.
     /// - Returns: A `UserDefaults` instance configured for migration, or `nil` if `suiteName` is empty, matches a
     ///   reserved domain (`argumentDomain`, `registrationDomain`, `globalDomain`, `kCFPreferencesAnyApplication`, or
-    ///   `kCFPreferencesCurrentApplication`), matches the main bundle identifier, or cannot be created by Foundation.
+    ///   `kCFPreferencesCurrentApplication`) or the main bundle identifier ignoring case, or cannot be created by
+    ///   Foundation.
     public static func migratable(suiteName: String) -> Self? {
         Self.migratable(
             suiteName: suiteName,
@@ -168,17 +172,25 @@ extension UserDefaults {
         applicationIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> Bool {
         // Core Foundation aliases can refer to the same store under a different migration identity.
-        guard !name.isEmpty,
-            name != argumentDomain,
-            name != registrationDomain,
-            name != globalDomain,
-            name != kCFPreferencesAnyApplication as String,
-            name != kCFPreferencesCurrentApplication as String
-        else {
-            return false
-        }
+        let reservedNames = [
+            argumentDomain,
+            registrationDomain,
+            globalDomain,
+            kCFPreferencesAnyApplication as String,
+            kCFPreferencesCurrentApplication as String,
+            applicationIdentifier,
+        ]
+        let foldedName = migrationDomainIdentifier(name)
 
-        return name != applicationIdentifier
+        return !name.isEmpty && !reservedNames.contains { $0.map(migrationDomainIdentifier) == foldedName }
+    }
+
+    /// Returns the identifier that identifies a persistent domain across names that differ only by case.
+    ///
+    /// Preference files on case-insensitive file systems are shared by names that differ only by case, while the
+    /// preferences daemon caches each name separately.
+    internal static func migrationDomainIdentifier(_ name: String) -> String {
+        name.folding(options: .caseInsensitive, locale: nil)
     }
 
     internal static func migratable(

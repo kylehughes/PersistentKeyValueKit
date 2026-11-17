@@ -55,7 +55,9 @@ final class MigrationNativeStoreTests: XCTestCase {
                 do {
                     let endpoint = try shared.store.migrationEndpoint
 
-                    guard endpoint.backend.migrationIdentity.identifier == suiteName else {
+                    let expectedIdentifier = UserDefaults.migrationDomainIdentifier(suiteName)
+
+                    guard endpoint.backend.migrationIdentity.identifier == expectedIdentifier else {
                         errors.append(NSError(domain: "MigrationNativeStoreTests", code: 1))
 
                         return
@@ -196,7 +198,10 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertEqual(metadata?.name, suiteName)
         XCTAssertIdentical(metadata, UserDefaults.migrationDomainMetadata(for: objectAlias as! UserDefaults))
         XCTAssertIdentical(metadata, UserDefaults.migrationDomainMetadata(for: alias as AnyObject as! UserDefaults))
-        XCTAssertEqual(try alias.migrationEndpoint.backend.migrationIdentity.identifier, suiteName)
+        XCTAssertEqual(
+            try alias.migrationEndpoint.backend.migrationIdentity.identifier,
+            UserDefaults.migrationDomainIdentifier(suiteName)
+        )
     }
 
     func testMigrationDomainValidationUsesProvidedApplicationIdentifier() {
@@ -214,6 +219,43 @@ final class MigrationNativeStoreTests: XCTestCase {
             )
         )
         XCTAssertTrue(UserDefaults.isValidMigrationDomain("test.other", applicationIdentifier: "test.bundle"))
+    }
+
+    func testMigrationDomainValidationIgnoresCase() {
+        XCTAssertFalse(UserDefaults.isValidMigrationDomain("Test.Bundle", applicationIdentifier: "test.bundle"))
+        XCTAssertFalse(UserDefaults.isValidMigrationDomain("test.bundle", applicationIdentifier: "Test.Bundle"))
+        XCTAssertFalse(
+            UserDefaults.isValidMigrationDomain(
+                UserDefaults.argumentDomain.uppercased(),
+                applicationIdentifier: "test.bundle"
+            )
+        )
+        XCTAssertFalse(
+            UserDefaults.isValidMigrationDomain(
+                (kCFPreferencesAnyApplication as String).lowercased(),
+                applicationIdentifier: "test.bundle"
+            )
+        )
+    }
+
+    func testSuitesThatDifferOnlyByCaseAreTheSameStore() throws {
+        let suiteName = "MigrationNativeStoreTests.case.\(UUID().uuidString)"
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName.lowercased()))
+        let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
+
+        defer {
+            source.removePersistentDomain(forName: suiteName)
+            destination.removePersistentDomain(forName: suiteName.lowercased())
+        }
+
+        source.set(key, to: 42)
+
+        XCTAssertThrowsError(try source.move(key, to: destination, onConflict: .keepDestinationAndRemoveSource)) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
+        }
+
+        XCTAssertEqual(source.persistentDomain(forName: suiteName)?[key.id] as? Int, 42)
     }
 
     func testMigrationMetadataLifetimeFollowsNativeObject() throws {
