@@ -5,6 +5,8 @@
 //  Created by Kyle Hughes on 11/17/24.
 //
 
+import PersistentKeyValueKit
+
 @available(watchOS 9.0, *)
 final class StringNSUbiquitousKeyValueStoreTests: AbstractNSUbiquitousKeyValueStoreTypeTests<String> {
     // MARK: AbstractPersistentKeyValueStoreTypeTests Implementation

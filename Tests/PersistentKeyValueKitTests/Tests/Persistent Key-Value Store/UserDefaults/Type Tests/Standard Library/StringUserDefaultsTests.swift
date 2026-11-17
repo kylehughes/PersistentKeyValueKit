@@ -5,6 +5,8 @@
 //  Created by Kyle Hughes on 11/3/24.
 //
 
+import PersistentKeyValueKit
+
 final class StringUserDefaultsTests: AbstractUserDefaultsTypeTests<String> {
     // MARK: AbstractPersistentKeyValueStoreTypeTests Implementation
     

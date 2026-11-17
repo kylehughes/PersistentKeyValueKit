@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PersistentKeyValueKit
 
 final class DataUserDefaultsTests: AbstractUserDefaultsTypeTests<Data> {
     // MARK: AbstractPersistentKeyValueStoreTypeTests Implementation

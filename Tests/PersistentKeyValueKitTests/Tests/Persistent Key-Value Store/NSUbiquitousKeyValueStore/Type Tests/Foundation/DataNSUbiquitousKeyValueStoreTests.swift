@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PersistentKeyValueKit
 
 @available(watchOS 9.0, *)
 final class DataNSUbiquitousKeyValueStoreTests: AbstractNSUbiquitousKeyValueStoreTypeTests<Data> {
