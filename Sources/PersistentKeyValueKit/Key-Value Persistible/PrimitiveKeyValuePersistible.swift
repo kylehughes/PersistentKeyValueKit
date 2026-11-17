@@ -57,6 +57,9 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     
     /// Replaces `propertyListArray` with the encoded representations of `values`.
     ///
+    /// If any value fails to encode, leave `propertyListArray` unchanged. Array and dictionary writes rely on this to
+    /// keep the stored collection when one of its elements cannot be encoded.
+    ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to replace with the encoded values.
     static func set(_ values: [Self], to propertyListArray: inout [Any])
@@ -72,6 +75,10 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     static func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Self?
     
     /// Sets the value at `dictionaryKey` in `propertyListDictionary`.
+    ///
+    /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
+    /// `dictionaryKey`. Dictionary writes rely on this to keep the stored dictionary when one of its values cannot be
+    /// encoded.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.

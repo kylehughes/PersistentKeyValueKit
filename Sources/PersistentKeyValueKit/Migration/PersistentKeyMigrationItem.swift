@@ -25,7 +25,8 @@ import Foundation
 /// ```
 ///
 /// Mapping to a different key identifier also lets a migration rename or reshape keys within one store, provided no
-/// item maps a key to its own identifier and no item's destination is another item's source.
+/// item's destination is another item's source. Within one store, an item can map a key to its own identifier only
+/// when it was created with ``key(_:to:transform:)``; it then rewrites the value in place, as described there.
 public struct PersistentKeyMigrationItem: Sendable {
     let mapping: any PersistentKeyMigrationMappingProtocol
 
@@ -43,7 +44,7 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// - Returns: An item whose source and destination keys are both `key`.
     public static func key<Key>(_ key: Key) -> Self where Key: PersistentKeyProtocol {
         Self(
-            mapping: PersistentKeyMigrationMapping(source: key, destination: key) {
+            mapping: PersistentKeyMigrationMapping(source: key, destination: key, hasTransform: false) {
                 $0
             }
         )
@@ -60,7 +61,7 @@ public struct PersistentKeyMigrationItem: Sendable {
     public static func key<Source, Destination>(_ source: Source, to destination: Destination) -> Self
     where Source: PersistentKeyProtocol, Destination: PersistentKeyProtocol, Source.Value == Destination.Value {
         Self(
-            mapping: PersistentKeyMigrationMapping(source: source, destination: destination) {
+            mapping: PersistentKeyMigrationMapping(source: source, destination: destination, hasTransform: false) {
                 $0
             }
         )
@@ -74,6 +75,17 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// run when the source value is absent, when either key is disabled, or when the conflict policy keeps the existing
     /// destination value. It can run again if the migration is retried.
     ///
+    /// When the migration's source and destination are the same store and `source` and `destination` have the same
+    /// identifier, the item rewrites the stored value in place: it decodes the value with `source`'s representation,
+    /// converts it with `transform`, encodes the result with `destination`'s representation, and replaces the stored
+    /// value only if it has not changed since it was read. The existing value is the one being rewritten, so it is not
+    /// a destination conflict, and every conflict policy rewrites it. A move does not remove the key as a source, and
+    /// the item reports ``PersistentKeyMigrationReport/Status/rewritten``. As with any write, the key is removed only
+    /// when `destination`'s representation stores no object for the result, such as `nil` for an optional key in a
+    /// Foundation store. Pass `{ $0 }` as `transform` to change only the representation. Items created with
+    /// ``key(_:)`` or ``key(_:to:)`` never rewrite in place; mapping a key to its own identifier within one store with
+    /// them throws ``PersistentKeyMigrationError/sameStore``.
+    ///
     /// - Parameter source: The key to read from the source store.
     /// - Parameter destination: The key to write in the destination store.
     /// - Parameter transform: Converts a decoded source value to the destination value.
@@ -84,6 +96,13 @@ public struct PersistentKeyMigrationItem: Sendable {
         transform: @escaping @Sendable (Source.Value) throws -> Destination.Value
     ) -> Self
     where Source: PersistentKeyProtocol, Destination: PersistentKeyProtocol {
-        Self(mapping: PersistentKeyMigrationMapping(source: source, destination: destination, transform: transform))
+        Self(
+            mapping: PersistentKeyMigrationMapping(
+                source: source,
+                destination: destination,
+                hasTransform: true,
+                transform: transform
+            )
+        )
     }
 }

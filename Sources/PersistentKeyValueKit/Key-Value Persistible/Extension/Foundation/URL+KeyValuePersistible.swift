@@ -23,9 +23,12 @@ extension URL {
 extension URL: PrimitiveKeyValuePersistible {
     /// Decodes a `URL` from a stored object for the given storage format.
     ///
-    /// - For ``PersistentKeyValueStorageFormat/propertyList``, expects an absolute URL `String`.
-    /// - For ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``, accepts an absolute URL `String` or a legacy
-    ///   `URL` object.
+    /// - For ``PersistentKeyValueStorageFormat/propertyList``, expects a `String` that `URL(string:)` accepts.
+    /// - For ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``, accepts a `String` that `URL(string:)`
+    ///   accepts, or a legacy `URL` object.
+    ///
+    /// These strings are not required to be absolute. ``encode(format:)`` writes `absoluteString`, which is a relative
+    /// reference for a URL without a scheme or base URL, and decoding accepts it so such values read back.
     /// - For ``PersistentKeyValueStorageFormat/userDefaults``, accepts `NSKeyedArchiver` `Data`, a tilde-abbreviated
     ///   file path `String`, or a `URL` object, matching `UserDefaults.url(forKey:)`.
     public static func decode(
@@ -65,7 +68,8 @@ extension URL: PrimitiveKeyValuePersistible {
     /// Encodes the `URL` for the given storage format.
     ///
     /// Encodes as `absoluteString` for ``PersistentKeyValueStorageFormat/propertyList`` and
-    /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``. For
+    /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``; a relative URL without a base URL encodes as its
+    /// relative reference. For
     /// ``PersistentKeyValueStorageFormat/userDefaults``, encodes file URLs as tilde-abbreviated paths and non-file
     /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {

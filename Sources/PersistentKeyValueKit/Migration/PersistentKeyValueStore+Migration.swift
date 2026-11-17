@@ -59,6 +59,10 @@ enum PersistentKeyMigrationOperation {
 /// destination key.
 protocol PersistentKeyMigrationMappingProtocol: Sendable {
     var destinationKeyID: String { get }
+
+    /// Whether the item was created with an explicit transform, which permits an in-place rewrite within one store.
+    var hasTransform: Bool { get }
+
     var sourceKeyID: String { get }
 
     func migrate<SourceStore, DestinationStore>(
@@ -71,9 +75,20 @@ protocol PersistentKeyMigrationMappingProtocol: Sendable {
         DestinationStore: PersistentKeyValueMigrationBackend
 }
 
+extension PersistentKeyMigrationMappingProtocol {
+    /// Whether the item rewrites its key in place when the source and destination are the same store.
+    ///
+    /// A rewrite requires a transform and literally identical identifiers. Identifiers that Swift considers equal but
+    /// that differ in Unicode normalization name different native keys, so they do not form a rewrite.
+    var rewritesInPlace: Bool {
+        hasTransform && sourceKeyID.utf8.elementsEqual(destinationKeyID.utf8)
+    }
+}
+
 struct PersistentKeyMigrationMapping<SourceKey, DestinationKey>: PersistentKeyMigrationMappingProtocol
 where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     let destination: DestinationKey
+    let hasTransform: Bool
     let source: SourceKey
     let transform: @Sendable (SourceKey.Value) throws -> DestinationKey.Value
 
@@ -82,10 +97,12 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     init(
         source: SourceKey,
         destination: DestinationKey,
+        hasTransform: Bool,
         transform: @escaping @Sendable (SourceKey.Value) throws -> DestinationKey.Value
     ) {
         self.source = source
         self.destination = destination
+        self.hasTransform = hasTransform
         self.transform = transform
     }
 
@@ -112,6 +129,10 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
         let destinationID = destination.id
         guard source.isMigrationEnabled, destination.isMigrationEnabled else {
             return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .keyDisabled)
+        }
+
+        if rewritesInPlace, sourceStore.migrationIdentity == destinationStore.migrationIdentity {
+            return rewrite(in: destinationStore)
         }
 
         var stage: PersistentKeyMigrationReport.FailureStage = .snapshot
@@ -144,6 +165,12 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
                     }
 
                     try sourceStore.removeMigrationValue(for: sourceID, matching: sourceSnapshot)
+                    // Removal can notify observers synchronously, and they can change the destination.
+                    guard try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID)
+                    else {
+                        throw PersistentKeyMigrationError.destinationChanged
+                    }
+
                     return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .discardedSource)
                 }
             }
@@ -156,14 +183,8 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
             let write = try destinationStore.prepareMigrationWrite(destinationValue, for: destination)
             stage = .write
             let committedSnapshot = try destinationStore.commitMigrationWrite(write, replacing: destinationSnapshot)
-            if let committedSnapshot {
-                guard try destinationStore.migrationSnapshotIsCurrent(committedSnapshot, for: destinationID) else {
-                    throw PersistentKeyMigrationError.writeVerificationFailed
-                }
-            } else {
-                guard try destinationStore.migrationSnapshot(for: destinationID) == nil else {
-                    throw PersistentKeyMigrationError.writeVerificationFailed
-                }
+            guard try Self.isCommitted(committedSnapshot, in: destinationStore, for: destinationID) else {
+                throw PersistentKeyMigrationError.writeVerificationFailed
             }
 
             if case .move = operation {
@@ -173,12 +194,65 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
                 }
 
                 try sourceStore.removeMigrationValue(for: sourceID, matching: sourceSnapshot)
+                // Removal can notify observers synchronously, and they can change the destination.
+                guard try Self.isCommitted(committedSnapshot, in: destinationStore, for: destinationID) else {
+                    throw PersistentKeyMigrationError.destinationChanged
+                }
+
                 return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .moved)
             }
 
             return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .copied)
         } catch {
             return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, failedAt: stage, error: error)
+        }
+    }
+
+    // MARK: Private Static Interface
+
+    /// Whether `store` still holds the value committed as `snapshot`, where `nil` means the write removed the key.
+    private static func isCommitted<Store>(
+        _ snapshot: Store.MigrationSnapshot?,
+        in store: Store,
+        for keyID: String
+    ) throws -> Bool where Store: PersistentKeyValueMigrationBackend {
+        guard let snapshot else {
+            return try store.migrationSnapshot(for: keyID) == nil
+        }
+
+        return try store.migrationSnapshotIsCurrent(snapshot, for: keyID)
+    }
+
+    // MARK: Private Instance Interface
+
+    /// Rewrites the item's value in place under its shared key identifier, without a conflict check or source removal.
+    ///
+    /// The existing value is the source, so no conflict policy applies. The write replaces only the snapshot that was
+    /// decoded.
+    private func rewrite<Store>(in store: Store) -> PersistentKeyMigrationReport.Outcome
+    where Store: PersistentKeyValueMigrationBackend {
+        let id = source.id
+        var stage: PersistentKeyMigrationReport.FailureStage = .snapshot
+        do {
+            guard let snapshot = try store.migrationSnapshot(for: id) else {
+                return .init(sourceKeyID: id, status: .sourceAbsent)
+            }
+
+            stage = .decode
+            let value = try store.migrationValue(for: source, in: snapshot)
+            stage = .transform
+            let rewrittenValue = try transform(value)
+            stage = .prepare
+            let write = try store.prepareMigrationWrite(rewrittenValue, for: destination)
+            stage = .write
+            let committedSnapshot = try store.commitMigrationWrite(write, replacing: snapshot)
+            guard try Self.isCommitted(committedSnapshot, in: store, for: id) else {
+                throw PersistentKeyMigrationError.writeVerificationFailed
+            }
+
+            return .init(sourceKeyID: id, status: .rewritten)
+        } catch {
+            return .init(sourceKeyID: id, failedAt: stage, error: error)
         }
     }
 }
@@ -261,13 +335,15 @@ extension PersistentKeyValueStore {
     /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither copied nor treated as destination conflicts.
     ///
-    /// `destination` can be this store when every item maps its source key to a different key identifier.
+    /// `destination` can be this store when every item maps its source key to a different key identifier or rewrites
+    /// a key in place through ``PersistentKeyMigrationItem/key(_:to:transform:)``.
     ///
-    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
-    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
-    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
-    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
-    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item without a
+    /// transform that maps a key to itself within one store, duplicate source or destination key identifiers, a
+    /// destination that is another item's source within one store, reserved completion-marker keys, key identifiers
+    /// that exceed a store's limit, an empty migration identifier, or an overlapping in-process migration of the same
+    /// keys or marker. Errors thrown by a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the
+    /// completion marker propagate unchanged.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
     /// Completed writes are not rolled back if a later item fails. An empty batch is valid; with completion tracking,
@@ -371,19 +447,22 @@ extension PersistentKeyValueStore {
     /// added suites, and key default values are neither moved nor treated as destination conflicts.
     ///
     /// `destination` can be this store when every item maps its source key to a different key identifier, which
-    /// renames keys within the store.
+    /// renames keys within the store, or rewrites a key in place through
+    /// ``PersistentKeyMigrationItem/key(_:to:transform:)``, which keeps the key.
     ///
-    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
-    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
-    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
-    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
-    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item without a
+    /// transform that maps a key to itself within one store, duplicate source or destination key identifiers, a
+    /// destination that is another item's source within one store, reserved completion-marker keys, key identifiers
+    /// that exceed a store's limit, an empty migration identifier, or an overlapping in-process migration of the same
+    /// keys or marker. Errors thrown by a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the
+    /// completion marker propagate unchanged.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
     /// A failure before the destination write, including a transform failure, leaves the source value in place.
     /// Migrations do not roll back completed items, and a move that fails during
-    /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` leaves the written value in `destination`. An empty batch
-    /// is valid; with completion tracking, it records the marker.
+    /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` leaves the written value in `destination`. After removing
+    /// the source, the move checks the destination again, because observers notified of the removal can change it. An
+    /// empty batch is valid; with completion tracking, it records the marker.
     ///
     /// - Parameter items: The items to move, processed in order.
     /// - Parameter destination: The destination store.
@@ -447,18 +526,19 @@ extension PersistentKeyValueMigrationBackend {
         let isSameStore = migrationIdentity == destination.migrationIdentity
         if isSameStore,
             mappings.contains(where: {
-                $0.sourceKeyID == $0.destinationKeyID
+                $0.sourceKeyID == $0.destinationKeyID && !$0.rewritesInPlace
             })
         {
             throw PersistentKeyMigrationError.sameStore
         }
 
+        let markerPrefix = PersistentKeyMigrationTracking.completionMarkerPrefix
         var sourceIDs = Set<String>()
         var destinationIDs = Set<String>()
         for mapping in mappings {
             let sourceID = mapping.sourceKeyID
             let destinationID = mapping.destinationKeyID
-            for id in [sourceID, destinationID] where id.hasPrefix("PersistentKeyValueKit.MigrationCompleted.") {
+            for id in [sourceID, destinationID] where id.hasPrefix(markerPrefix) {
                 throw PersistentKeyMigrationError.reservedKey(id)
             }
 
@@ -479,10 +559,11 @@ extension PersistentKeyValueMigrationBackend {
             }
         }
 
-        // An item that maps a key to itself was rejected above, so a match is another item's source.
+        // Source identifiers are unique, so a destination that matches a source other than its own item's is another
+        // item's source. An in-place rewrite is its own source and cannot overlap another item.
         if isSameStore,
             let overlap = mappings.first(where: {
-                sourceIDs.contains($0.destinationKeyID)
+                $0.destinationKeyID != $0.sourceKeyID && sourceIDs.contains($0.destinationKeyID)
             })
         {
             throw PersistentKeyMigrationError.overlappingKeys(overlap.destinationKeyID)

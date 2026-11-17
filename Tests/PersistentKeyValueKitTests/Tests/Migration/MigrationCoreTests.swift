@@ -111,6 +111,70 @@ final class MigrationCoreTests: XCTestCase {
         let b = PersistentKey<Bool>.isMigrationCompleted(id: "é/one?\r")
 
         XCTAssertNotEqual(a.id, b.id)
+        XCTAssertNotEqual(
+            PersistentKey<Bool>.isMigrationCompleted(id: "Migration").id,
+            PersistentKey<Bool>.isMigrationCompleted(id: "migration").id
+        )
+    }
+
+    func testCompletionMarkerIdentifierContainsNoDots() {
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: "app-group.v1")
+
+        XCTAssertTrue(marker.id.hasPrefix("PersistentKeyValueKit_MigrationCompleted_"))
+        XCTAssertFalse(marker.id.contains("."))
+        XCTAssertEqual(marker.id.utf16.count, 84)
+    }
+
+    func testCompletionMarkerIsObservableInUserDefaults() throws {
+        let suiteName = stableSuiteName("MigrationCoreTests.observable")
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        let observer = MarkerObserver()
+
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        defaults.register(observer: observer, for: marker, with: nil, and: #selector(MarkerObserver.observeValue))
+
+        defer {
+            defaults.deregister(observer, for: marker, context: nil)
+        }
+
+        let report = try InMemoryPersistentKeyValueStore().copy(
+            items: [],
+            to: defaults,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.completion, .recorded)
+        XCTAssertTrue(defaults.get(marker))
+        XCTAssertEqual(observer.count, 1)
+    }
+
+    func testCompletionMarkerTreatsCanonicallyEquivalentIDsAsOneMigration() throws {
+        let (s, d) = stores()
+        let k = key()
+        let composed = "caf\u{E9}"
+        let decomposed = "cafe\u{301}"
+
+        XCTAssertFalse(composed.utf8.elementsEqual(decomposed.utf8))
+        XCTAssertEqual(
+            PersistentKey<Bool>.isMigrationCompleted(id: composed).id,
+            PersistentKey<Bool>.isMigrationCompleted(id: decomposed).id
+        )
+
+        s.set(k, to: "first")
+        let first = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .once(id: composed))
+
+        XCTAssertEqual(first.completion, .recorded)
+
+        d.set(k, to: "edited")
+        let second = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .once(id: decomposed))
+
+        XCTAssertEqual(second.completion, .alreadyRecorded)
+        XCTAssertEqual(d.get(k), "edited")
     }
 
     @available(watchOS 9.0, *)
@@ -146,7 +210,7 @@ final class MigrationCoreTests: XCTestCase {
         var markerObserved = false
 
         destination.commitHook = { keyID in
-            if keyID.hasPrefix("PersistentKeyValueKit.MigrationCompleted.") {
+            if keyID.hasPrefix("PersistentKeyValueKit_MigrationCompleted_") {
                 markerObserved =
                     (try? source.migrationSnapshot(for: k.id)) == nil && destination.get(k) == "value"
             }
@@ -511,7 +575,7 @@ final class MigrationCoreTests: XCTestCase {
 
     func testReservedIdentifierRejected() throws {
         let (s, d) = stores()
-        let k = PersistentKey<String>("PersistentKeyValueKit.MigrationCompleted.bad", defaultValue: "")
+        let k = PersistentKey<String>("PersistentKeyValueKit_MigrationCompleted_bad", defaultValue: "")
 
         XCTAssertThrowsError(try s.copy(k, to: d, onConflict: .keepDestination, tracking: .untracked))
     }
@@ -686,5 +750,27 @@ final class MigrationCoreTests: XCTestCase {
 
     private func stores() -> (InMemoryPersistentKeyValueStore, InMemoryPersistentKeyValueStore) {
         (.init(), .init())
+    }
+}
+
+// MARK: - Marker Observer Definition
+
+private final class MarkerObserver: NSObject {
+    private(set) var count = 0
+
+    // MARK: Internal Instance Interface
+
+    @objc
+    func observeValue() {
+        count += 1
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        observeValue()
     }
 }

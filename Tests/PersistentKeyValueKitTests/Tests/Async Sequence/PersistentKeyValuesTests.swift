@@ -265,6 +265,57 @@ extension PersistentKeyValuesTests {
 
         XCTAssertEqual(value, "changedValue")
     }
+
+    func test_values_ignoresNotificationsForUnrelatedKeys() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = await receivedValues(1, from: key.changes(in: store, bufferingPolicy: .unbounded)) {
+            store.postToObservers(
+                Notification(
+                    name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                    object: store,
+                    userInfo: [
+                        NSUbiquitousKeyValueStoreChangedKeysKey: [
+                            "unrelatedKey:\(#function)",
+                        ],
+                    ]
+                )
+            )
+            store.set(key, to: "changedValue")
+        }
+
+        XCTAssertEqual(values, ["changedValue"])
+    }
+
+    func test_values_initialValueIsNotFollowedByChangesReportedBeforeIt() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        store.onNextRegistration {
+            store.set(key, to: "firstChangedValue")
+            store.set(key, to: "secondChangedValue")
+        }
+
+        let values = await receivedValues(2, from: key.values(in: store, bufferingPolicy: .unbounded)) {
+            store.set(key, to: "laterValue")
+        }
+
+        XCTAssertEqual(values, ["secondChangedValue", "laterValue"])
+    }
+
+    func test_changes_deliversChangesReportedDuringRegistration() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        store.onNextRegistration {
+            store.set(key, to: "changedValue")
+        }
+
+        let values = await receivedValues(1, from: key.changes(in: store, bufferingPolicy: .unbounded)) {}
+
+        XCTAssertEqual(values, ["changedValue"])
+    }
 }
 
 // MARK: - Store Integration Tests
@@ -285,6 +336,52 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(value, "changedValue")
     }
 
+    func test_values_userDefaultsObservesKeyWithPeriods() async throws {
+        let (userDefaults, suiteName) = try makeUserDefaults()
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: false)
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let values = await receivedValues(3, from: key.values(in: userDefaults, bufferingPolicy: .unbounded)) {
+            userDefaults.set(key, to: true)
+            userDefaults.remove(key)
+        }
+
+        XCTAssertEqual(values, [false, true, false])
+    }
+
+    func test_values_userDefaultsDecoderWritingObservedKeyEmitsInReadOrder() async throws {
+        let (userDefaults, suiteName) = try makeUserDefaults()
+        let keyID = "key:\(#function)"
+        // `UserDefaults` is thread-safe but not declared `Sendable`.
+        nonisolated(unsafe) let decoderUserDefaults = userDefaults
+        let key = PersistentKey(
+            keyID,
+            defaultValue: 0,
+            representation: ProxyPersistentKeyValueRepresentation<Int, Int>(
+                to: { $0 },
+                from: { value in
+                    // Canonicalize a legacy value by writing the observed key while it is being decoded.
+                    if value == 1 {
+                        decoderUserDefaults.set(2, forKey: keyID)
+                    }
+
+                    return value
+                }
+            )
+        )
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let values = await receivedValues(2, from: key.changes(in: userDefaults, bufferingPolicy: .unbounded)) {
+            userDefaults.set(1, forKey: keyID)
+        }
+
+        XCTAssertEqual(values, [1, 2])
+    }
+
     @available(watchOS 9.0, *)
     func test_values_ubiquitousKeyValueStoreObservesChanges() async {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -299,25 +396,67 @@ extension PersistentKeyValuesTests {
     }
 
     @available(watchOS 9.0, *)
-    func test_values_ubiquitousKeyValueStoreIgnoresMalformedAndUnrelatedNotifications() async {
+    func test_values_ubiquitousKeyValueStoreRefreshesForAccountChange() async {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let changes = key.changes(in: ubiquitousKeyValueStore, bufferingPolicy: .unbounded)
+
+        let values = await receivedValues(1, from: changes) {
+            ubiquitousKeyValueStore.storage[key.id] = "accountValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangeReasonKey: NSUbiquitousKeyValueStoreAccountChange,
+                    NSUbiquitousKeyValueStoreChangedKeysKey: [
+                        "unrelatedKey:\(#function)",
+                    ],
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["accountValue"])
+    }
+
+    @available(watchOS 9.0, *)
+    func test_values_ubiquitousKeyValueStoreRefreshesWithoutChangedKeys() async {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let changes = key.changes(in: ubiquitousKeyValueStore, bufferingPolicy: .unbounded)
+
+        let values = await receivedValues(2, from: changes) {
+            ubiquitousKeyValueStore.storage[key.id] = "firstExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: nil
+            )
+
+            ubiquitousKeyValueStore.storage[key.id] = "secondExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["firstExternalValue", "secondExternalValue"])
+    }
+
+    @available(watchOS 9.0, *)
+    func test_values_ubiquitousKeyValueStoreIgnoresUnrelatedNotifications() async {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
 
-        var iterator = key.values(in: ubiquitousKeyValueStore, emitsInitialValue: false).makeAsyncIterator()
-
-        NotificationCenter.default.post(
-            name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-            object: ubiquitousKeyValueStore,
-            userInfo: nil
-        )
-
-        NotificationCenter.default.post(
-            name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-            object: ubiquitousKeyValueStore,
-            userInfo: [
-                NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
-            ]
-        )
+        var iterator = key.values(
+            in: ubiquitousKeyValueStore,
+            emitsInitialValue: false,
+            bufferingPolicy: .unbounded
+        ).makeAsyncIterator()
 
         NotificationCenter.default.post(
             name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
@@ -467,5 +606,39 @@ extension PersistentKeyValuesTests {
         userDefaults.removePersistentDomain(forName: suiteName)
 
         return (userDefaults, suiteName)
+    }
+
+    /// Iterates `sequence` until it produces `count` values, performing `action` once the iterator has registered.
+    ///
+    /// Waits are bounded, so a missing value fails the test instead of suspending it forever.
+    private func receivedValues<Sequence>(
+        _ count: Int,
+        from sequence: Sequence,
+        after action: () -> Void
+    ) async -> [Sequence.Element] where Sequence: AsyncSequence & Sendable, Sequence.Element: Sendable {
+        let registered = expectation(description: "Iterator registered")
+        let received = expectation(description: "Received \(count) values")
+
+        let task = Task {
+            var iterator = sequence.makeAsyncIterator()
+            var values: [Sequence.Element] = []
+
+            registered.fulfill()
+
+            while values.count < count, let value = try? await iterator.next() {
+                values.append(value)
+            }
+
+            received.fulfill()
+
+            return values
+        }
+
+        await fulfillment(of: [registered], timeout: 5)
+        action()
+        await fulfillment(of: [received], timeout: 5)
+        task.cancel()
+
+        return await task.value
     }
 }

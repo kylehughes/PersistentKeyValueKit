@@ -1,6 +1,9 @@
 import Foundation
 
 /// Determines how a copy operation handles a key that already has a persisted value in the destination store.
+///
+/// The policy does not apply to an item that rewrites a key in place within one store, because the existing value is
+/// the value being rewritten; see ``PersistentKeyMigrationItem/key(_:to:transform:)``.
 public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
     /// Preserves the existing destination value and leaves the source value unchanged, reporting
     /// ``PersistentKeyMigrationReport/Status/keptDestination``.
@@ -12,6 +15,9 @@ public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
 }
 
 /// Determines how a move operation handles a key that already has a persisted value in the destination store.
+///
+/// The policy does not apply to an item that rewrites a key in place within one store, because the existing value is
+/// the value being rewritten; see ``PersistentKeyMigrationItem/key(_:to:transform:)``. Such an item keeps its key.
 public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
     /// Preserves both the existing destination value and the source value, reporting
     /// ``PersistentKeyMigrationReport/Status/keptDestination``.
@@ -43,9 +49,16 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// `id` when changing the migration's keys or behavior. A marker recorded in `NSUbiquitousKeyValueStore` syncs to the
 /// user's other devices like any other value.
 ///
+/// Migration identifiers that are equal as Swift strings identify the same migration, even when their Unicode
+/// spellings differ, such as precomposed and decomposed forms of the same accented character. Identifiers are
+/// otherwise distinct, including identifiers that differ only by case.
+///
 /// This type is not `Sendable` because ``once(id:recordedIn:)`` holds the recording store. Create the tracking value
 /// where the migration runs.
 public struct PersistentKeyMigrationTracking {
+    /// The prefix of every completion marker key identifier, which source and destination keys cannot use.
+    static let completionMarkerPrefix = "PersistentKeyValueKit_MigrationCompleted_"
+
     let mode: Mode
 
     // MARK: Private Initialization
@@ -66,8 +79,8 @@ public struct PersistentKeyMigrationTracking {
 
     /// Checks and records completion for `id` in the migration's destination store.
     ///
-    /// An empty `id` causes the migration to throw ``PersistentKeyMigrationError/invalidMigrationIdentifier`` before
-    /// any key is read or modified.
+    /// Identifiers that are equal as Swift strings share one completion marker. An empty `id` causes the migration to
+    /// throw ``PersistentKeyMigrationError/invalidMigrationIdentifier`` before any key is read or modified.
     ///
     /// - Parameter id: A stable identifier for this migration.
     /// - Returns: Tracking that records the marker in the destination store.
@@ -78,8 +91,9 @@ public struct PersistentKeyMigrationTracking {
     /// Checks and records completion for `id` in `store`.
     ///
     /// The migration reads `store`'s ``PersistentKeyValueStore/migrationEndpoint`` once, before any key is read or
-    /// modified. An empty `id` causes the migration to throw
-    /// ``PersistentKeyMigrationError/invalidMigrationIdentifier`` before any key is read or modified.
+    /// modified. Identifiers that are equal as Swift strings share one completion marker. An empty `id` causes the
+    /// migration to throw ``PersistentKeyMigrationError/invalidMigrationIdentifier`` before any key is read or
+    /// modified.
     ///
     /// - Parameter id: A stable identifier for this migration.
     /// - Parameter store: The store that holds the completion marker. It can be the source, the destination, or

@@ -20,19 +20,21 @@ import Foundation
 ///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so
 ///   `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for local writes and
 ///   removals.
+/// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
+///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
+///   delivered.
 @MainActor
 public final class PersistentKeyUIObservableObject<Key>: ObservableObject where Key: PersistentKeyProtocol {
     /// The key being observed.
-    public let key: Key
+    ///
+    /// ``PersistentValue`` replaces the key when its view is updated with a different key.
+    public private(set) var key: Key
 
     /// The store that the key is being observed in.
     private var _store: (any PersistentKeyValueStore)?
 
     /// The registration lifetime for the current store.
     private var observation: StoreObservation<Key>?
-    
-    /// The object used for key-value and `NotificationCenter` observation.
-    private var observer: Observer<Key>!
     
     // MARK: Public Initialization
     
@@ -44,10 +46,6 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         self.key = key
         
         _store = store
-        
-        observer = Observer(keyID: key.id) { [weak self] in
-            self?.objectWillChange.send()
-        }
 
         registerObserver(on: store)
     }
@@ -84,6 +82,42 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         }
     }
     
+    // MARK: Internal Instance Interface
+
+    /// Observes `key` in `store`, replacing the current observation when the key identifier or store changes.
+    ///
+    /// The latest key is always adopted so reads use its current default value and representation. The observation is
+    /// replaced only when the key identifier or the store instance differs, so repeated view updates with the same
+    /// inputs keep the existing registration.
+    internal func update(key newKey: Key, store newStore: any PersistentKeyValueStore) {
+        let keyIDChanged = newKey.id != key.id
+
+        key = newKey
+
+        guard keyIDChanged || !Self.isSameStore(_store, newStore) else {
+            return
+        }
+
+        store = newStore
+    }
+
+    // MARK: Private Static Interface
+
+    /// Returns whether two stores are the same instance.
+    ///
+    /// Value-type stores have no identity, so they are never considered the same and are observed again on every
+    /// update.
+    private static func isSameStore(
+        _ lhs: (any PersistentKeyValueStore)?,
+        _ rhs: any PersistentKeyValueStore
+    ) -> Bool {
+        guard let lhs, type(of: lhs) is AnyClass, type(of: rhs) is AnyClass else {
+            return false
+        }
+
+        return (lhs as AnyObject) === (rhs as AnyObject)
+    }
+
     // MARK: Private Instance Interface
     
     private func assertStoreExists(_ store: (any PersistentKeyValueStore)?) {
@@ -93,6 +127,11 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     private func registerObserver(on store: (any PersistentKeyValueStore)?) {
         guard let store else {
             return
+        }
+
+        // The observer filters callbacks by key identifier, so each registration creates one for the current key.
+        let observer = Observer<Key>(keyID: key.id) { [weak self] in
+            self?.objectWillChange.send()
         }
 
         observation = StoreObservation(
@@ -175,12 +214,8 @@ private final class Observer<Key>: NSObject, ObservableObject where Key: Persist
     internal nonisolated func didReceive(_ notification: Notification) {
         guard
             #available(watchOS 9.0, *),
-            let changedKeyIDs = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String]
+            NSUbiquitousKeyValueStore.changeNotification(notification, mayAffectKeyID: keyID)
         else {
-            return
-        }
-                
-        guard changedKeyIDs.contains(keyID) else {
             return
         }
                 

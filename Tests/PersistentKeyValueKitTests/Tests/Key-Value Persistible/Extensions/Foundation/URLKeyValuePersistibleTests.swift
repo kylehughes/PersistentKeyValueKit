@@ -33,6 +33,30 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
 
     @available(watchOS 9.0, *)
     @MainActor
+    func testRelativeReferenceRoundTrips() throws {
+        let representation = URL.persistentKeyValueRepresentation
+        let value = try XCTUnwrap(URL(string: "relative/path?query=1"))
+
+        for format in [PersistentKeyValueStorageFormat.propertyList, .ubiquitousKeyValueStore] {
+            let object = try XCTUnwrap(try representation.encode(value, format: format))
+
+            XCTAssertEqual(object as? String, "relative/path?query=1")
+            XCTAssertEqual(try representation.decode(storageObject: object, format: format), value)
+        }
+
+        let store = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("url", defaultValue: try XCTUnwrap(URL(string: "https://kylehugh.es")))
+        let arrayKey = PersistentKey("urls", defaultValue: [URL]())
+
+        store.set(key, to: value)
+        store.set(arrayKey, to: [value])
+
+        XCTAssertEqual(store.get(key), value)
+        XCTAssertEqual(store.get(arrayKey), [value])
+    }
+
+    @available(watchOS 9.0, *)
+    @MainActor
     func testUbiquitousStoreReadsLegacyURLObject() {
         let store = MockUbiquitousKeyValueStore()
         let value = URL(string: "https://kylehugh.es/legacy")!

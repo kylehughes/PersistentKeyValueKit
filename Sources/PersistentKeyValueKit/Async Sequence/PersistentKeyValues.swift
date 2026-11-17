@@ -34,11 +34,18 @@ import Foundation
 /// }
 /// ```
 ///
+/// Each element is the value read from the store after the store reports a change, so the sequence describes the
+/// key's current state rather than recording every write. Elements are emitted in the order they are read, and no
+/// element is older than one emitted before it. Changes that occur close together, such as a change made by another
+/// observer while it handles an earlier change, can be observed as one value, and consecutive elements can be equal.
+///
 /// - Important: The sequence continues producing values until the iteration is cancelled or the `Task` is cancelled.
 ///   Always iterate within a cancellable context.
 /// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the
-///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` if every observed transition
-///   must be delivered.
+///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` to keep every observed value.
+/// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
+///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
+///   delivered.
 /// - SeeAlso: ``PersistentKeyProtocol/changes(in:bufferingPolicy:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentValue`` for observation relying on SwiftUI `View` and environment.
 public struct PersistentKeyValues<Key> where Key: PersistentKeyProtocol {
@@ -127,8 +134,14 @@ extension PersistentKeyValues {
             bufferingPolicy: BufferingPolicy
         ) {
             observer = Observer(key: key, store: store)
-            streamIterator = observer.makeStream(bufferingPolicy: bufferingPolicy).makeAsyncIterator()
-            pendingInitialValue = emitsInitialValue ? store.get(key) : nil
+
+            let (stream, initialValue) = observer.start(
+                bufferingPolicy: bufferingPolicy,
+                emitsInitialValue: emitsInitialValue
+            )
+
+            pendingInitialValue = initialValue
+            streamIterator = stream.makeAsyncIterator()
         }
 
         // MARK: AsyncIteratorProtocol Implementation
@@ -186,9 +199,18 @@ private final class Observer<Key>: NSObject, Sendable where Key: PersistentKeyPr
 
     // MARK: Internal Instance Interface
 
-    internal func makeStream(bufferingPolicy: PersistentKeyValues<Key>.BufferingPolicy) -> AsyncStream<Key.Value> {
-        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
-            state.setContinuation(continuation)
+    /// Registers with the store and returns the stream of later observations, plus the initial value when requested.
+    ///
+    /// The initial value is read while this observer exclusively owns emission, so every value yielded to the stream
+    /// is read after it. Changes reported before that read are already reflected in it and are not yielded again.
+    internal func start(
+        bufferingPolicy: PersistentKeyValues<Key>.BufferingPolicy,
+        emitsInitialValue: Bool
+    ) -> (stream: AsyncStream<Key.Value>, initialValue: Key.Value?) {
+        var initialValue: Key.Value?
+
+        let stream = AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+            state.setContinuation(continuation, isEmitting: emitsInitialValue)
 
             continuation.onTermination = { [weak self] _ in
                 self?.deregister()
@@ -200,7 +222,17 @@ private final class Observer<Key>: NSObject, Sendable where Key: PersistentKeyPr
                 with: nil,
                 and: #selector(didReceive(_:))
             )
+
+            guard emitsInitialValue else {
+                return
+            }
+
+            state.discardPendingChange()
+            initialValue = store.get(key)
+            emitPendingChanges()
         }
+
+        return (stream, initialValue)
     }
 
     // MARK: NSObject Implementation
@@ -208,15 +240,14 @@ private final class Observer<Key>: NSObject, Sendable where Key: PersistentKeyPr
     /// - SeeAlso: https://forums.swift.org/t/crash-when-running-in-swift-6-language-mode/72431/2
     @objc
     internal nonisolated func didReceive(_ notification: Notification) {
-        guard let changedKeyIDs = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] else {
+        guard
+            #available(watchOS 9.0, *),
+            NSUbiquitousKeyValueStore.changeNotification(notification, mayAffectKeyID: keyID)
+        else {
             return
         }
 
-        guard changedKeyIDs.contains(keyID) else {
-            return
-        }
-
-        yieldCurrentValue()
+        valueDidChange()
     }
 
     /// - SeeAlso: https://forums.swift.org/t/crash-when-running-in-swift-6-language-mode/72431/2
@@ -230,7 +261,7 @@ private final class Observer<Key>: NSObject, Sendable where Key: PersistentKeyPr
             return
         }
 
-        yieldCurrentValue()
+        valueDidChange()
     }
 
     // MARK: Private Instance Interface
@@ -243,12 +274,22 @@ private final class Observer<Key>: NSObject, Sendable where Key: PersistentKeyPr
         store.deregister(self, for: key, context: nil)
     }
 
-    private nonisolated func yieldCurrentValue() {
-        guard let continuation = state.currentContinuation() else {
+    /// Reads and yields the current value until no change is pending.
+    ///
+    /// Only the emitting caller runs this loop. Reads happen outside the state lock, so a representation that writes
+    /// the observed key while decoding queues another read instead of deadlocking or yielding out of order.
+    private nonisolated func emitPendingChanges() {
+        while let continuation = state.takePendingChange() {
+            continuation.yield(store.get(key))
+        }
+    }
+
+    private nonisolated func valueDidChange() {
+        guard state.markPendingChange() else {
             return
         }
 
-        continuation.yield(store.get(key))
+        emitPendingChanges()
     }
 }
 
@@ -259,17 +300,22 @@ extension Observer {
     private final class State: @unchecked Sendable {
         private let lock: NSLock
         private var continuation: AsyncStream<Key.Value>.Continuation?
+        private var hasPendingChange: Bool
         private var isDeregistered: Bool
+        private var isEmitting: Bool
 
         init() {
             lock = NSLock()
             continuation = nil
+            hasPendingChange = false
             isDeregistered = false
+            isEmitting = false
         }
 
-        func currentContinuation() -> AsyncStream<Key.Value>.Continuation? {
+        /// Discards changes reported before the initial value is read.
+        func discardPendingChange() {
             withLock {
-                continuation
+                hasPendingChange = false
             }
         }
 
@@ -286,9 +332,46 @@ extension Observer {
             }
         }
 
-        func setContinuation(_ continuation: AsyncStream<Key.Value>.Continuation) {
+        /// Records a change and returns whether the caller became responsible for emitting it.
+        func markPendingChange() -> Bool {
+            withLock {
+                guard continuation != nil else {
+                    return false
+                }
+
+                hasPendingChange = true
+
+                guard !isEmitting else {
+                    return false
+                }
+
+                isEmitting = true
+
+                return true
+            }
+        }
+
+        func setContinuation(_ continuation: AsyncStream<Key.Value>.Continuation, isEmitting: Bool) {
             withLock {
                 self.continuation = continuation
+                self.isEmitting = isEmitting
+            }
+        }
+
+        /// Consumes the pending change for the emitting caller, or releases emission when none remains.
+        func takePendingChange() -> AsyncStream<Key.Value>.Continuation? {
+            withLock {
+                guard hasPendingChange, let continuation else {
+                    // Release emission while holding the lock so a concurrent change cannot be recorded between the
+                    // final check and the release.
+                    isEmitting = false
+
+                    return nil
+                }
+
+                hasPendingChange = false
+
+                return continuation
             }
         }
 

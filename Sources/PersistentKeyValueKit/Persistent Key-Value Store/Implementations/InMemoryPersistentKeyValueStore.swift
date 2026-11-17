@@ -13,14 +13,19 @@ import Foundation
 /// `UserDefaults` or `NSUbiquitousKeyValueStore`.
 ///
 /// Unlike Foundation stores, `InMemoryPersistentKeyValueStore` stores typed Swift values directly (compacting `nil`
-/// elements out of arrays and dictionaries of optionals) and records an explicit entry when an optional key is set to
-/// `nil`. Calling ``remove(_:)`` deletes the entry. When migrating a stored `nil` from an in-memory store to
+/// elements out of Swift arrays and dictionaries of optionals) and records an explicit entry when an optional key is
+/// set to `nil`. Calling ``remove(_:)`` deletes the entry. When migrating a stored `nil` from an in-memory store to
 /// `UserDefaults` or `NSUbiquitousKeyValueStore` with
 /// ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
 /// ``PersistentKeyMoveConflictPolicy/overwriteDestination``, the destination key is removed.
 ///
+/// Because the store keeps the Swift value itself rather than an encoded copy, a class-typed value is shared, not
+/// copied: every read returns the same instance that was written, and mutating it changes the stored value. Use
+/// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
+///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
-///   thread-safety requirement.
+///   thread-safety requirement. The lock is not held while key identifiers are evaluated, observers are notified, or
+///   replaced values are released, so that code can access the store again.
 public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// The stable identity of this in-memory store for migration operations.
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
@@ -49,7 +54,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// Returns the stored value for the given key, or `nil` if the store has no entry for the key.
     ///
     /// An entry recorded by setting an optional value to `nil` is returned as a non-`nil` `Any` that wraps `nil`;
-    /// cast the result to the optional type to read it. Arrays and dictionaries of optionals are returned without
+    /// cast the result to the optional type to read it. Swift arrays and dictionaries of optionals are returned without
     /// their `nil` elements.
     ///
     /// Use this method to implement a custom key's in-memory `get(from:)` requirement of ``PersistentKeyProtocol``.
@@ -70,51 +75,63 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     ///
     /// - Parameter key: The identifier of the entry.
     public func removeObject(forKey key: String) {
-        let observations = withLock {
-            storage.removeValue(forKey: key)
-
-            return liveObservations(for: key)
+        let (removedValue, observations) = withLock {
+            (storage.removeValue(forKey: key), liveObservations(for: key))
         }
 
         notify(observations, keyPath: key)
+
+        // Releasing the last reference can run a `deinit` that reads this store, so release it after unlocking.
+        withExtendedLifetime(removedValue) {}
     }
 
     /// Stores the given value for the given key and notifies observers of the key.
     ///
-    /// The store keeps the Swift value itself, without converting it to a property-list type, and removes `nil`
-    /// elements from arrays and dictionaries of optionals. Passing an optional that is `nil` records an explicit entry
-    /// that ``object(forKey:)`` returns; call ``removeObject(forKey:)`` to delete the entry.
+    /// The store keeps the Swift value itself, without converting it to a property-list type. It removes `nil`
+    /// elements from a Swift array or `String`-keyed dictionary of optionals when the result is still a `Value`, so a
+    /// read of the same type returns the stored value; other values, including Foundation collections such as
+    /// `NSMutableArray`, are stored unchanged. Passing an optional that is `nil` records an explicit entry that
+    /// ``object(forKey:)`` returns; call ``removeObject(forKey:)`` to delete the entry.
     ///
     /// Use this method to implement a custom key's in-memory `set(to:in:)` requirement of ``PersistentKeyProtocol``.
     /// Typed call sites should use ``set(_:to:)`` instead.
     ///
     /// - Parameter value: The value to store.
     /// - Parameter key: The identifier of the entry.
-    public func set(_ value: Any, forKey key: String) {
+    public func set<Value>(_ value: Value, forKey key: String) {
         let storedValue = Self.normalizedValue(value)
 
-        let observations = withLock {
+        let (replacedValue, observations) = withLock {
             nextRevision &+= 1
-            storage[key] = StoredValue(object: storedValue, revision: nextRevision)
 
-            return liveObservations(for: key)
+            return (
+                storage.updateValue(StoredValue(object: storedValue, revision: nextRevision), forKey: key),
+                liveObservations(for: key)
+            )
         }
 
         notify(observations, keyPath: key)
+
+        // Releasing the last reference can run a `deinit` that reads this store, so release it after unlocking.
+        withExtendedLifetime(replacedValue) {}
     }
 
     // MARK: Private Static Interface
 
-    private static func normalizedValue<T>(_ value: T) -> Any {
-        if let array = value as? [Any?] {
-            return array.compactMap(\.self)
+    /// Returns `value` without the `nil` elements of a Swift array or dictionary of optionals, or `value` itself when
+    /// it is not such a collection or the compacted collection is not a `Value`.
+    private static func normalizedValue<Value>(_ value: Value) -> Any {
+        guard let collection = value as? any OptionalElementCollection else {
+            return value
         }
 
-        if let dictionary = value as? [String: Any?] {
-            return dictionary.compactMapValues(\.self)
+        let compactedValue = collection.compactedValue()
+
+        guard compactedValue is Value else {
+            return value
         }
 
-        return value
+        return compactedValue
     }
 
     // MARK: Private Instance Interface
@@ -161,7 +178,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
         _ write: MigrationWrite,
         replacing snapshot: MigrationSnapshot?
     ) throws -> MigrationSnapshot? {
-        let result: (MigrationSnapshot, [Observation]) = try withLock {
+        let result: (MigrationSnapshot, [Observation], StoredValue?) = try withLock {
             guard write.identity == migrationIdentity else {
                 throw PersistentKeyMigrationError.internalInconsistency
             }
@@ -179,14 +196,17 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             }
 
             nextRevision &+= 1
-            storage[write.keyID] = StoredValue(object: write.object, revision: nextRevision)
+            let replacedValue = storage.updateValue(
+                StoredValue(object: write.object, revision: nextRevision),
+                forKey: write.keyID
+            )
             let committed = MigrationSnapshot(
                 identity: migrationIdentity,
                 keyID: write.keyID,
                 revision: nextRevision,
                 object: write.object
             )
-            return (committed, liveObservations(for: write.keyID))
+            return (committed, liveObservations(for: write.keyID), replacedValue)
         }
 
         notify(result.1, keyPath: write.keyID)
@@ -248,12 +268,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
         _ value: Key.Value,
         for key: Key
     ) throws -> MigrationWrite where Key: PersistentKeyProtocol {
-        let object = Self.normalizedValue(value)
-        guard object is Key.Value else {
-            throw PersistentKeyValueConversionError.encodingFailed
-        }
-
-        return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: object)
+        MigrationWrite(identity: migrationIdentity, keyID: key.id, object: Self.normalizedValue(value))
     }
 
     func removeMigrationValue(for keyID: String, matching snapshot: MigrationSnapshot) throws {
@@ -261,17 +276,17 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             throw PersistentKeyMigrationError.internalInconsistency
         }
 
-        let observations = try withLock {
-            () -> [Observation] in
+        let (removedValue, observations) = try withLock {
+            () -> (StoredValue?, [Observation]) in
             guard storage[keyID]?.revision == snapshot.revision else {
                 throw PersistentKeyMigrationError.sourceChanged
             }
 
-            storage.removeValue(forKey: keyID)
-            return liveObservations(for: keyID)
+            return (storage.removeValue(forKey: keyID), liveObservations(for: keyID))
         }
 
         notify(observations, keyPath: keyID)
+        withExtendedLifetime(removedValue) {}
         guard try migrationSnapshot(for: keyID) == nil else {
             throw PersistentKeyMigrationError.removalVerificationFailed
         }
@@ -382,6 +397,38 @@ private extension InMemoryPersistentKeyValueStore {
         weak var observer: NSObject?
         let keyID: String
         let context: UnsafeMutableRawPointer?
+    }
+}
+
+// MARK: - Optional Element Collections
+
+/// A Swift collection whose `nil` elements the in-memory store removes, matching the property-list stores.
+private protocol OptionalElementCollection {
+    func compactedValue() -> Any
+}
+
+/// An `Optional`, used to constrain ``OptionalElementCollection`` conformances to collections of optionals.
+private protocol OptionalElement {
+    associatedtype Wrapped
+
+    var optionalValue: Wrapped? { get }
+}
+
+extension Optional: OptionalElement {
+    fileprivate var optionalValue: Wrapped? {
+        self
+    }
+}
+
+extension Array: OptionalElementCollection where Element: OptionalElement {
+    fileprivate func compactedValue() -> Any {
+        compactMap(\.optionalValue)
+    }
+}
+
+extension Dictionary: OptionalElementCollection where Key == String, Value: OptionalElement {
+    fileprivate func compactedValue() -> Any {
+        compactMapValues(\.optionalValue)
     }
 }
 

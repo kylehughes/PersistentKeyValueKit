@@ -3,9 +3,9 @@ import Foundation
 /// The result of a key migration operation, containing per-item outcomes in input order and the completion-tracking
 /// status.
 ///
-/// ``completionError`` is non-`nil` exactly when ``completion`` is ``Completion/failed``. The library produces reports
-/// from `copy` and `move`; the public initializers exist so clients can build fixtures for their own tests, and they
-/// enforce the same invariant.
+/// ``completionError`` is non-`nil` exactly when ``completion`` is ``Completion/failed``, and ``outcomes`` is empty
+/// whenever ``completion`` is ``Completion/alreadyRecorded``. The library produces reports from `copy` and `move`; the
+/// public initializers exist so clients can build fixtures for their own tests, and they enforce the same invariants.
 public struct PersistentKeyMigrationReport: Sendable {
     /// The result of completion tracking for the migration batch.
     public let completion: Completion
@@ -23,11 +23,17 @@ public struct PersistentKeyMigrationReport: Sendable {
     ///
     /// - Precondition: `completion` is not ``Completion/failed``. Use ``init(outcomes:completionError:)`` for a report
     ///   whose completion tracking failed.
+    /// - Precondition: `outcomes` is empty when `completion` is ``Completion/alreadyRecorded``, because a migration
+    ///   whose marker was already recorded is skipped.
     /// - Parameter outcomes: The per-item outcomes in input order.
     /// - Parameter completion: The completion-tracking result for the batch.
     public init(outcomes: [Outcome], completion: Completion) {
         if completion == .failed {
             preconditionFailure("Use init(outcomes:completionError:) to create a report whose completion failed.")
+        }
+
+        if completion == .alreadyRecorded, !outcomes.isEmpty {
+            preconditionFailure("A report whose completion was already recorded cannot have outcomes.")
         }
 
         self.outcomes = outcomes
@@ -151,7 +157,8 @@ extension PersistentKeyMigrationReport {
         /// Writing to or verifying the destination store failed.
         case write
 
-        /// Removing the value from the source store or verifying its removal failed during a move.
+        /// Removing the value from the source store or verifying its removal failed during a move, or the destination
+        /// no longer held the expected value after the source was removed.
         case cleanup
     }
 }
@@ -233,7 +240,9 @@ extension PersistentKeyMigrationReport {
 
         /// The item failed at the given stage. The error is available in ``Outcome/error``. If failure occurred at
         /// ``FailureStage/cleanup`` after a move wrote the destination, the written value remains in the destination
-        /// store.
+        /// store unless something else changed it. A cleanup failure with
+        /// ``PersistentKeyMigrationError/destinationChanged`` means the source value was removed but the destination
+        /// changed during removal, for example because an observer of the source key modified it.
         case failed(FailureStage)
 
         /// The existing destination value was preserved under ``PersistentKeyCopyConflictPolicy/keepDestination`` or
@@ -246,6 +255,11 @@ extension PersistentKeyMigrationReport {
 
         /// The value was written to the destination key and removed from the source key.
         case moved
+
+        /// The value was rewritten in place by an item that maps a key to its own identifier within one store, under
+        /// any copy or move conflict policy. A move did not remove the key as its source. See
+        /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
+        case rewritten
 
         /// No persisted value existed for the source key in the source store.
         case sourceAbsent

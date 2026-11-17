@@ -149,6 +149,28 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["storedValue"])
     }
 
+    func test_publisher_ignoresNotificationsForUnrelatedKeys() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = receivedValues(from: key.changesPublisher(in: store)) {
+            store.postToObservers(
+                Notification(
+                    name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                    object: store,
+                    userInfo: [
+                        NSUbiquitousKeyValueStoreChangedKeysKey: [
+                            "unrelatedKey:\(#function)",
+                        ],
+                    ]
+                )
+            )
+            store.set(key, to: "changedValue")
+        }
+
+        XCTAssertEqual(values, ["changedValue"])
+    }
+
     func test_publisher_ignoresUnrelatedKeyPathCallbacks() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -283,25 +305,11 @@ extension PersistentKeyValuePublisherTests {
     }
 
     @available(watchOS 9.0, *)
-    func test_publisher_ubiquitousKeyValueStoreIgnoresMalformedAndUnrelatedNotifications() {
+    func test_publisher_ubiquitousKeyValueStoreIgnoresUnrelatedNotifications() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
 
         let values = receivedValues(from: key.publisher(in: ubiquitousKeyValueStore, emitsInitialValue: false)) {
-            NotificationCenter.default.post(
-                name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-                object: ubiquitousKeyValueStore,
-                userInfo: nil
-            )
-
-            NotificationCenter.default.post(
-                name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-                object: ubiquitousKeyValueStore,
-                userInfo: [
-                    NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
-                ]
-            )
-
             NotificationCenter.default.post(
                 name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
                 object: ubiquitousKeyValueStore,
@@ -316,6 +324,52 @@ extension PersistentKeyValuePublisherTests {
         }
 
         XCTAssertEqual(values, ["changedValue"])
+    }
+
+    @available(watchOS 9.0, *)
+    func test_publisher_ubiquitousKeyValueStoreRefreshesForAccountChange() {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = receivedValues(from: key.publisher(in: ubiquitousKeyValueStore, emitsInitialValue: false)) {
+            ubiquitousKeyValueStore.storage[key.id] = "accountValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangeReasonKey: NSUbiquitousKeyValueStoreAccountChange,
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["accountValue"])
+    }
+
+    @available(watchOS 9.0, *)
+    func test_publisher_ubiquitousKeyValueStoreRefreshesWithoutChangedKeys() {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let publisher = key.publisher(in: ubiquitousKeyValueStore, emitsInitialValue: false)
+
+        let values = receivedValues(from: publisher, expectedCount: 2) {
+            ubiquitousKeyValueStore.storage[key.id] = "firstExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: nil
+            )
+
+            ubiquitousKeyValueStore.storage[key.id] = "secondExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["firstExternalValue", "secondExternalValue"])
     }
 
     @available(watchOS 9.0, *)
@@ -342,6 +396,52 @@ extension PersistentKeyValuePublisherTests {
         }
 
         XCTAssertEqual(values, ["changedValue"])
+    }
+
+    func test_publisher_readThatWritesObservedKeyDoesNotDeadlock() {
+        let store = WritingOnReadPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let recorder = ValueRecorder<Int>()
+        let finished = DispatchSemaphore(value: 0)
+
+        // Model a representation that canonicalizes a legacy value by writing the observed key while decoding it. The
+        // write reports a change synchronously, from inside the subscription's read.
+        store.onRead = { [unowned store] in
+            if store.base.get(key) == 1 {
+                store.base.set(key, to: 2)
+            }
+        }
+
+        // A deadlock blocks this thread forever, so run the write elsewhere and bound the wait. The store is private
+        // to this test, so a deadlock cannot block other tests.
+        Thread.detachNewThread {
+            let cancellable = key.changesPublisher(in: store).sink { value in
+                recorder.append(value)
+            }
+
+            store.set(key, to: 1)
+            cancellable.cancel()
+            finished.signal()
+        }
+
+        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success, "The subscription deadlocked.")
+        // The first read observes the canonicalized value; the change it reported is delivered as a later read.
+        XCTAssertEqual(recorder.values, [2, 2])
+    }
+
+    func test_publisher_userDefaultsObservesKeyWithPeriods() throws {
+        let (userDefaults, suiteName) = try makeUserDefaults()
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: false)
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let values = receivedValues(from: key.publisher(in: userDefaults), expectedCount: 3) {
+            userDefaults.set(key, to: true)
+            userDefaults.remove(key)
+        }
+
+        XCTAssertEqual(values, [false, true, false])
     }
 }
 
@@ -602,6 +702,76 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
         }
 
         return body()
+    }
+}
+
+// MARK: - Writing On Read Persistent Key-Value Store Definition
+
+/// A store that runs ``onRead`` before every read, so a read can write and report a change synchronously.
+private final class WritingOnReadPersistentKeyValueStore: PersistentKeyValueStore, @unchecked Sendable {
+    let base = InMemoryPersistentKeyValueStore()
+
+    nonisolated(unsafe) var onRead: (() -> Void)?
+
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        base.migrationEndpoint
+    }
+
+    func deregister<Key>(
+        _ observer: NSObject,
+        for key: Key,
+        context: UnsafeMutableRawPointer?
+    ) where Key: PersistentKeyProtocol {
+        base.deregister(observer, for: key, context: context)
+    }
+
+    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        onRead?()
+
+        return base.get(key)
+    }
+
+    func register<Key>(
+        observer: NSObject,
+        for key: Key,
+        with context: UnsafeMutableRawPointer?,
+        and selector: Selector
+    ) where Key: PersistentKeyProtocol {
+        base.register(observer: observer, for: key, with: context, and: selector)
+    }
+
+    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
+        base.remove(key)
+    }
+
+    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        base.set(key, to: value)
+    }
+}
+
+// MARK: - Value Recorder Definition
+
+/// Records values delivered on any thread.
+private final class ValueRecorder<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedValues: [Value] = []
+
+    var values: [Value] {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        return recordedValues
+    }
+
+    func append(_ value: Value) {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        recordedValues.append(value)
     }
 }
 

@@ -12,6 +12,12 @@ import Foundation
 extension Array: KeyValuePersistible where Element: KeyValuePersistible {
     // MARK: Public Static Interface
 
+    /// The representation of an array in a ``PersistentKeyValueStore``.
+    ///
+    /// Writes are all or nothing: if any element fails to encode, the store or container is left unchanged, so a
+    /// failed write never partially overwrites a stored array. Elements that encode to `nil` are omitted. Reads are
+    /// also all or nothing: if any element fails to decode, the read returns `nil` and a key falls back to its default
+    /// value, because an element's position can carry meaning.
     @inlinable
     public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()
@@ -72,20 +78,27 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return originalArray
     }
     
+    /// Replaces `propertyListArray` with the encoded child arrays.
+    ///
+    /// Leaves `propertyListArray` unchanged if any element of any child array fails to encode.
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         let representation = Element.persistentKeyValueRepresentation
 
-        propertyListArray = values.map { value in
-            var childPropertyListArray: [Any] = []
+        var childPropertyListArrays: [Any] = []
 
-            childPropertyListArray.reserveCapacity(value.count)
+        childPropertyListArrays.reserveCapacity(values.count)
 
-            representation.set(value, to: &childPropertyListArray)
+        for value in values {
+            guard let childPropertyListArray = representation.propertyListArray(encoding: value) else {
+                return
+            }
 
-            return childPropertyListArray
+            childPropertyListArrays.append(childPropertyListArray)
         }
+
+        propertyListArray = childPropertyListArrays
     }
-    
+
     // MARK: Interfacing with Property List Dictionary
     
     @inlinable
@@ -97,17 +110,17 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return Element.persistentKeyValueRepresentation.get(from: propertyListArray)
     }
     
+    /// Sets the encoded array at `dictionaryKey`, leaving `propertyListDictionary` unchanged if any element fails to
+    /// encode.
     @inlinable
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
-        var propertyListArray: [Any] = []
-        
-        propertyListArray.reserveCapacity(value.count)
-        
-        Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
-        
+        guard let propertyListArray = Element.persistentKeyValueRepresentation.propertyListArray(encoding: value) else {
+            return
+        }
+
         propertyListDictionary[dictionaryKey] = propertyListArray
     }
-    
+
     // MARK: Interfacing with User Defaults
     
     @inlinable
@@ -119,17 +132,16 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return Element.persistentKeyValueRepresentation.get(from: propertyListArray)
     }
     
+    /// Writes the encoded array, leaving `userDefaults` unchanged if any element fails to encode.
     @inlinable
     public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
-        var propertyListArray: [Any] = []
-        
-        propertyListArray.reserveCapacity(value.count)
-        
-        Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
-        
+        guard let propertyListArray = Element.persistentKeyValueRepresentation.propertyListArray(encoding: value) else {
+            return
+        }
+
         userDefaults.set(propertyListArray, forKey: userDefaultsKey)
     }
-    
+
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
     @available(watchOS 9.0, *)
@@ -145,6 +157,7 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return Element.persistentKeyValueRepresentation.get(from: propertyListArray)
     }
     
+    /// Writes the encoded array, leaving `ubiquitousStore` unchanged if any element fails to encode.
     @available(watchOS 9.0, *)
     @inlinable
     public static func set(
@@ -152,12 +165,10 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         to value: Self,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        var propertyListArray: [Any] = []
-        
-        propertyListArray.reserveCapacity(value.count)
-        
-        Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
-        
+        guard let propertyListArray = Element.persistentKeyValueRepresentation.propertyListArray(encoding: value) else {
+            return
+        }
+
         ubiquitousStore.set(propertyListArray, forKey: ubiquitousStoreKey)
     }
 }

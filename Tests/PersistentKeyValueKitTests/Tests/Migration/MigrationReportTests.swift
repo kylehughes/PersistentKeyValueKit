@@ -213,6 +213,26 @@ final class MigrationReportTests: XCTestCase {
 
     #if os(macOS) && DEBUG
 
+    func test_alreadyRecordedCompletionWithOutcomesTraps() throws {
+        if ChildProcessTrap.isRunningInTrapChildProcess {
+            _ = PersistentKeyMigrationReport(
+                outcomes: [.init(sourceKeyID: "a", status: .moved)],
+                completion: .alreadyRecorded
+            )
+            return
+        }
+
+        let skipped = PersistentKeyMigrationReport(outcomes: [], completion: .alreadyRecorded)
+
+        XCTAssertTrue(skipped.isComplete)
+
+        try ChildProcessTrap.assertTraps(
+            test: #function,
+            in: self,
+            message: "A report whose completion was already recorded cannot have outcomes."
+        )
+    }
+
     func test_failedCompletionWithoutErrorTraps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(outcomes: [], completion: .failed)

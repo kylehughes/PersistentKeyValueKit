@@ -327,6 +327,25 @@ final class MigrationEngineCoverageTests: XCTestCase {
         XCTAssertEqual(source.get(k), 1)
     }
 
+    func testRewriteVerificationFalseReportsWriteFailure() throws {
+        let store = ScriptedMigrationStore()
+        let k = key()
+
+        store.set(k, to: 1)
+        store.current = false
+        let report = try store.move(
+            .key(k, to: k) {
+                $0 + 1
+            },
+            to: store,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes[0].error as? PersistentKeyMigrationError, .writeVerificationFailed)
+    }
+
     func testInvalidSourceAndDestinationIdentities() throws {
         let source = ScriptedMigrationStore(namespace: "", identifier: "x")
         let destination = ScriptedMigrationStore()

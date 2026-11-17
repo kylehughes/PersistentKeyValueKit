@@ -109,6 +109,17 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
         notify(observations, keyPath: keyPath)
     }
 
+    /// Delivers `notification` to every live observer through the selector it registered, without filtering by key.
+    func postToObservers(_ notification: Notification) {
+        let observations = withLock {
+            liveObservations()
+        }
+
+        for observation in observations {
+            _ = observation.observer?.perform(observation.selector, with: notification)
+        }
+    }
+
     func register<Key>(
         observer: NSObject,
         for key: Key,
@@ -124,7 +135,8 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
                 Observation(
                     observer: observer,
                     keyID: key.id,
-                    context: context
+                    context: context,
+                    selector: selector
                 )
             )
 
@@ -195,5 +207,6 @@ extension ObservablePersistentKeyValueStore {
         weak var observer: NSObject?
         let keyID: String
         let context: UnsafeMutableRawPointer?
+        let selector: Selector
     }
 }

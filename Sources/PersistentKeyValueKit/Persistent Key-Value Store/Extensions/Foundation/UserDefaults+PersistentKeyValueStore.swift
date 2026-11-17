@@ -52,23 +52,44 @@ extension UserDefaults: PersistentKeyValueStore {
     
     // MARK: Observing Keys
     
-    @inlinable
     public func deregister<Key>(
         _ observer: NSObject,
         for key: Key,
         context: UnsafeMutableRawPointer?
     ) where Key : PersistentKeyProtocol {
-        removeObserver(observer, forKeyPath: key.id, context: context)
+        let keyID = key.id
+
+        guard Self.supportsKeyValueObservation(of: keyID) else {
+            StoreKeyObservationRegistry.registry(for: self).remove(observer, keyID: keyID, context: context)
+
+            return
+        }
+
+        removeObserver(observer, forKeyPath: keyID, context: context)
     }
     
-    @inlinable
     public func register<Key>(
         observer target: NSObject,
         for key: Key,
         with context: UnsafeMutableRawPointer?,
         and selector: Selector
     ) where Key: PersistentKeyProtocol {
-        addObserver(target, forKeyPath: key.id, context: context)
+        let keyID = key.id
+
+        guard Self.supportsKeyValueObservation(of: keyID) else {
+            StoreKeyObservationRegistry.registry(for: self).insert(
+                UserDefaultsKeyChangeObservation(
+                    observer: target,
+                    keyID: keyID,
+                    context: context,
+                    userDefaults: self
+                )
+            )
+
+            return
+        }
+
+        addObserver(target, forKeyPath: keyID, context: context)
     }
 }
 
@@ -98,15 +119,124 @@ extension UserDefaults {
         register(defaults: defaults)
     }
 
+    // MARK: Internal Static Interface
+
+    /// Returns whether key-value observation can observe the defaults key with the given identifier.
+    ///
+    /// Key-value observation treats a period as a key-path separator, so it never reports changes to a literal key
+    /// that contains one.
+    internal static func supportsKeyValueObservation(of keyID: String) -> Bool {
+        !keyID.contains(".")
+    }
+
+    // MARK: Internal Instance Interface
+
+    /// Returns the launch argument for `key` when it is the visible value, or `nil` when the visible value comes from
+    /// another domain.
     @inlinable
     internal func argumentDomainString(forKey key: String, visibleObject: Any?) -> String? {
         // `volatileDomain(forName:)` materializes the whole domain. First check the effective object so typed
         // stored values avoid that work on every read.
-        guard visibleObject is String else {
+        guard let visibleString = visibleObject as? String else {
             return nil
         }
 
-        return volatileDomain(forName: UserDefaults.argumentDomain)[key] as? String
+        // A managed (forced) preference outranks the argument domain, so the visible string may be the managed
+        // value even when a launch argument exists. Parse only a visible value that is the launch argument.
+        guard
+            let argument = volatileDomain(forName: UserDefaults.argumentDomain)[key] as? String,
+            argument == visibleString,
+            !objectIsForced(forKey: key)
+        else {
+            return nil
+        }
+
+        return argument
+    }
+}
+
+// MARK: - UserDefaultsKeyChangeObservation Definition
+
+/// Delivers changes to a defaults key that key-value observation cannot observe.
+///
+/// The observation listens for `UserDefaults.didChangeNotification` from every `UserDefaults` instance, because
+/// instances for the same suite share values, and notifies the observer only when the key's property-list value
+/// differs from the last value it saw. Foundation posts the notification only for changes made in the current process.
+///
+/// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Access to
+///   the last observed value is protected by `lock`, its other stored properties are immutable after initialization,
+///   and `observer` and `userDefaults` are weak references.
+private final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObservation, @unchecked Sendable {
+    let context: UnsafeMutableRawPointer?
+    let keyID: String
+    private(set) weak var observer: NSObject?
+
+    private let lock: NSLock
+    private var lastObject: Any?
+    // The store retains this observation through its registry, so a strong reference would form a cycle.
+    private weak var userDefaults: UserDefaults?
+
+    // MARK: Internal Initialization
+
+    init(
+        observer: NSObject,
+        keyID: String,
+        context: UnsafeMutableRawPointer?,
+        userDefaults: UserDefaults
+    ) {
+        self.context = context
+        self.keyID = keyID
+        self.observer = observer
+        self.userDefaults = userDefaults
+
+        lastObject = userDefaults.object(forKey: keyID)
+        lock = NSLock()
+
+        super.init()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(userDefaultsDidChange(_:)),
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+    }
+
+    // MARK: StoreKeyObservation Implementation
+
+    func invalidate() {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: Private Instance Interface
+
+    private func recordObject(_ object: Any?) -> Bool {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        guard !PropertyListMigrationStorage.equal(lastObject, object) else {
+            return false
+        }
+
+        lastObject = object
+
+        return true
+    }
+
+    @objc
+    private func userDefaultsDidChange(_ notification: Notification) {
+        guard let observer, let userDefaults, recordObject(userDefaults.object(forKey: keyID)) else {
+            return
+        }
+
+        observer.observeValue(
+            forKeyPath: keyID,
+            of: userDefaults,
+            change: [.kindKey: NSKeyValueChange.setting.rawValue],
+            context: context
+        )
     }
 }
 
@@ -130,14 +260,15 @@ extension PersistentKeyValueStore where Self == UserDefaults {
     /// attached as process-local metadata. The metadata is not written to preferences, does not retain the
     /// `UserDefaults` instance, and lasts only for the lifetime of that instance in the current process.
     ///
-    /// Migration treats suite names that differ only by case as the same store, because they can share one
-    /// preferences file.
+    /// Migration treats suite names that differ only by case or Unicode normalization as the same store, because they
+    /// can share one preferences file. Path-shaped names and names ending in `.plist` are rejected, because Foundation
+    /// can resolve them to the preferences file of another suite name.
     ///
-    /// - Parameter suiteName: The persistent domain identifier for the suite.
-    /// - Returns: A `UserDefaults` instance configured for migration, or `nil` if `suiteName` is empty, matches a
-    ///   reserved domain (`argumentDomain`, `registrationDomain`, `globalDomain`, `kCFPreferencesAnyApplication`, or
-    ///   `kCFPreferencesCurrentApplication`) or the main bundle identifier ignoring case, or cannot be created by
-    ///   Foundation.
+    /// - Parameter suiteName: The persistent domain identifier for the suite, such as an app group identifier.
+    /// - Returns: A `UserDefaults` instance configured for migration, or `nil` if `suiteName` is empty, contains `/`,
+    ///   begins with `~`, ends with `.plist` ignoring case, matches a reserved domain (`argumentDomain`,
+    ///   `registrationDomain`, `globalDomain`, `kCFPreferencesAnyApplication`, or `kCFPreferencesCurrentApplication`)
+    ///   or the main bundle identifier ignoring case and Unicode normalization, or cannot be created by Foundation.
     public static func migratable(suiteName: String) -> Self? {
         Self.migratable(
             suiteName: suiteName,
@@ -182,13 +313,27 @@ extension UserDefaults {
         ]
         let foldedName = migrationDomainIdentifier(name)
 
-        return !name.isEmpty && !reservedNames.contains { $0.map(migrationDomainIdentifier) == foldedName }
+        // Core Foundation resolves a name containing `/` as a preferences file path, and it removes a `.plist` suffix
+        // in any case, so these names can open another name's preferences file under a different identity. A leading
+        // `~` is rejected as path-shaped too.
+        guard
+            !name.isEmpty,
+            !name.contains("/"),
+            !name.hasPrefix("~"),
+            !foldedName.hasSuffix(".plist")
+        else {
+            return false
+        }
+
+        return !reservedNames.contains { $0.map(migrationDomainIdentifier) == foldedName }
     }
 
-    /// Returns the identifier that identifies a persistent domain across names that differ only by case.
+    /// Returns the identifier that identifies a persistent domain across names that differ only by case or Unicode
+    /// normalization.
     ///
-    /// Preference files on case-insensitive file systems are shared by names that differ only by case, while the
-    /// preferences daemon caches each name separately.
+    /// Preference files on case-insensitive or normalization-insensitive file systems are shared by such names, while
+    /// the preferences daemon caches each name separately. Swift string comparison already treats canonically
+    /// equivalent identifiers as equal, so only case needs folding.
     internal static func migrationDomainIdentifier(_ name: String) -> String {
         name.folding(options: .caseInsensitive, locale: nil)
     }

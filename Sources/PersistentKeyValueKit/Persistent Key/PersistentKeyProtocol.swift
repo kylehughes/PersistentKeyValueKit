@@ -125,14 +125,33 @@ extension PersistentKeyProtocol {
         true
     }
 
-    /// Registers the default value for the key in the given property-list-compatible dictionary.
+    /// Registers the default value for the key in the given registration dictionary for `UserDefaults`.
     ///
-    /// This is intended for use by `UserDefaults.register(_:)` to register the default values for the keys.
+    /// This is intended for use by `UserDefaults.register(_:)` to register the default values for the keys. The
+    /// default value is encoded with ``PersistentKeyValueStorageFormat/userDefaults``, the same form that a write to
+    /// `UserDefaults` stores, so reading an unset key returns the registered default through the ordinary read path.
+    /// Leaves `propertyListDictionary` unchanged when encoding the default value fails, and removes the entry when it
+    /// encodes to `nil`.
     ///
     /// - Parameter propertyListDictionary: The dictionary to register the default value in.
-    @inlinable
     public func registerDefault(in propertyListDictionary: inout [String: Any]) {
-        representation.set(id, to: defaultValue, in: &propertyListDictionary)
+        let object: Any?
+
+        do {
+            object = try representation.encode(defaultValue, format: .userDefaults)
+        } catch {
+            return
+        }
+
+        guard let object = storableEncoding(object) else {
+            return
+        }
+
+        if let object {
+            propertyListDictionary[id] = object
+        } else {
+            propertyListDictionary.removeValue(forKey: id)
+        }
     }
 
     // MARK: Interfacing with In-Memory Store
@@ -185,17 +204,22 @@ extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
     /// Remove this key from the recording store (or set it to `false`) to allow a completed migration with the same
     /// `id` to run again.
     ///
+    /// Identifiers that are equal as Swift strings, including precomposed and decomposed spellings of the same accented
+    /// character, return the same key. Identifiers that differ in any other way, including case, return different keys.
+    ///
     /// The key's identifier has the same length for every `id`, so identifiers of any length can be recorded in any
-    /// store, including `NSUbiquitousKeyValueStore`.
+    /// store, including `NSUbiquitousKeyValueStore`. It contains no `.`, so `UserDefaults` key-value observation can
+    /// observe it.
     ///
     /// - Parameter id: The migration identifier passed to ``PersistentKeyMigrationTracking/once(id:)`` or
     ///   ``PersistentKeyMigrationTracking/once(id:recordedIn:)``.
     /// - Returns: A boolean key whose default value is `false`.
     public static func isMigrationCompleted(id: String) -> Self {
-        // A digest keeps the marker within `NSUbiquitousKeyValueStore`'s 128-unit key limit for any `id`.
-        let digest = Data(SHA256.hash(data: Data(id.utf8)))
+        // A digest keeps the marker within `NSUbiquitousKeyValueStore`'s 128-unit key limit for any `id`. Hashing the
+        // NFC form gives canonically equivalent identifiers, which Swift considers equal, the same marker.
+        let digest = Data(SHA256.hash(data: Data(id.precomposedStringWithCanonicalMapping.utf8)))
         return Self(
-            "PersistentKeyValueKit.MigrationCompleted."
+            PersistentKeyMigrationTracking.completionMarkerPrefix
             + digest.base64EncodedString().replacingOccurrences(of: "+", with: "-")
                     .replacingOccurrences(of: "/", with: "_")
                     .replacingOccurrences(of: "=", with: ""),

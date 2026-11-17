@@ -37,7 +37,7 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
 
     @available(watchOS 9.0, *)
     @MainActor
-    func test_observer_ignoresMalformedAndUnrelatedCloudNotifications() {
+    func test_observer_ignoresUnrelatedCloudNotifications() {
         let store: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         let observer = PersistentKeyUIObservableObject(store: store, key: key)
@@ -47,12 +47,6 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
         }
 
         let notificationName = NSUbiquitousKeyValueStore.didChangeInternallyNotification
-        NotificationCenter.default.post(name: notificationName, object: store, userInfo: nil)
-        NotificationCenter.default.post(
-            name: notificationName,
-            object: store,
-            userInfo: [NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray"]
-        )
         NotificationCenter.default.post(
             name: notificationName,
             object: store,
@@ -77,6 +71,77 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
         cancellable.cancel()
     }
 
+    @available(watchOS 9.0, *)
+    @MainActor
+    func test_observer_refreshesForCloudAccountChangeAndMissingChangedKeys() {
+        let store: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let observer = PersistentKeyUIObservableObject(store: store, key: key)
+        var changeCount = 0
+        let cancellable = observer.objectWillChange.sink {
+            changeCount += 1
+        }
+
+        let notificationName = NSUbiquitousKeyValueStore.didChangeExternallyNotification
+        NotificationCenter.default.post(
+            name: notificationName,
+            object: store,
+            userInfo: [
+                NSUbiquitousKeyValueStoreChangeReasonKey: NSUbiquitousKeyValueStoreAccountChange,
+                NSUbiquitousKeyValueStoreChangedKeysKey: [
+                    "unrelatedKey:\(#function)",
+                ],
+            ]
+        )
+        NotificationCenter.default.post(name: notificationName, object: store, userInfo: nil)
+        NotificationCenter.default.post(
+            name: notificationName,
+            object: store,
+            userInfo: [NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray"]
+        )
+
+        XCTAssertEqual(changeCount, 3)
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func test_observer_ignoresNotificationsForUnrelatedKeys() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let observer = PersistentKeyUIObservableObject(store: store, key: key)
+        var changeCount = 0
+        let cancellable = observer.objectWillChange.sink {
+            changeCount += 1
+        }
+
+        store.postToObservers(
+            Notification(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: store,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangedKeysKey: [
+                        "unrelatedKey:\(#function)",
+                    ],
+                ]
+            )
+        )
+
+        XCTAssertEqual(changeCount, 0)
+
+        store.postToObservers(
+            Notification(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: store,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangedKeysKey: [key.id],
+                ]
+            )
+        )
+
+        XCTAssertEqual(changeCount, 1)
+        cancellable.cancel()
+    }
+
     @MainActor
     func test_observer_ignoresUnrelatedKeyValueObservation() {
         let store = ObservablePersistentKeyValueStore()
@@ -95,6 +160,22 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
 
         XCTAssertEqual(changeCount, 1)
         cancellable.cancel()
+    }
+
+    @MainActor
+    func test_store_returnsObservedStore() {
+        let firstStore = ObservablePersistentKeyValueStore()
+        let secondStore = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let observer = PersistentKeyUIObservableObject(store: firstStore, key: key)
+
+        XCTAssertTrue(observer.store as AnyObject === firstStore)
+
+        observer.store = secondStore
+
+        XCTAssertTrue(observer.store as AnyObject === secondStore)
+        XCTAssertEqual(firstStore.deregistrationCount, 1)
+        XCTAssertEqual(secondStore.registrationCount, 1)
     }
 
     #if !DEBUG

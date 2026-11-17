@@ -49,6 +49,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 
     /// Replaces `propertyListArray` with the encoded representations of `values`.
     ///
+    /// If any value fails to encode, leave `propertyListArray` unchanged. Array and dictionary writes rely on this to
+    /// keep the stored collection when one of its elements cannot be encoded.
+    ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to replace with the encoded values.
     func set(_ values: [Value], to propertyListArray: inout [Any])
@@ -64,6 +67,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Value?
 
     /// Sets the value at `dictionaryKey` in `propertyListDictionary`.
+    ///
+    /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
+    /// `dictionaryKey`. Dictionary writes rely on this to keep the stored dictionary when one of its values cannot be
+    /// encoded.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -252,6 +259,69 @@ extension PersistentKeyValueRepresentation {
     }
 }
 
+// MARK: - Container Encoding
+
+extension PersistentKeyValueRepresentation {
+    // MARK: Internal Instance Interface
+
+    /// Returns the property-list array that ``set(_:to:)`` produces for `values`, or `nil` if any element fails to
+    /// encode.
+    ///
+    /// `set(_:to:)` reports a failed element by leaving the array unchanged, which is indistinguishable from success
+    /// when the array starts empty. Seeding the array with a marker that no encoding produces makes the failure
+    /// observable, so callers can leave a store's existing collection in place instead of overwriting it.
+    @usableFromInline
+    internal func propertyListArray(encoding values: [Value]) -> [Any]? {
+        var objects: [Any] = [UnencodedContainerMarker()]
+
+        set(values, to: &objects)
+
+        guard !(objects.first is UnencodedContainerMarker) else {
+            return nil
+        }
+
+        return objects
+    }
+
+    /// Returns the property-list dictionary that ``set(_:to:in:)`` produces for every entry of `values`, or `nil` if
+    /// any value fails to encode.
+    ///
+    /// Entries whose value encodes to `nil` are omitted. Each entry is seeded with a marker before it is encoded, so a
+    /// value that fails to encode (leaving the entry unchanged) is distinguishable from one that removes it.
+    @usableFromInline
+    internal func propertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
+        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+
+        for (key, value) in values {
+            objects[key] = UnencodedContainerMarker()
+
+            set(key, to: value, in: &objects)
+
+            if objects[key] is UnencodedContainerMarker {
+                return nil
+            }
+        }
+
+        return objects
+    }
+
+    /// Returns the entries of `propertyListDictionary` that decode with ``get(_:from:)``, omitting entries that fail
+    /// to decode.
+    ///
+    /// Dictionary entries are independent, so one unreadable entry (such as an enum case written by a newer app
+    /// version) does not hide the others. Writing the result back therefore keeps every readable entry.
+    @usableFromInline
+    internal func dictionary(decoding propertyListDictionary: [String: Any]) -> [String: Value] {
+        var values: [String: Value] = Dictionary(minimumCapacity: propertyListDictionary.count)
+
+        for key in propertyListDictionary.keys {
+            values[key] = get(key, from: propertyListDictionary)
+        }
+
+        return values
+    }
+}
+
 /// The storage format used to encode or decode a persistent value.
 public enum PersistentKeyValueStorageFormat: Sendable {
     /// A property-list container such as an array or dictionary.
@@ -275,6 +345,10 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 
     /// The Swift value could not be converted into its proxy or storage representation.
     case encodingFailed
+}
+
+/// A placeholder that no representation produces, used to detect a container element that was left unencoded.
+private struct UnencodedContainerMarker {
 }
 
 /// Returns `object` wrapped for storage, or `nil` when it is not a property list that a store accepts.

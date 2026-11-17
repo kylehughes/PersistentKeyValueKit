@@ -163,6 +163,49 @@ final class MigrationNativeStoreTests: XCTestCase {
         }
     }
 
+    func testMigratableFactoryRejectsPathAndPropertyListAliases() throws {
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.alias")
+        let preferences = try XCTUnwrap(
+            FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
+        )
+        .appendingPathComponent("Preferences")
+        .path
+        let names = [
+            "\(suiteName).plist",
+            "\(suiteName).PLIST",
+            "\(suiteName).plist.plist",
+            "\(preferences)/\(suiteName).plist",
+            "\(preferences)/\(suiteName)",
+            "\(preferences)/./\(suiteName)",
+            "./\(suiteName)",
+            "other/../\(suiteName)",
+            "\(suiteName)/",
+            "~/Library/Preferences/\(suiteName)",
+            "~\(suiteName)",
+        ]
+
+        for name in names {
+            var called = false
+
+            XCTAssertNil(
+                UserDefaults.migratable(
+                    suiteName: name,
+                    makeUserDefaults: { _ in
+                        called = true
+
+                        return UserDefaults()
+                    }
+                ),
+                name
+            )
+
+            XCTAssertFalse(called, name)
+        }
+
+        XCTAssertNil(UserDefaults.migratable(suiteName: "\(preferences)/\(suiteName).plist"))
+        XCTAssertNotNil(UserDefaults.migratable(suiteName: "\(suiteName).plistx"))
+    }
+
     func testMigratableFactoryReportsFoundationInitializationFailure() {
         var called = false
 
@@ -258,6 +301,37 @@ final class MigrationNativeStoreTests: XCTestCase {
         }
 
         XCTAssertEqual(source.persistentDomain(forName: suiteName)?[key.id] as? Int, 42)
+    }
+
+    func testSuitesThatDifferOnlyByNormalizationAreTheSameStore() throws {
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.caf\u{E9}")
+        let decomposedName = suiteName.decomposedStringWithCanonicalMapping
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: decomposedName))
+        let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
+
+        defer {
+            source.removePersistentDomain(forName: suiteName)
+            destination.removePersistentDomain(forName: decomposedName)
+        }
+
+        XCTAssertFalse(suiteName.utf8.elementsEqual(decomposedName.utf8))
+
+        source.set(key, to: 42)
+
+        XCTAssertThrowsError(
+            try source.move(key, to: destination, onConflict: .keepDestinationAndRemoveSource, tracking: .untracked)
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
+        }
+
+        XCTAssertEqual(source.get(key), 42)
+        XCTAssertFalse(
+            UserDefaults.isValidMigrationDomain(
+                "test.caf\u{E9}",
+                applicationIdentifier: "test.cafe\u{301}"
+            )
+        )
     }
 
     func testMigrationMetadataLifetimeFollowsNativeObject() throws {

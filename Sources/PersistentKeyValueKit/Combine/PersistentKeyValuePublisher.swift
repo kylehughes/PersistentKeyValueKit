@@ -17,8 +17,15 @@ import Foundation
 /// If downstream demand is exhausted, subsequent changes are coalesced. When more demand is requested, the publisher
 /// emits the latest current value instead of replaying every intermediate transition.
 ///
+/// Each change value is read from the store after the store reports a change, and values are delivered serially in
+/// the order they are read. Changes that occur close together can be observed as one value, and consecutive values can
+/// be equal. A representation may write the observed key while decoding; that write is delivered as a later value.
+///
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
+/// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
+///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
+///   delivered.
 /// - SeeAlso: ``PersistentKeyProtocol/changesPublisher(in:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentKeyValues`` for observing changes from async code.
 public struct PersistentKeyValuePublisher<Key> where Key: PersistentKeyProtocol {
@@ -109,9 +116,17 @@ extension PersistentKeyValuePublisher {
 
         // MARK: Emission Definition
 
+        /// A value reserved for delivery, with its demand already consumed.
         private struct Emission {
             let downstream: Downstream
-            let value: Key.Value
+            let value: EmissionValue
+        }
+
+        private enum EmissionValue {
+            /// The current value, read after the reservation is made and the lock is released.
+            case current
+            /// The value read when the subscription was created.
+            case initial(Key.Value)
         }
 
         // MARK: Internal Initialization
@@ -194,11 +209,10 @@ extension PersistentKeyValuePublisher {
         /// - SeeAlso: https://forums.swift.org/t/crash-when-running-in-swift-6-language-mode/72431/2
         @objc
         internal nonisolated func didReceive(_ notification: Notification) {
-            guard let changedKeyIDs = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] else {
-                return
-            }
-
-            guard changedKeyIDs.contains(keyID) else {
+            guard
+                #available(watchOS 9.0, *),
+                NSUbiquitousKeyValueStore.changeNotification(notification, mayAffectKeyID: keyID)
+            else {
                 return
             }
 
@@ -241,7 +255,17 @@ extension PersistentKeyValuePublisher {
             lock.unlock()
 
             while let emission = nextEmission() {
-                let additionalDemand = emission.downstream.receive(emission.value)
+                let value: Key.Value
+
+                switch emission.value {
+                case .current:
+                    // Read outside the lock: decoding can write the observed key and report a change synchronously.
+                    value = store.get(key)
+                case let .initial(initialValue):
+                    value = initialValue
+                }
+
+                let additionalDemand = emission.downstream.receive(value)
 
                 lock.lock()
 
@@ -286,14 +310,14 @@ extension PersistentKeyValuePublisher {
                 return nil
             }
 
-            let value: Key.Value
+            let value: EmissionValue
 
             if let initialValue = pendingInitialValue {
                 pendingInitialValue = nil
-                value = initialValue
+                value = .initial(initialValue)
             } else {
                 hasPendingChange = false
-                value = store.get(key)
+                value = .current
             }
 
             if demand != .unlimited {

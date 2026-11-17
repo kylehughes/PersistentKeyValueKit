@@ -61,6 +61,9 @@ public protocol PersistentKeyValueStore {
     
     /// Removes an observer for the given key.
     ///
+    /// Only the registration matching `observer`, `key`, and `context` is removed; the observer's registrations for
+    /// other keys or contexts remain active.
+    ///
     /// - Parameter observer: The object to remove as an observer.
     /// - Parameter key: The key to stop observing.
     /// - Parameter context: Arbitrary data that more specifically identifies the observer to be removed.
@@ -77,12 +80,19 @@ public protocol PersistentKeyValueStore {
     /// ``PersistentKeyUIObservableObject``, knowing that the implementation is either `UserDefaults` or
     /// `NSUbiquitousKeyValueStore`.
     ///
-    /// If `Self` is `UserDefaults` then key-value observation, notifying `target` directly, will be used. If `Self` is
-    /// `NSUbiquitousKeyValueStore` then notifications will be used and `target` will be notified through the
-    /// `selector`.
+    /// If `Self` is `UserDefaults` then `target` is notified directly through
+    /// `observeValue(forKeyPath:of:change:context:)` with the key's identifier as the key path. Key-value observation
+    /// is used for identifiers without a period (`.`). Key-value observation treats a period as a key-path separator,
+    /// so a key whose identifier contains one is observed through `UserDefaults.didChangeNotification` instead, and
+    /// `target` is notified when the key's stored value changes. Foundation posts that notification only for changes
+    /// made in the current process, so changes to such a key made by another process might not be delivered.
     ///
-    /// For `UserDefaults`, neither the object receiving this message, nor observer, are retained. An object that calls
-    /// this method must also eventually call ``deregister(_:for:context:)`` to unregister the observer.
+    /// If `Self` is `NSUbiquitousKeyValueStore` then notifications will be used and `target` will be notified through
+    /// the `selector` with the store's change notification. `target` is notified when the notification lists `key`, and
+    /// when it might have changed every key: an account change, or a notification without a list of changed keys.
+    ///
+    /// Neither the object receiving this message, nor observer, are retained. An object that calls this method must
+    /// also eventually call ``deregister(_:for:context:)`` to unregister the observer.
     ///
     /// - Parameter observer: The observer to register.
     /// - Parameter key: The key to observe.

@@ -107,7 +107,7 @@ extension MigrationFaultStore: PersistentKeyValueMigrationBackend {
         for key: Key,
         in snapshot: MigrationSnapshot
     ) throws -> Key.Value where Key: PersistentKeyProtocol {
-        if malformedCompletionRecord && key.id.hasPrefix("PersistentKeyValueKit.MigrationCompleted.") {
+        if malformedCompletionRecord && key.id.hasPrefix("PersistentKeyValueKit_MigrationCompleted_") {
             throw PersistentKeyMigrationError.invalidCompletionRecord
         }
 

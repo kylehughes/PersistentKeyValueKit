@@ -22,6 +22,9 @@ let package = Package(
     targets: [
         .target(
             name: "PersistentKeyValueKit",
+            resources: [
+                .process("PrivacyInfo.xcprivacy"),
+            ],
             swiftSettings: [
                 .treatAllWarnings(as: .error),
             ]

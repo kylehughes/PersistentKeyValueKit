@@ -38,6 +38,38 @@ final class InMemoryPersistentKeyValueStoreAccessorTests: XCTestCase {
         XCTAssertEqual(store.object(forKey: key.id) as? Int, 7)
     }
 
+    // MARK: Normalization Tests
+
+    func test_set_compactionThatChangesValueType_storesValueUnchanged() {
+        let store = InMemoryPersistentKeyValueStore()
+        let keyID = "key:\(#function)"
+        let value: any OptionalIntArrayMarker = [1, nil, 3] as [Int?]
+
+        // Coercing to the existential keeps it from being opened, so the store sees the existential as `Value`.
+        store.set(value as any OptionalIntArrayMarker, forKey: keyID)
+
+        XCTAssertEqual(store.object(forKey: keyID) as? [Int?], [1, nil, 3])
+    }
+
+    func test_set_foundationArray_readsBackThroughKey() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = MutableArrayKey(id: "key:\(#function)")
+
+        store.set(key, to: NSMutableArray(array: [1, 2, 3]))
+
+        XCTAssertTrue(store.object(forKey: key.id) is NSMutableArray)
+        XCTAssertEqual(store.get(key), NSMutableArray(array: [1, 2, 3]))
+    }
+
+    func test_set_foundationDictionary_storesValueUnchanged() {
+        let store = InMemoryPersistentKeyValueStore()
+        let keyID = "key:\(#function)"
+
+        store.set(NSMutableDictionary(dictionary: ["a": 1]), forKey: keyID)
+
+        XCTAssertEqual(store.object(forKey: keyID) as? NSMutableDictionary, NSMutableDictionary(dictionary: ["a": 1]))
+    }
+
     // MARK: Optional Default Tests
 
     func test_get_absentOptionalKeyReturnsNonNilDefault() {
@@ -56,6 +88,49 @@ final class InMemoryPersistentKeyValueStoreAccessorTests: XCTestCase {
 
         XCTAssertNil(store.object(forKey: key.id))
         XCTAssertEqual(store.get(key), 5)
+    }
+
+    // MARK: Reentrancy Tests
+
+    func test_get_keyIdentifierReadsStore_doesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = StoreReadingKey(store: store, suffix: #function)
+
+        assertCompletes {
+            store.set(key, to: 7)
+            XCTAssertEqual(store.get(key), 7)
+            store.remove(key)
+            XCTAssertEqual(store.get(key), 0)
+        }
+    }
+
+    func test_removeObject_releasedValueReadsStore_doesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let keyID = "key:\(#function)"
+        let recorder = DeinitRecorder()
+
+        store.set(StoreReadingObject(store: store, recorder: recorder), forKey: keyID)
+
+        assertCompletes {
+            store.removeObject(forKey: keyID)
+        }
+
+        XCTAssertTrue(recorder.didReadStore)
+    }
+
+    func test_set_replacedValueReadsStore_doesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let keyID = "key:\(#function)"
+        let recorder = DeinitRecorder()
+
+        store.set(StoreReadingObject(store: store, recorder: recorder), forKey: keyID)
+
+        assertCompletes {
+            store.set(1, forKey: keyID)
+            XCTAssertEqual(store.object(forKey: keyID) as? Int, 1)
+        }
+
+        XCTAssertTrue(recorder.didReadStore)
     }
 
     // MARK: Remove Object Tests
@@ -135,6 +210,24 @@ final class InMemoryPersistentKeyValueStoreAccessorTests: XCTestCase {
 // MARK: - Private Helpers
 
 private extension InMemoryPersistentKeyValueStoreAccessorTests {
+    /// Runs `body` on another thread and fails, instead of hanging, if it does not finish.
+    ///
+    /// A deadlocked store stays locked, so callers must not access it after this returns.
+    func assertCompletes(
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ body: @escaping @Sendable () -> Void
+    ) {
+        let finished = DispatchSemaphore(value: 0)
+
+        Thread.detachNewThread {
+            body()
+            finished.signal()
+        }
+
+        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success, "The store deadlocked.", file: file, line: line)
+    }
+
     func register<Key>(
         _ observer: NSObject,
         for key: Key,
@@ -165,5 +258,91 @@ private final class AccessorObservationRecorder: NSObject {
         context: UnsafeMutableRawPointer?
     ) {
         keyPaths.append(keyPath)
+    }
+}
+
+/// Records, from another thread, that a released value read its store.
+private final class DeinitRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _didReadStore = false
+
+    var didReadStore: Bool {
+        lock.withLock {
+            _didReadStore
+        }
+    }
+
+    func recordRead() {
+        lock.withLock {
+            _didReadStore = true
+        }
+    }
+}
+
+/// Marks only arrays of optional integers, so compacting such an array would produce a value that no longer conforms.
+private protocol OptionalIntArrayMarker {
+}
+
+extension Array: OptionalIntArrayMarker where Element == Int? {
+}
+
+/// A key whose identifier reads another key from the same store.
+private struct StoreReadingKey: PersistentKeyProtocol {
+    let store: InMemoryPersistentKeyValueStore
+    let suffix: String
+
+    var defaultValue: Int {
+        0
+    }
+
+    var id: String {
+        "key:\(suffix).\(store.get(PersistentKey("prefix:\(suffix)", defaultValue: "value")))"
+    }
+
+    var representation: any PersistentKeyValueRepresentation<Int> {
+        Int.persistentKeyValueRepresentation
+    }
+
+    func get(from userDefaults: UserDefaults) -> Int {
+        representation.get(id, from: userDefaults) ?? defaultValue
+    }
+
+    @available(watchOS 9.0, *)
+    func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Int {
+        representation.get(id, from: ubiquitousStore) ?? defaultValue
+    }
+
+    func remove(from userDefaults: UserDefaults) {
+        userDefaults.removeObject(forKey: id)
+    }
+
+    @available(watchOS 9.0, *)
+    func remove(from ubiquitousStore: NSUbiquitousKeyValueStore) {
+        ubiquitousStore.removeObject(forKey: id)
+    }
+
+    func set(to newValue: Int, in userDefaults: UserDefaults) {
+        representation.set(id, to: newValue, in: userDefaults)
+    }
+
+    @available(watchOS 9.0, *)
+    func set(to newValue: Int, in ubiquitousStore: NSUbiquitousKeyValueStore) {
+        representation.set(id, to: newValue, in: ubiquitousStore)
+    }
+}
+
+/// A value whose `deinit` reads the store that held it.
+private final class StoreReadingObject: Sendable {
+    let recorder: DeinitRecorder
+    let store: InMemoryPersistentKeyValueStore
+
+    init(store: InMemoryPersistentKeyValueStore, recorder: DeinitRecorder) {
+        self.recorder = recorder
+        self.store = store
+    }
+
+    deinit {
+        _ = store.object(forKey: "unrelated")
+        recorder.recordRead()
     }
 }

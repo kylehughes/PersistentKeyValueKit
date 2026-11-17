@@ -18,11 +18,12 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// writable persistent domain is unknown.
     case missingMigrationDomain
 
-    /// The source and destination refer to the same backing store, and at least one item migrates a key to the same
-    /// key identifier.
+    /// The source and destination refer to the same backing store, and at least one item without a transform migrates
+    /// a key to the same key identifier.
     ///
-    /// Migrating within one store is allowed only when every item maps its source key to a different destination key
-    /// identifier.
+    /// Migrating within one store is allowed when every item either maps its source key to a different destination key
+    /// identifier or was created with ``PersistentKeyMigrationItem/key(_:to:transform:)``, which rewrites the value in
+    /// place under the same identifier.
     case sameStore
 
     /// The batch contains more than one item with the given source key identifier, or more than one item with the given
@@ -38,7 +39,7 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     case overlappingKeys(String)
 
     /// A source or destination key in the batch uses the given identifier, which is reserved for migration completion
-    /// markers (`PersistentKeyValueKit.MigrationCompleted.*`).
+    /// markers (`PersistentKeyValueKit_MigrationCompleted_*`).
     case reservedKey(String)
 
     /// The given key identifier exceeds the key length limit of the store that would hold it.
@@ -59,7 +60,8 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// The source value changed between the initial snapshot and source removal during a move.
     case sourceChanged
 
-    /// The destination value changed between the initial snapshot and the destination write or source cleanup.
+    /// The destination value changed between the initial snapshot and the destination write or source cleanup, or no
+    /// longer matched the migrated value after the source was removed during a move.
     case destinationChanged
 
     /// The destination store did not retain the expected value after writing.

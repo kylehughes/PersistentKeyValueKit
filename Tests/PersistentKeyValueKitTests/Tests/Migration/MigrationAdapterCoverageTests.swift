@@ -86,15 +86,14 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertTrue(try store.migrationSnapshotIsCurrent(snapshot, for: optionalKey.id))
     }
 
-    func testMemoryPrepareRejectsMismatchedNormalizedProxy() throws {
+    func testMemoryPreparePreservesFoundationCollection() throws {
         let key = MutableArrayKey(id: "coverage.proxy")
         let store = InMemoryPersistentKeyValueStore()
 
-        XCTAssertThrowsError(try store.prepareMigrationWrite(NSMutableArray(array: [1]), for: key)) { error in
-            XCTAssertEqual(error as? PersistentKeyValueConversionError, .encodingFailed)
-        }
+        let write = try store.prepareMigrationWrite(NSMutableArray(array: [1]), for: key)
+        _ = try store.commitMigrationWrite(write, replacing: nil)
 
-        XCTAssertNil(try store.migrationSnapshot(for: key.id))
+        XCTAssertEqual(store.get(key), NSMutableArray(array: [1]))
     }
 
     func testMemoryPreparedNilStoresBoxedNilAndPreservesOtherKey() throws {
@@ -385,56 +384,6 @@ private final class RefusingDefaults: UserDefaults {
         if !refuseWrites {
             super.set(value, forKey: defaultName)
         }
-    }
-}
-
-private struct MutableArrayKey {
-    let id: String
-}
-
-// MARK: - PersistentKeyProtocol Extension
-
-extension MutableArrayKey: PersistentKeyProtocol {
-    var defaultValue: NSMutableArray {
-        NSMutableArray()
-    }
-
-    var representation: any PersistentKeyValueRepresentation<NSMutableArray> {
-        ProxyPersistentKeyValueRepresentation<NSMutableArray, [Int]>(
-            to: {
-                $0 as? [Int] ?? []
-            },
-            from: {
-                NSMutableArray(array: $0)
-            }
-        )
-    }
-
-    func get(from defaults: UserDefaults) -> NSMutableArray {
-        representation.get(id, from: defaults) ?? defaultValue
-    }
-
-    @available(watchOS 9.0, *)
-    func get(from store: NSUbiquitousKeyValueStore) -> NSMutableArray {
-        representation.get(id, from: store) ?? defaultValue
-    }
-
-    func remove(from defaults: UserDefaults) {
-        defaults.removeObject(forKey: id)
-    }
-
-    @available(watchOS 9.0, *)
-    func remove(from store: NSUbiquitousKeyValueStore) {
-        store.removeObject(forKey: id)
-    }
-
-    func set(to value: NSMutableArray, in defaults: UserDefaults) {
-        representation.set(id, to: value, in: defaults)
-    }
-
-    @available(watchOS 9.0, *)
-    func set(to value: NSMutableArray, in store: NSUbiquitousKeyValueStore) {
-        representation.set(id, to: value, in: store)
     }
 }
 

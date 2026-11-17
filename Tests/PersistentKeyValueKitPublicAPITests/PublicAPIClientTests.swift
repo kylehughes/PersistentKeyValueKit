@@ -209,6 +209,35 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(destination.get(.publicLaunchCount), 0)
     }
 
+    func testItemWithTransformRewritesAKeyInPlace() throws {
+        let store = InMemoryPersistentKeyValueStore()
+        let legacy = PersistentKey<Bool>("PublicAPI.rewrite", defaultValue: false)
+        let current = PersistentKey<PublicMode>("PublicAPI.rewrite", defaultValue: .off)
+
+        store.set(legacy, to: true)
+
+        XCTAssertThrowsError(
+            try store.move(.key(legacy), to: store, onConflict: .overwriteDestination, tracking: .untracked)
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
+        }
+
+        let report = try store.move(
+            .key(legacy, to: current) {
+                $0 ? .on : .off
+            },
+            to: store,
+            onConflict: .keepBoth,
+            tracking: .once(id: "rewrite-caf\u{E9}")
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.rewritten])
+        XCTAssertTrue(report.isComplete)
+        XCTAssertEqual(store.get(current), .on)
+        XCTAssertTrue(store.get(.isMigrationCompleted(id: "rewrite-caf\u{E9}")))
+        XCTAssertTrue(store.get(.isMigrationCompleted(id: "rewrite-cafe\u{301}")))
+    }
+
     func testMigrationCapturesEachEndpointOnce() throws {
         for operation in 0..<8 {
             let source = EndpointForwardingStore(InMemoryPersistentKeyValueStore())
@@ -404,6 +433,8 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertNil(factory(""))
         XCTAssertNil(factory(kCFPreferencesAnyApplication as String))
         XCTAssertNil(factory(kCFPreferencesCurrentApplication as String))
+        XCTAssertNil(factory("\(suiteName).plist"))
+        XCTAssertNil(factory("\(NSHomeDirectory())/Library/Preferences/\(suiteName).plist"))
 
         let contextualDefaults: UserDefaults? = .migratable(suiteName: suiteName)
 

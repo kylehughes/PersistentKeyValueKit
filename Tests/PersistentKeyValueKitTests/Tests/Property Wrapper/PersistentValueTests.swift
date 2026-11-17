@@ -589,6 +589,249 @@ extension PersistentValueTests {
     }
 }
 
+// MARK: - Input Change Tests
+
+extension PersistentValueTests {
+    // MARK: Tests
+
+    @MainActor
+    func test_inputChange_environmentStore_bindingWritesNewStore() async {
+        let viewController = ViewController()
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: key.id, environmentStore: firstStore)
+        let recorder = SwitchingRecorder()
+
+        firstStore.set(key, to: 1)
+        secondStore.set(key, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        model.environmentStore = secondStore
+        await waitForRenderedValue(2, in: recorder)
+
+        recorder.binding?.wrappedValue = 7
+
+        XCTAssertEqual(firstStore.get(key), 1)
+        XCTAssertEqual(secondStore.get(key), 7)
+
+        secondStore.set(key, to: 9)
+        await waitForRenderedValue(9, in: recorder)
+    }
+
+    @MainActor
+    func test_inputChange_explicitStore_bindingWritesNewStore() async {
+        let viewController = ViewController()
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: key.id, store: firstStore, environmentStore: userDefaults)
+        let recorder = SwitchingRecorder()
+
+        firstStore.set(key, to: 1)
+        secondStore.set(key, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        model.store = secondStore
+        await waitForRenderedValue(2, in: recorder)
+
+        recorder.binding?.wrappedValue = 7
+
+        XCTAssertEqual(firstStore.get(key), 1)
+        XCTAssertEqual(secondStore.get(key), 7)
+
+        secondStore.set(key, to: 9)
+        await waitForRenderedValue(9, in: recorder)
+    }
+
+    @MainActor
+    func test_inputChange_explicitValueTypeStore_observesChanges() async {
+        let viewController = ViewController()
+        let baseStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: key.id, store: ForwardingStore(base: baseStore), environmentStore: userDefaults)
+        let recorder = SwitchingRecorder()
+
+        baseStore.set(key, to: 1)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        baseStore.set(key, to: 2)
+        await waitForRenderedValue(2, in: recorder)
+
+        recorder.binding?.wrappedValue = 7
+
+        XCTAssertEqual(baseStore.get(key), 7)
+
+        baseStore.set(key, to: 9)
+        await waitForRenderedValue(9, in: recorder)
+    }
+
+    @MainActor
+    func test_inputChange_key_bindingWritesNewKey() async {
+        let viewController = ViewController()
+        let store = InMemoryPersistentKeyValueStore()
+        let firstKey = PersistentKey("firstKey:\(#function)", defaultValue: 0)
+        let secondKey = PersistentKey("secondKey:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: firstKey.id, store: store, environmentStore: userDefaults)
+        let recorder = SwitchingRecorder()
+
+        store.set(firstKey, to: 1)
+        store.set(secondKey, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        model.keyID = secondKey.id
+        await waitForRenderedValue(2, in: recorder)
+
+        recorder.binding?.wrappedValue = 7
+
+        XCTAssertEqual(store.get(firstKey), 1)
+        XCTAssertEqual(store.get(secondKey), 7)
+
+        store.set(secondKey, to: 9)
+        await waitForRenderedValue(9, in: recorder)
+    }
+
+    // MARK: Private Instance Interface
+
+    /// Waits until the row renders `value`, failing after a bounded timeout.
+    @MainActor
+    private func waitForRenderedValue(_ value: Int, in recorder: SwitchingRecorder) async {
+        guard recorder.renderedValue != value else {
+            return
+        }
+
+        let rendered = expectation(description: "Rendered \(value)")
+
+        recorder.onRender = { renderedValue in
+            guard renderedValue == value else {
+                return
+            }
+
+            recorder.onRender = nil
+            rendered.fulfill()
+        }
+
+        await fulfillment(of: [rendered], timeout: 5)
+        recorder.onRender = nil
+    }
+}
+
+// MARK: - ForwardingStore Definition
+
+/// A value-type store that forwards every operation to a backing store.
+private struct ForwardingStore: PersistentKeyValueStore {
+    let base: InMemoryPersistentKeyValueStore
+
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        base.migrationEndpoint
+    }
+
+    func deregister<Key>(
+        _ observer: NSObject,
+        for key: Key,
+        context: UnsafeMutableRawPointer?
+    ) where Key: PersistentKeyProtocol {
+        base.deregister(observer, for: key, context: context)
+    }
+
+    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        base.get(key)
+    }
+
+    func register<Key>(
+        observer: NSObject,
+        for key: Key,
+        with context: UnsafeMutableRawPointer?,
+        and selector: Selector
+    ) where Key: PersistentKeyProtocol {
+        base.register(observer: observer, for: key, with: context, and: selector)
+    }
+
+    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
+        base.remove(key)
+    }
+
+    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        base.set(key, to: value)
+    }
+}
+
+// MARK: - SwitchingModel Definition
+
+/// The inputs a parent view passes to a row whose identity stays the same.
+@MainActor
+private final class SwitchingModel: ObservableObject {
+    @Published var environmentStore: any PersistentKeyValueStore
+    @Published var keyID: String
+    @Published var store: (any PersistentKeyValueStore)?
+
+    init(
+        keyID: String,
+        store: (any PersistentKeyValueStore)? = nil,
+        environmentStore: any PersistentKeyValueStore
+    ) {
+        self.environmentStore = environmentStore
+        self.keyID = keyID
+        self.store = store
+    }
+}
+
+// MARK: - SwitchingRecorder Definition
+
+/// Records the value and binding from the row's most recent render.
+@MainActor
+private final class SwitchingRecorder {
+    var binding: Binding<Int>?
+    var onRender: ((Int) -> Void)?
+    var renderedValue: Int?
+
+    func record(_ value: Int, binding: Binding<Int>) {
+        renderedValue = value
+        self.binding = binding
+        onRender?(value)
+    }
+}
+
+// MARK: - SwitchingRoot Definition
+
+private struct SwitchingRoot: View {
+    @ObservedObject var model: SwitchingModel
+
+    let recorder: SwitchingRecorder
+
+    var body: some View {
+        SwitchingRow(keyID: model.keyID, store: model.store, recorder: recorder)
+            .defaultPersistentKeyValueStore(model.environmentStore)
+    }
+}
+
+// MARK: - SwitchingRow Definition
+
+private struct SwitchingRow: View {
+    @PersistentValue<PersistentKey<Int>> var value: Int
+
+    let recorder: SwitchingRecorder
+
+    init(keyID: String, store: (any PersistentKeyValueStore)?, recorder: SwitchingRecorder) {
+        _value = PersistentValue(PersistentKey(keyID, defaultValue: 0), store: store)
+        self.recorder = recorder
+    }
+
+    var body: some View {
+        recorder.record(value, binding: $value)
+
+        return Text(String(value))
+    }
+}
+
 // MARK: - TestView Definition
 
 private struct TestView {

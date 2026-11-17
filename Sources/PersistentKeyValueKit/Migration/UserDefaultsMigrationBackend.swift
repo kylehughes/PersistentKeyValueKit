@@ -2,6 +2,9 @@ import Foundation
 
 /// The migration backend for one UserDefaults persistent domain.
 ///
+/// Snapshots read `userDefaults`' persistent domain, and writes and removals go through `userDefaults` so its observers
+/// are notified.
+///
 /// The wrapped Foundation object and domain name are immutable after initialization. Subclasses used for testing must
 /// preserve UserDefaults' thread-safety guarantees.
 final class UserDefaultsMigrationBackend: @unchecked Sendable {
@@ -22,6 +25,24 @@ final class UserDefaultsMigrationBackend: @unchecked Sendable {
             namespace: "UserDefaults",
             identifier: UserDefaults.migrationDomainIdentifier(domainName)
         )
+    }
+}
+
+// MARK: - Persistent Domain Extension
+
+extension UserDefaultsMigrationBackend {
+    // MARK: Internal Instance Interface
+
+    /// Returns the persisted domain as Foundation's own dictionary, or `nil` if Foundation returns no domain.
+    ///
+    /// Swift's `persistentDomain(forName:)` bridges the result to `[String: Any]`, which merges keys that are
+    /// canonically equivalent but that Foundation stores separately, such as composed and decomposed spellings of
+    /// "café". Sending the Objective-C message keeps the `NSDictionary`, whose key lookup is literal. The domain comes
+    /// from `userDefaults` itself, so it resolves the same storage, including app group containers.
+    func persistentDomain() -> NSDictionary? {
+        userDefaults
+            .perform(#selector(UserDefaults.persistentDomain(forName:)), with: domainName)?
+            .takeUnretainedValue() as? NSDictionary
     }
 }
 
@@ -47,6 +68,15 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         }
 
         if let object = write.object {
+            // Foundation ignores a write that Core Foundation considers equal to the stored value, such as `1` over
+            // `true`, so a type-only change must replace the stored value.
+            if let snapshot,
+                !PropertyListMigrationStorage.equal(snapshot.object, object),
+                CFEqual(snapshot.object as AnyObject, object as AnyObject)
+            {
+                userDefaults.removeObject(forKey: write.keyID)
+            }
+
             userDefaults.set(object, forKey: write.keyID)
         } else {
             userDefaults.removeObject(forKey: write.keyID)
@@ -65,7 +95,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
     }
 
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
-        guard let object = userDefaults.persistentDomain(forName: domainName)?[keyID] else {
+        guard let object = persistentDomain()?.object(forKey: keyID as NSString) else {
             return nil
         }
 

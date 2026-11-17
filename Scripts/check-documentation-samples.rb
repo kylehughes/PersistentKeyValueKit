@@ -6,9 +6,16 @@
 
 require "open3"
 
+# Returns combined stdout and stderr, for diagnostics.
 def capture(*command)
   output, status = Open3.capture2e(*command)
   [output, status.success?]
+end
+
+# Returns stdout only, so that warnings on stderr never contaminate a value. Stderr is reported when the command fails.
+def capture_stdout(*command)
+  output, error, status = Open3.capture3(*command)
+  [status.success? ? output : error, status.success?]
 end
 
 def normalized_lines(text)
@@ -38,7 +45,7 @@ Dir.chdir(File.expand_path("..", __dir__))
 
 output, success = capture("swift", "build")
 abort(output) unless success
-build_path, success = capture("swift", "build", "--show-bin-path")
+build_path, success = capture_stdout("swift", "build", "--show-bin-path")
 abort(build_path) unless success
 build_path = build_path.strip
 
