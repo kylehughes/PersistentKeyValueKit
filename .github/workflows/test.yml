@@ -16,8 +16,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
     name: Get Environment Details (Xcode ${{ matrix.xcode }})
     runs-on: ${{ matrix.os }}
     steps:
@@ -37,28 +37,28 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: iOS
-            destination: "name=iPhone 17 Pro"
+            destination: "name=iPhone 18 Pro,OS=27.2"
             sdk: iphonesimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: tvOS
-            destination: "name=Apple TV 4K (3rd generation)"
+            destination: "name=Apple TV 4K (4th generation),OS=27.2"
             sdk: appletvsimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: visionOS
-            destination: "name=Apple Vision Pro"
+            destination: "name=Apple Vision Pro,OS=27.2"
             sdk: xrsimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: watchOS
-            destination: "name=Apple Watch Ultra 3 (49mm)"
+            destination: "name=Apple Watch Ultra 4 (49mm),OS=27.2"
             sdk: watchsimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: macOS
     name: Test ${{ matrix.platform }} (Xcode ${{ matrix.xcode }})
     runs-on: ${{ matrix.os }}
