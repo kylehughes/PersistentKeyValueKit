@@ -29,6 +29,74 @@ final class PrimitiveKeyValuePersistibleDefaultsTests: XCTestCase {
     }
 }
 
+// MARK: - Property List Array Tests
+
+extension PrimitiveKeyValuePersistibleDefaultsTests {
+    func test_getFromArray_decodesEveryElement() {
+        XCTAssertEqual(ConversionOnlyPrimitive.get(from: [1, 2]), [.init(1), .init(2)])
+        XCTAssertEqual(ConversionOnlyPrimitive.get(from: []), [])
+    }
+
+    func test_getFromArray_returnsNilWhenAnyElementFailsToDecode() {
+        XCTAssertNil(ConversionOnlyPrimitive.get(from: [1, "2"]))
+    }
+
+    func test_setToArray_assignsEncodedObjectsAndDropsRemovedElements() {
+        var array: [Any] = ["existing"]
+
+        ConversionOnlyPrimitive.set([.init(3), .init(0), .init(4)], to: &array)
+
+        // The encoded `Int` objects are stored, not `ConversionOnlyPrimitive` values.
+        XCTAssertEqual(array as? [Int], [3, 4])
+    }
+
+    func test_setToArray_leavesArrayUnchangedWhenAnyElementThrows() {
+        var array: [Any] = ["existing"]
+
+        ConversionOnlyPrimitive.set([.init(3), .init(-1)], to: &array)
+
+        XCTAssertEqual(array as? [String], ["existing"])
+    }
+}
+
+// MARK: - Property List Dictionary Tests
+
+extension PrimitiveKeyValuePersistibleDefaultsTests {
+    func test_getFromDictionary() {
+        let dictionary: [String: Any] = ["valid": 5, "invalid": "5"]
+
+        XCTAssertEqual(ConversionOnlyPrimitive.get("valid", from: dictionary), .init(5))
+        XCTAssertNil(ConversionOnlyPrimitive.get("invalid", from: dictionary))
+        XCTAssertNil(ConversionOnlyPrimitive.get("absent", from: dictionary))
+    }
+
+    func test_setInDictionary() {
+        var dictionary: [String: Any] = ["removed": 1, "unchanged": 2]
+
+        ConversionOnlyPrimitive.set("written", to: .init(6), in: &dictionary)
+        ConversionOnlyPrimitive.set("removed", to: .init(0), in: &dictionary)
+        ConversionOnlyPrimitive.set("unchanged", to: .init(-1), in: &dictionary)
+
+        XCTAssertEqual(dictionary as? [String: Int], ["written": 6, "unchanged": 2])
+    }
+
+    func test_userDefaults_arrayAndDictionaryKeysStoreEncodedObjects() {
+        let arrayKey = PersistentKey("key:\(#function).array", defaultValue: [ConversionOnlyPrimitive]())
+        let dictionaryKey = PersistentKey(
+            "key:\(#function).dictionary",
+            defaultValue: [String: ConversionOnlyPrimitive]()
+        )
+
+        userDefaults.set(arrayKey, to: [.init(7), .init(0), .init(8)])
+        userDefaults.set(dictionaryKey, to: ["a": .init(9), "removed": .init(0)])
+
+        XCTAssertEqual(userDefaults.object(forKey: arrayKey.id) as? [Int], [7, 8])
+        XCTAssertEqual(userDefaults.object(forKey: dictionaryKey.id) as? [String: Int], ["a": 9])
+        XCTAssertEqual(userDefaults.get(arrayKey), [.init(7), .init(8)])
+        XCTAssertEqual(userDefaults.get(dictionaryKey), ["a": .init(9)])
+    }
+}
+
 // MARK: - User Defaults Tests
 
 extension PrimitiveKeyValuePersistibleDefaultsTests {

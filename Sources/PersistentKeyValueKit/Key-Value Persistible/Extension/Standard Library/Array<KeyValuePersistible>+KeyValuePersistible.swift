@@ -72,16 +72,14 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         let representation = Element.persistentKeyValueRepresentation
 
-        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
-        
-        for value in values {
+        propertyListArray = values.map { value in
             var childPropertyListArray: [Any] = []
-            
+
             childPropertyListArray.reserveCapacity(value.count)
-            
+
             representation.set(value, to: &childPropertyListArray)
-            
-            propertyListArray.append(childPropertyListArray)
+
+            return childPropertyListArray
         }
     }
     

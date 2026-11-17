@@ -31,9 +31,9 @@ import Foundation
 /// It is intended, but not required, that conforming types' representations are of type
 /// ``PrimitivePersistentKeyValueRepresentation``.
 ///
-/// Conforming types implement ``decode(storageObject:format:)`` and ``encode(format:)``. The `UserDefaults` and
-/// `NSUbiquitousKeyValueStore` methods default to those conversions. The property-list array and dictionary methods
-/// default to storing `Self` directly, so a type that is not itself a property-list object should implement them.
+/// Conforming types implement ``decode(storageObject:format:)`` and ``encode(format:)``. The store-specific `get` and
+/// `set` methods have default implementations built on those conversions; property-list arrays and dictionaries use
+/// ``PersistentKeyValueStorageFormat/propertyList``. Built-in primitive types implement these methods themselves.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Decodes a value from a stored object for the given storage format.
     ///
@@ -132,27 +132,69 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
 
 extension PrimitiveKeyValuePersistible {
     // MARK: Interfacing with Property List Array
-    
-    @inlinable
+
+    /// Decodes every element of `propertyListArray` with ``decode(storageObject:format:)``, returning `nil` if any
+    /// element fails to decode.
     public static func get(from propertyListArray: [Any]) -> [Self]? {
-        propertyListArray as? [Self]
+        var values: [Self] = []
+
+        values.reserveCapacity(propertyListArray.count)
+
+        for object in propertyListArray {
+            guard let value = try? decode(storageObject: object, format: .propertyList) else {
+                return nil
+            }
+
+            values.append(value)
+        }
+
+        return values
     }
-    
-    @inlinable
-    public static func set(_ value: [Self], to propertyListArray: inout [Any]) {
-        propertyListArray = value
+
+    /// Replaces `propertyListArray` with the objects returned by ``encode(format:)``, omitting elements that encode
+    /// to `nil`.
+    ///
+    /// Leaves `propertyListArray` unchanged if encoding any element throws.
+    public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
+        var objects: [Any] = []
+
+        objects.reserveCapacity(values.count)
+
+        for value in values {
+            guard let object = encodedObject(for: value, format: .propertyList) else {
+                return
+            }
+
+            if let object {
+                objects.append(object)
+            }
+        }
+
+        propertyListArray = objects
     }
-    
+
     // MARK: Interfacing with Property List Dictionary
-    
-    @inlinable
+
+    /// Decodes the object at `dictionaryKey` with ``decode(storageObject:format:)``, returning `nil` when it is absent
+    /// or fails to decode.
     public static func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Self? {
-        propertyListDictionary[dictionaryKey] as? Self
+        propertyListDictionary[dictionaryKey].flatMap {
+            try? decode(storageObject: $0, format: .propertyList)
+        }
     }
-    
-    @inlinable
+
+    /// Writes the object returned by ``encode(format:)``, removes `dictionaryKey` when it returns `nil`, and leaves
+    /// `propertyListDictionary` unchanged when it throws.
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
-        propertyListDictionary[dictionaryKey] = value
+        guard let object = encodedObject(for: value, format: .propertyList) else {
+            return
+        }
+
+        if let object {
+            propertyListDictionary[dictionaryKey] = object
+        } else {
+            propertyListDictionary.removeValue(forKey: dictionaryKey)
+        }
     }
 
     // MARK: Interfacing with User Defaults

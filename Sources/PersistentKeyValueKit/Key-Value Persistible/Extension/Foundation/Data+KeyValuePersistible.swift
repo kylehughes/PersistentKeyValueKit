@@ -31,6 +31,31 @@ extension Data: PrimitiveKeyValuePersistible {
         self
     }
 
+    // MARK: Interfacing with Property List Array
+
+    // Values of this type are property-list objects, so containers store and cast them directly.
+    @inlinable
+    public static func get(from propertyListArray: [Any]) -> [Self]? {
+        propertyListArray as? [Self]
+    }
+
+    @inlinable
+    public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
+        propertyListArray = values
+    }
+
+    // MARK: Interfacing with Property List Dictionary
+
+    @inlinable
+    public static func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Self? {
+        propertyListDictionary[dictionaryKey] as? Self
+    }
+
+    @inlinable
+    public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
+        propertyListDictionary[dictionaryKey] = value
+    }
+
     // MARK: Interfacing with User Defaults
     
     @inlinable

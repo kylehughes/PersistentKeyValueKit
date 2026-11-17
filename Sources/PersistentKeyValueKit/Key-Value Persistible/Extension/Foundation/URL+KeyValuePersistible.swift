@@ -100,11 +100,7 @@ extension URL: PrimitiveKeyValuePersistible {
     
     @inlinable
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
-        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
-
-        for value in values {
-            propertyListArray.append(value.absoluteString)
-        }
+        propertyListArray = values.map(\.absoluteString)
     }
     
     // MARK: Interfacing with Property List Dictionary

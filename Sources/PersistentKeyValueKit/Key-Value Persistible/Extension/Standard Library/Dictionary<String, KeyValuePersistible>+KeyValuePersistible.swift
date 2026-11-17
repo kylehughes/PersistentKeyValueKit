@@ -81,10 +81,8 @@ where
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         let representation = Value.persistentKeyValueRepresentation
 
-        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
-        
-        for value in values {
-            propertyListArray.append(transformToPropertyListDictionary(value, using: representation))
+        propertyListArray = values.map {
+            transformToPropertyListDictionary($0, using: representation)
         }
     }
     
