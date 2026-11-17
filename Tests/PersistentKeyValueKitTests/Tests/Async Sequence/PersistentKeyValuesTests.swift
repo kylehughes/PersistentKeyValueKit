@@ -431,8 +431,8 @@ extension PersistentKeyValuesTests {
         _ sequence: Sequence
     ) where Sequence: AsyncSequence & Sendable, Sequence.Element: Sendable {}
 
-    private func makeUserDefaults() throws -> (userDefaults: UserDefaults, suiteName: String) {
-        let suiteName = "PersistentKeyValuesTests.\(UUID().uuidString)"
+    private func makeUserDefaults(_ function: String = #function) throws -> (userDefaults: UserDefaults, suiteName: String) {
+        let suiteName = stableSuiteName("PersistentKeyValuesTests", function: function)
         let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
         userDefaults.removePersistentDomain(forName: suiteName)

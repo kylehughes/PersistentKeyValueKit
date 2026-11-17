@@ -179,7 +179,7 @@ extension ProxyPersistentKeyValueRepresentationTests {
                 Int($0)
             }
         )
-        let suiteName = "PersistentKeyValueKit.ProxyRepresentation.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("PersistentKeyValueKit.ProxyRepresentation")
         let key = "key:\(#function)"
         let userDefaults = UserDefaults(suiteName: suiteName)!
 

@@ -96,7 +96,7 @@ final class MigrationObservationTests: XCTestCase {
     }
 
     func testDestinationMemoryObservationCanChangeSourceBeforeCleanup() throws {
-        let suiteName = "MigrationObservation.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationObservation")
         let source = UserDefaults(suiteName: suiteName)!
 
         defer {
@@ -200,7 +200,7 @@ final class MigrationObservationTests: XCTestCase {
 
     func testUserDefaultsDestinationObserverCausesWriteFailure() throws {
         let source = InMemoryPersistentKeyValueStore()
-        let suite = "MigrationObservation.\(UUID().uuidString)"
+        let suite = stableSuiteName("MigrationObservation")
         let defaults = UserDefaults(suiteName: suite)!
 
         defer {

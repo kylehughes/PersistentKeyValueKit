@@ -19,7 +19,7 @@ final class MigrationNativeStoreTests: XCTestCase {
                 }
 
                 do {
-                    let suiteName = "MigrationNativeStoreTests.concurrent.\(index).\(UUID().uuidString)"
+                    let suiteName = stableSuiteName("MigrationNativeStoreTests.concurrent.\(index)")
                     let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
 
                     _ = try defaults.migrationEndpoint
@@ -36,7 +36,7 @@ final class MigrationNativeStoreTests: XCTestCase {
 
         XCTAssertTrue(errors.isEmpty, "Unexpected errors: \(errors.snapshot())")
 
-        let suiteName = "MigrationNativeStoreTests.shared.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.shared")
 
         defer {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
@@ -76,7 +76,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     func testFactoryLeavesPreexistingPersistentDataUntouched() throws {
-        let suiteName = "MigrationNativeStoreTests.existing.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.existing")
         let raw = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
         defer {
@@ -113,7 +113,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     func testMigratableFactoryPassesNameVerbatimAndReturnsInjectedInstance() throws {
-        let suiteName = "MigrationNativeStoreTests.verbatim.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.verbatim")
         let injected = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         let result = try XCTUnwrap(
             UserDefaults.migratable(
@@ -168,7 +168,7 @@ final class MigrationNativeStoreTests: XCTestCase {
 
         XCTAssertNil(
             UserDefaults.migratable(
-                suiteName: "MigrationNativeStoreTests.invalid.\(UUID().uuidString)",
+                suiteName: stableSuiteName("MigrationNativeStoreTests.invalid"),
                 makeUserDefaults: { _ in
                     called = true
 
@@ -181,7 +181,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     func testMigratableFactoryReturnsNativeObjectAndAssociatesDomain() throws {
-        let suiteName = "MigrationNativeStoreTests.native.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.native")
 
         defer {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
@@ -239,7 +239,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     func testSuitesThatDifferOnlyByCaseAreTheSameStore() throws {
-        let suiteName = "MigrationNativeStoreTests.case.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.case")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName.lowercased()))
         let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
@@ -261,7 +261,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     func testMigrationMetadataLifetimeFollowsNativeObject() throws {
-        let suiteName = "MigrationNativeStoreTests.lifetime.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.lifetime")
 
         defer {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
@@ -293,7 +293,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     func testSeparateRawInstancesDoNotShareMigrationMetadata() throws {
-        let suiteName = "MigrationNativeStoreTests.unconfigured.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.unconfigured")
 
         defer {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
@@ -341,7 +341,7 @@ final class MigrationNativeStoreTests: XCTestCase {
 
     func testUnknownUserDefaultsFailsBeforeMutation() throws {
         let source = InMemoryPersistentKeyValueStore()
-        let suiteName = "MigrationNativeStoreTests.unknown.\(UUID().uuidString)"
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.unknown")
 
         defer {
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)

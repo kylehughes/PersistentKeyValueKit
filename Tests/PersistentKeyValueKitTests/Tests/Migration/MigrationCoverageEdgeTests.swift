@@ -27,7 +27,7 @@ final class MigrationCoverageEdgeTests: XCTestCase {
 
     func testIntentionalNilMoveRemovesDestination() throws {
         let source = InMemoryPersistentKeyValueStore()
-        let suite = "MigrationCoverageEdge.\(UUID().uuidString)"
+        let suite = stableSuiteName("MigrationCoverageEdge")
         let defaults = UserDefaults(suiteName: suite)!
 
         defer {

@@ -272,7 +272,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     func testUserDefaultsConstructorsAndNilWrite() throws {
-        let suite = "MigrationAdapterCoverageTests.\(UUID().uuidString)"
+        let suite = stableSuiteName("MigrationAdapterCoverageTests")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suite))
         let store = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite)
 
@@ -293,7 +293,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     func testUserDefaultsRefusingStoreReportsWriteAndRemovalFailures() throws {
-        let name = "MigrationAdapterCoverageTests.refusing.\(UUID().uuidString)"
+        let name = stableSuiteName("MigrationAdapterCoverageTests.refusing")
         let raw = RefusingDefaults(suiteName: name)!
         let store = UserDefaultsMigrationBackend(userDefaults: raw, domainName: name)
 
@@ -319,8 +319,8 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     func testUserDefaultsSnapshotAndWriteTokensRejectWrongKeyOrStore() throws {
-        let firstName = "MigrationAdapterCoverageTests.first.\(UUID().uuidString)"
-        let secondName = "MigrationAdapterCoverageTests.second.\(UUID().uuidString)"
+        let firstName = stableSuiteName("MigrationAdapterCoverageTests.first")
+        let secondName = stableSuiteName("MigrationAdapterCoverageTests.second")
         let first = UserDefaultsMigrationBackend(
             userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: firstName)),
             domainName: firstName
@@ -346,7 +346,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     func testUserDefaultsStaleSnapshotAndAbsentInsertion() throws {
-        let name = "MigrationAdapterCoverageTests.stale.\(UUID().uuidString)"
+        let name = stableSuiteName("MigrationAdapterCoverageTests.stale")
         let store = UserDefaultsMigrationBackend(
             userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: name)),
             domainName: name

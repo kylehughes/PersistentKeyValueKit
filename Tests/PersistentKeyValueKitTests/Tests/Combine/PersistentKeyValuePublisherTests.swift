@@ -510,8 +510,8 @@ extension PersistentKeyValuePublisherTests {
 // MARK: - Test Utilities
 
 extension PersistentKeyValuePublisherTests {
-    private func makeUserDefaults() throws -> (userDefaults: UserDefaults, suiteName: String) {
-        let suiteName = "PersistentKeyValuePublisherTests.\(UUID().uuidString)"
+    private func makeUserDefaults(_ function: String = #function) throws -> (userDefaults: UserDefaults, suiteName: String) {
+        let suiteName = stableSuiteName("PersistentKeyValuePublisherTests", function: function)
         let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
         userDefaults.removePersistentDomain(forName: suiteName)

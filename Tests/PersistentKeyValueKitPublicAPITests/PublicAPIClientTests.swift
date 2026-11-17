@@ -64,7 +64,7 @@ final class PublicAPIClientTests: XCTestCase {
     }
 
     func testConversionOnlyConformancesWorkWithEveryStore() throws {
-        let suiteName = "PersistentKeyValueKit.PublicAPI.conversionOnly.\(UUID().uuidString)"
+        let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.conversionOnly")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
 
         defer {
@@ -369,7 +369,7 @@ final class PublicAPIClientTests: XCTestCase {
     }
 
     func testUserDefaultsMigratableFactoryIsFailableAndNonthrowing() throws {
-        let suiteName = "PersistentKeyValueKit.PublicAPI.factory.\(UUID().uuidString)"
+        let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.factory")
         let factory: (String) -> UserDefaults? = UserDefaults.migratable(suiteName:)
         let defaults = try XCTUnwrap(factory(suiteName))
 
@@ -387,7 +387,7 @@ final class PublicAPIClientTests: XCTestCase {
     }
 
     func testUserDefaultsNativeStoreForwardsOrdinaryAccessAndObservation() throws {
-        let suiteName = "PersistentKeyValueKit.PublicAPI.\(UUID().uuidString)"
+        let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI")
         let plainDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
         defer {
@@ -429,8 +429,8 @@ final class PublicAPIClientTests: XCTestCase {
     }
 
     func testUserDefaultsNativeStoreMigrationUsesCustomRepresentations() throws {
-        let sourceName = "PersistentKeyValueKit.PublicAPI.source.\(UUID().uuidString)"
-        let destinationName = "PersistentKeyValueKit.PublicAPI.destination.\(UUID().uuidString)"
+        let sourceName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.source")
+        let destinationName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.destination")
 
         defer {
             UserDefaults.standard.removePersistentDomain(forName: sourceName)
@@ -748,4 +748,14 @@ extension PersistentKeyProtocol where Self == PersistentKey<String> {
     fileprivate static var publicTheme: Self {
         Self("PublicAPI.theme", defaultValue: "")
     }
+}
+
+/// Returns a suite name that is stable across runs and unique to the calling test, with its domain cleared, so
+/// repeated runs reuse one preferences file instead of accumulating new ones.
+private func publicAPISuiteName(_ prefix: String, function: String = #function) -> String {
+    let name = "\(prefix).\(function)"
+
+    UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+
+    return name
 }

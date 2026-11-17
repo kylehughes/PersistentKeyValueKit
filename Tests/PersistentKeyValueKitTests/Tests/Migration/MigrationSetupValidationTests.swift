@@ -155,7 +155,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         XCTAssertEqual(fromLong.outcomes.map(\.status), [.moved])
         XCTAssertEqual(cloud.get(short), 2)
 
-        let defaultsName = "MigrationSetupValidationTests.\(UUID().uuidString)"
+        let defaultsName = stableSuiteName("MigrationSetupValidationTests")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: defaultsName))
 
         defer {

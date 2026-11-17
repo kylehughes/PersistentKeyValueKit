@@ -72,7 +72,7 @@ final class MigrationStoreMatrixTests: XCTestCase {
     }
 
     private func makeDefaults(_ suffix: String) -> UserDefaultsMigrationBackend {
-        let name = "MigrationStoreMatrixTests.\(suffix).\(UUID().uuidString)"
+        let name = stableSuiteName("MigrationStoreMatrixTests.\(suffix)")
         let defaults = UserDefaults(suiteName: name)!
 
         addTeardownBlock {

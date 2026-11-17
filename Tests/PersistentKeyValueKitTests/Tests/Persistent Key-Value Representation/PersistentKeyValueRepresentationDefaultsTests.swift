@@ -16,7 +16,7 @@ final class PersistentKeyValueRepresentationDefaultsTests: XCTestCase {
     // MARK: XCTestCase Implementation
 
     override func setUpWithError() throws {
-        suiteName = "PersistentKeyValueKitTests.RepresentationDefaults.\(UUID().uuidString)"
+        suiteName = stableSuiteName("PersistentKeyValueKitTests.RepresentationDefaults", function: name)
         userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     }
 

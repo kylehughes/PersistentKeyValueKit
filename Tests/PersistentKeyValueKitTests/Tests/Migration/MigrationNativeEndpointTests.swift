@@ -7,9 +7,9 @@ final class MigrationNativeEndpointTests: XCTestCase {
     // MARK: Tests
 
     func testAddedSuiteSourceValueIsAbsentAndDestinationFallbackIsNotAConflict() throws {
-        let sourceName = "MigrationNativeEndpointTests.addedOnlySource.\(UUID().uuidString)"
-        let destinationName = "MigrationNativeEndpointTests.addedOnlyDestination.\(UUID().uuidString)"
-        let addedName = "MigrationNativeEndpointTests.addedOnly.\(UUID().uuidString)"
+        let sourceName = stableSuiteName("MigrationNativeEndpointTests.addedOnlySource")
+        let destinationName = stableSuiteName("MigrationNativeEndpointTests.addedOnlyDestination")
+        let addedName = stableSuiteName("MigrationNativeEndpointTests.addedOnly")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let added = try XCTUnwrap(UserDefaults(suiteName: addedName))
@@ -39,9 +39,9 @@ final class MigrationNativeEndpointTests: XCTestCase {
     }
 
     func testAddedSuiteValuesDoNotMaskMigrationOrCompletionMarker() throws {
-        let sourceName = "MigrationNativeEndpointTests.addedSource.\(UUID().uuidString)"
-        let destinationName = "MigrationNativeEndpointTests.addedDestination.\(UUID().uuidString)"
-        let addedName = "MigrationNativeEndpointTests.added.\(UUID().uuidString)"
+        let sourceName = stableSuiteName("MigrationNativeEndpointTests.addedSource")
+        let destinationName = stableSuiteName("MigrationNativeEndpointTests.addedDestination")
+        let addedName = stableSuiteName("MigrationNativeEndpointTests.added")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let added = try XCTUnwrap(UserDefaults(suiteName: addedName))
@@ -209,12 +209,16 @@ final class MigrationNativeEndpointTests: XCTestCase {
 
     @available(watchOS 9.0, *)
     func testNativeCloudAndMemoryStoresUseOrdinaryGenericAndExistentialContracts() throws {
+        var nativeStoreCount = 0
         let factories: [() throws -> any PersistentKeyValueStore] = [
             {
                 InMemoryPersistentKeyValueStore()
             },
             {
-                let name = "MigrationNativeEndpointTests.generic.\(UUID().uuidString)"
+                let name = stableSuiteName("MigrationNativeEndpointTests.generic.\(nativeStoreCount)")
+
+                nativeStoreCount += 1
+
                 let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
 
                 self.addTeardownBlock {
@@ -275,8 +279,8 @@ final class MigrationNativeEndpointTests: XCTestCase {
 
     func testRawUserDefaultsCannotParticipateInAnyEndpointRole() throws {
         let key = PersistentKey<Int>(#function, defaultValue: 0)
-        let sourceName = "MigrationNativeEndpointTests.rawSource.\(UUID().uuidString)"
-        let destinationName = "MigrationNativeEndpointTests.rawDestination.\(UUID().uuidString)"
+        let sourceName = stableSuiteName("MigrationNativeEndpointTests.rawSource")
+        let destinationName = stableSuiteName("MigrationNativeEndpointTests.rawDestination")
 
         defer {
             UserDefaults(suiteName: sourceName)?.removePersistentDomain(forName: sourceName)
@@ -353,8 +357,8 @@ final class MigrationNativeEndpointTests: XCTestCase {
         try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
     }
 
-    private func makeNativePair() throws -> (UserDefaults, UserDefaults, String) {
-        let name = "MigrationNativeEndpointTests.alias.\(UUID().uuidString)"
+    private func makeNativePair(_ function: String = #function) throws -> (UserDefaults, UserDefaults, String) {
+        let name = stableSuiteName("MigrationNativeEndpointTests.alias", function: function)
         let first = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
         let second = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
 

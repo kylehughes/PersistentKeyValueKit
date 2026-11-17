@@ -37,8 +37,8 @@ final class MigrationAdapterTests: XCTestCase {
                 $0
             }
         )
-        let sourceName = "MigrationAdapterTests.unsupported.source.\(UUID().uuidString)"
-        let destinationName = "MigrationAdapterTests.unsupported.destination.\(UUID().uuidString)"
+        let sourceName = stableSuiteName("MigrationAdapterTests.unsupported.source")
+        let destinationName = stableSuiteName("MigrationAdapterTests.unsupported.destination")
         let sourceDefaults = UserDefaults(suiteName: sourceName)!
         let destinationDefaults = UserDefaults(suiteName: destinationName)!
 
@@ -226,7 +226,7 @@ final class MigrationAdapterTests: XCTestCase {
     }
 
     func testSameUserDefaultsDomainRejected() throws {
-        let name = "MigrationAdapterTests.alias.\(UUID().uuidString)"
+        let name = stableSuiteName("MigrationAdapterTests.alias")
         let defaults = UserDefaults(suiteName: name)!
 
         defer {
@@ -344,8 +344,8 @@ final class MigrationAdapterTests: XCTestCase {
     }
 
     func testUserDefaultsCopyAndMoveBetweenSuites() throws {
-        let sourceName = "MigrationAdapterTests.source.\(UUID().uuidString)"
-        let destinationName = "MigrationAdapterTests.destination.\(UUID().uuidString)"
+        let sourceName = stableSuiteName("MigrationAdapterTests.source")
+        let destinationName = stableSuiteName("MigrationAdapterTests.destination")
         let sourceDefaults = UserDefaults(suiteName: sourceName)!
         let destinationDefaults = UserDefaults(suiteName: destinationName)!
 
@@ -367,7 +367,7 @@ final class MigrationAdapterTests: XCTestCase {
     }
 
     func testUserDefaultsUsesPersistedDomainOnly() throws {
-        let name = "MigrationAdapterTests.persisted.\(UUID().uuidString)"
+        let name = stableSuiteName("MigrationAdapterTests.persisted")
         let defaults = UserDefaults(suiteName: name)!
 
         defer {
@@ -385,7 +385,7 @@ final class MigrationAdapterTests: XCTestCase {
     // MARK: Private Instance Interface
 
     private func defaults(_ suffix: String = #function) throws -> UserDefaultsMigrationBackend {
-        let name = "MigrationAdapterTests.\(suffix).\(UUID().uuidString)"
+        let name = stableSuiteName("MigrationAdapterTests.\(suffix)")
         let defaults = UserDefaults(suiteName: name)!
 
         addTeardownBlock {

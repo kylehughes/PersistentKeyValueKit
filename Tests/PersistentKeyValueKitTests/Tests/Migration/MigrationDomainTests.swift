@@ -7,9 +7,9 @@ final class MigrationDomainTests: XCTestCase {
     // MARK: Tests
 
     func testAddedSuiteOnlyValueIsExcludedFromSource() throws {
-        let (sourceDefaults, sourceName) = suite()
-        let (addedDefaults, addedName) = suite()
-        let (destinationDefaults, destinationName) = suite()
+        let (sourceDefaults, sourceName) = suite("source")
+        let (addedDefaults, addedName) = suite("added")
+        let (destinationDefaults, destinationName) = suite("destination")
 
         defer {
             sourceDefaults.removeSuite(named: addedName)
@@ -39,8 +39,8 @@ final class MigrationDomainTests: XCTestCase {
     }
 
     func testCompletionMarkerIgnoresRegisteredAndArgumentValues() throws {
-        let (sourceDefaults, sourceName) = suite()
-        let (destinationDefaults, destinationName) = suite()
+        let (sourceDefaults, sourceName) = suite("source")
+        let (destinationDefaults, destinationName) = suite("destination")
         let previousArguments = destinationDefaults.volatileDomain(forName: UserDefaults.argumentDomain)
 
         defer {
@@ -106,8 +106,8 @@ final class MigrationDomainTests: XCTestCase {
     }
 
     func testDestinationRegistrationAndArgumentsDoNotCountAsConflict() throws {
-        let (sourceDefaults, sourceName) = suite()
-        let (destinationDefaults, destinationName) = suite()
+        let (sourceDefaults, sourceName) = suite("source")
+        let (destinationDefaults, destinationName) = suite("destination")
         let previousArguments = destinationDefaults.volatileDomain(forName: UserDefaults.argumentDomain)
 
         defer {
@@ -138,8 +138,8 @@ final class MigrationDomainTests: XCTestCase {
     }
 
     func testRegistrationAndArgumentsAreNotCopiedFromSource() throws {
-        let (sourceDefaults, sourceName) = suite()
-        let (destinationDefaults, destinationName) = suite()
+        let (sourceDefaults, sourceName) = suite("source")
+        let (destinationDefaults, destinationName) = suite("destination")
         let previousArguments = sourceDefaults.volatileDomain(forName: UserDefaults.argumentDomain)
 
         defer {
@@ -171,8 +171,8 @@ final class MigrationDomainTests: XCTestCase {
 
     // MARK: Private Instance Interface
 
-    private func suite(_ suffix: String = #function) -> (UserDefaults, String) {
-        let name = "MigrationDomainTests.\(suffix).\(UUID().uuidString)"
+    private func suite(_ role: String, function: String = #function) -> (UserDefaults, String) {
+        let name = stableSuiteName("MigrationDomainTests.\(role)", function: function)
 
         return (UserDefaults(suiteName: name)!, name)
     }

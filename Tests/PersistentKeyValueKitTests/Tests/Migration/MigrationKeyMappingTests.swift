@@ -313,7 +313,7 @@ final class MigrationKeyMappingTests: XCTestCase {
     }
 
     private func makeDefaults(_ suffix: String) throws -> TestStore {
-        let name = "MigrationKeyMappingTests.\(suffix).\(UUID().uuidString)"
+        let name = stableSuiteName("MigrationKeyMappingTests.\(suffix)")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
 
         addTeardownBlock {
