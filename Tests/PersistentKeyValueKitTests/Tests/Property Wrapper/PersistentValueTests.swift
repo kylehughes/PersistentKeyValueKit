@@ -20,17 +20,25 @@ private typealias ViewController = UIViewController
 
 final class PersistentValueTests: XCTestCase {
     let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
-    let userDefaults = UserDefaults.standard
+    var userDefaults: UserDefaults!
+    var suiteName: String!
     
     var cancellables = Set<AnyCancellable>()
     
     // MARK: XCTestCase Implementation
 
+    override public func setUpWithError() throws {
+        suiteName = stableSuiteName("PersistentValueTests", function: name)
+        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+
     override public func tearDown() {
         cancellables.removeAll()
         ubiquitousKeyValueStore.dictionaryRepresentation.keys.forEach(ubiquitousKeyValueStore.removeObject)
-        userDefaults.dictionaryRepresentation().keys.forEach(userDefaults.removeObject)
+        userDefaults.removePersistentDomain(forName: suiteName)
         userDefaults.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        userDefaults = nil
+        suiteName = nil
     }
     
     // MARK: Private Instance Interface
@@ -115,15 +123,15 @@ extension PersistentValueTests {
         
         host(view, in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
 
         view.binding.send(boundValue)
 
-        await fulfillment(of: [boundValueExpectation])
+        await fulfillment(of: [boundValueExpectation], timeout: 10)
 
         userDefaults.set(externalValue, forKey: keyID)
         
-        await fulfillment(of: [externalValueExpectation])
+        await fulfillment(of: [externalValueExpectation], timeout: 10)
     }
     
     @MainActor
@@ -162,15 +170,15 @@ extension PersistentValueTests {
         
         host(view, in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
 
         view.binding.send(boundValue)
 
-        await fulfillment(of: [boundValueExpectation])
+        await fulfillment(of: [boundValueExpectation], timeout: 10)
 
         ubiquitousKeyValueStore.set(externalValue, forKey: keyID)
         
-        await fulfillment(of: [externalValueExpectation])
+        await fulfillment(of: [externalValueExpectation], timeout: 10)
     }
     
     @MainActor
@@ -209,15 +217,15 @@ extension PersistentValueTests {
         
         host(view.defaultPersistentKeyValueStore(userDefaults), in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
 
         view.binding.send(boundValue)
 
-        await fulfillment(of: [boundValueExpectation])
+        await fulfillment(of: [boundValueExpectation], timeout: 10)
 
         userDefaults.set(externalValue, forKey: keyID)
         
-        await fulfillment(of: [externalValueExpectation])
+        await fulfillment(of: [externalValueExpectation], timeout: 10)
     }
 }
 
@@ -262,15 +270,15 @@ extension PersistentValueTests {
 
         host(view, in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
 
         userDefaults.set(externalStoredValue, forKey: keyID)
 
-        await fulfillment(of: [externalStoredValueExpectation])
+        await fulfillment(of: [externalStoredValueExpectation], timeout: 10)
 
         view.input.send(internalStoredValue)
 
-        await fulfillment(of: [internalStoredValueExpectation])
+        await fulfillment(of: [internalStoredValueExpectation], timeout: 10)
     }
     
     @MainActor
@@ -315,11 +323,11 @@ extension PersistentValueTests {
 
         host(view.defaultPersistentKeyValueStore(ubiquitousKeyValueStore), in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
         
         userDefaults.set(userDefaultsStoredValue, forKey: keyID)
 
-        await fulfillment(of: [correctValueExpectation])
+        await fulfillment(of: [correctValueExpectation], timeout: 10)
         
         ubiquitousKeyValueStore.set(ubiquitousStoredValue, forKey: keyID)
         
@@ -327,7 +335,7 @@ extension PersistentValueTests {
 
         view.input.send(internalStoredValue)
 
-        await fulfillment(of: [internalStoredValueExpectation])
+        await fulfillment(of: [internalStoredValueExpectation], timeout: 10)
     }
 
     @MainActor
@@ -366,15 +374,15 @@ extension PersistentValueTests {
 
         host(view, in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
 
         ubiquitousKeyValueStore.set(externalStoredValue, forKey: keyID)
 
-        await fulfillment(of: [externalStoredValueExpectation])
+        await fulfillment(of: [externalStoredValueExpectation], timeout: 10)
 
         view.input.send(internalStoredValue)
 
-        await fulfillment(of: [internalStoredValueExpectation])
+        await fulfillment(of: [internalStoredValueExpectation], timeout: 10)
     }
     
     @MainActor
@@ -420,11 +428,11 @@ extension PersistentValueTests {
 
         host(view.defaultPersistentKeyValueStore(userDefaults), in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
 
         ubiquitousKeyValueStore.set(ubiquitousStoredValue, forKey: keyID)
 
-        await fulfillment(of: [correctValueExpectation])
+        await fulfillment(of: [correctValueExpectation], timeout: 10)
         
         userDefaults.set(userDefaultsStoredValue, forKey: keyID)
         
@@ -432,15 +440,18 @@ extension PersistentValueTests {
 
         view.input.send(internalStoredValue)
 
-        await fulfillment(of: [internalStoredValueExpectation])
+        await fulfillment(of: [internalStoredValueExpectation], timeout: 10)
     }
     
     @MainActor
     func test_explicit_nil_defaultViewModifier_default() async {
+        // `store: nil` with no default-store modifier resolves to the app domain, so this test must use it. Remove only
+        // the key it writes; the domain is shared with other test processes.
         let userDefaults = UserDefaults.standard
         let viewController = ViewController()
         let defaultValue = "defaultValue"
         let keyID = "key:\(#function)"
+        defer { userDefaults.removeObject(forKey: keyID) }
         let externalStoredValue = "externalStoredValue: \(#function)"
         let internalStoredValue = "internalStoredValue: \(#function)"
         let key = PersistentKey(keyID, defaultValue: defaultValue)
@@ -472,15 +483,15 @@ extension PersistentValueTests {
 
         host(view, in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
         
         userDefaults.set(externalStoredValue, forKey: keyID)
 
-        await fulfillment(of: [externalStoredValueExpectation])
+        await fulfillment(of: [externalStoredValueExpectation], timeout: 10)
 
         view.input.send(internalStoredValue)
 
-        await fulfillment(of: [internalStoredValueExpectation])
+        await fulfillment(of: [internalStoredValueExpectation], timeout: 10)
     }
     
     @MainActor
@@ -519,15 +530,15 @@ extension PersistentValueTests {
 
         host(view.defaultPersistentKeyValueStore(userDefaults), in: viewController)
         
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
         
         userDefaults.set(externalStoredValue, forKey: keyID)
         
-        await fulfillment(of: [externalStoredValueExpectation])
+        await fulfillment(of: [externalStoredValueExpectation], timeout: 10)
 
         view.input.send(internalStoredValue)
         
-        await fulfillment(of: [internalStoredValueExpectation])
+        await fulfillment(of: [internalStoredValueExpectation], timeout: 10)
     }
     
     @MainActor
@@ -566,15 +577,15 @@ extension PersistentValueTests {
 
         host(view.defaultPersistentKeyValueStore(ubiquitousKeyValueStore), in: viewController)
 
-        await fulfillment(of: [defaultValueExpectation])
+        await fulfillment(of: [defaultValueExpectation], timeout: 10)
 
         ubiquitousKeyValueStore.set(externalStoredValue, forKey: keyID)
 
-        await fulfillment(of: [externalStoredValueExpectation])
+        await fulfillment(of: [externalStoredValueExpectation], timeout: 10)
 
         view.input.send(internalStoredValue)
 
-        await fulfillment(of: [internalStoredValueExpectation])
+        await fulfillment(of: [internalStoredValueExpectation], timeout: 10)
     }
 }
 

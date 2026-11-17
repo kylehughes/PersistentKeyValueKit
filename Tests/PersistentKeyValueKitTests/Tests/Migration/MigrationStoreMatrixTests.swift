@@ -71,8 +71,8 @@ final class MigrationStoreMatrixTests: XCTestCase {
         )
     }
 
-    private func makeDefaults(_ suffix: String) -> UserDefaultsMigrationBackend {
-        let name = stableSuiteName("MigrationStoreMatrixTests.\(suffix)")
+    private func makeDefaults(_ suffix: String, function: String = #function) -> UserDefaultsMigrationBackend {
+        let name = stableSuiteName("MigrationStoreMatrixTests.\(suffix)", function: function)
         let defaults = UserDefaults(suiteName: name)!
 
         addTeardownBlock {

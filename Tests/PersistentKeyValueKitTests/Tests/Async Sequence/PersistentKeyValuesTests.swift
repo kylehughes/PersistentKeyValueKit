@@ -442,11 +442,11 @@ extension PersistentKeyValuesTests {
             taskCompleted.fulfill()
         }
 
-        await fulfillment(of: [initialValueReceived])
+        await fulfillment(of: [initialValueReceived], timeout: 10)
 
         task.cancel()
 
-        await fulfillment(of: [taskCompleted])
+        await fulfillment(of: [taskCompleted], timeout: 10)
         await task.value
 
         XCTAssertEqual(store.deregistrationCount, 1)

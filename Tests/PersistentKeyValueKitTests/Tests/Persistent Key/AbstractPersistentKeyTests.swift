@@ -9,7 +9,8 @@ import PersistentKeyValueKit
 import XCTest
 
 public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKeyProtocol, Key.Value: Equatable {
-    public let userDefaults = UserDefaults()
+    public private(set) var userDefaults: UserDefaults!
+    private var suiteName: String!
     
     // MARK: Public Abstract Interface
     
@@ -49,9 +50,16 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         return XCTestSuite(name: "Empty Suite for \(Self.self)")
     }
     
+    override public func setUpWithError() throws {
+        suiteName = stableSuiteName("AbstractPersistentKeyTests", function: name)
+        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+    
     override public func tearDown() {
-        userDefaults.dictionaryRepresentation().keys.forEach(userDefaults.removeObject)
+        userDefaults.removePersistentDomain(forName: suiteName)
         userDefaults.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        userDefaults = nil
+        suiteName = nil
     }
 
     // MARK: Initialization Tests

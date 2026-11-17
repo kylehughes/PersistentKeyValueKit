@@ -10,7 +10,8 @@ import PersistentKeyValueKit
 import XCTest
 
 final class UserDefaultsTests: AbstractPersistentKeyValueStoreTests<UserDefaults> {
-    private let storage = UserDefaults.standard
+    private var storage: UserDefaults!
+    private var suiteName: String!
     
     // MARK: AbstractPersistentKeyValueStoreTests Implementation
     
@@ -20,9 +21,16 @@ final class UserDefaultsTests: AbstractPersistentKeyValueStoreTests<UserDefaults
     
     // MARK: XCTestCase Implementation
     
+    override public func setUpWithError() throws {
+        suiteName = stableSuiteName("UserDefaultsTests", function: name)
+        storage = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+    
     override public func tearDown() {
-        storage.dictionaryRepresentation().keys.forEach(storage.removeObject)
+        storage.removePersistentDomain(forName: suiteName)
         storage.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        storage = nil
+        suiteName = nil
     }
     
     // MARK: Static Accessor Tests

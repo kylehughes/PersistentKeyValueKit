@@ -9,13 +9,21 @@ import PersistentKeyValueKit
 import XCTest
 
 final class PersistentKeyProtocolTests: XCTestCase {
-    private let userDefaults = UserDefaults()
+    private var userDefaults: UserDefaults!
+    private var suiteName: String!
     
     // MARK: XCTestCase Implementation
     
+    override func setUpWithError() throws {
+        suiteName = stableSuiteName("PersistentKeyProtocolTests", function: name)
+        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+    
     override func tearDown() {
-        userDefaults.dictionaryRepresentation().keys.forEach(userDefaults.removeObject)
+        userDefaults.removePersistentDomain(forName: suiteName)
         userDefaults.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        userDefaults = nil
+        suiteName = nil
     }
 }
 

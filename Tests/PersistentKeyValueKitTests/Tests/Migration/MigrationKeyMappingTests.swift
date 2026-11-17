@@ -312,8 +312,8 @@ final class MigrationKeyMappingTests: XCTestCase {
         return TestStore(name: "cloud", rawValue: raw.storedValue(for:), store: store, storesFoundationObjects: true)
     }
 
-    private func makeDefaults(_ suffix: String) throws -> TestStore {
-        let name = stableSuiteName("MigrationKeyMappingTests.\(suffix)")
+    private func makeDefaults(_ suffix: String, function: String) throws -> TestStore {
+        let name = stableSuiteName("MigrationKeyMappingTests.\(suffix)", function: function)
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: name))
 
         addTeardownBlock {
@@ -343,27 +343,27 @@ final class MigrationKeyMappingTests: XCTestCase {
         )
     }
 
-    private func sameStores() throws -> [TestStore] {
+    private func sameStores(function: String = #function) throws -> [TestStore] {
         // A plain NSUbiquitousKeyValueStore instance uses the canonical ubiquitous identity, so it is one store.
         let raw = StrictMigrationUbiquitousStore()
 
         return [
             makeMemory(),
-            try makeDefaults("same"),
+            try makeDefaults("same", function: function),
             TestStore(name: "cloud", rawValue: raw.storedValue(for:), store: raw, storesFoundationObjects: true),
         ]
     }
 
-    private func storePairs() throws -> [(TestStore, TestStore)] {
+    private func storePairs(function: String = #function) throws -> [(TestStore, TestStore)] {
         [
             (makeMemory(), makeMemory()),
-            (makeMemory(), try makeDefaults("d1")),
+            (makeMemory(), try makeDefaults("d1", function: function)),
             (makeMemory(), makeCloud()),
-            (try makeDefaults("s1"), makeMemory()),
-            (try makeDefaults("s2"), try makeDefaults("d2")),
-            (try makeDefaults("s3"), makeCloud()),
+            (try makeDefaults("s1", function: function), makeMemory()),
+            (try makeDefaults("s2", function: function), try makeDefaults("d2", function: function)),
+            (try makeDefaults("s3", function: function), makeCloud()),
             (makeCloud(), makeMemory()),
-            (makeCloud(), try makeDefaults("d3")),
+            (makeCloud(), try makeDefaults("d3", function: function)),
             (makeCloud(), makeCloud()),
         ]
     }

@@ -384,8 +384,11 @@ final class MigrationAdapterTests: XCTestCase {
 
     // MARK: Private Instance Interface
 
-    private func defaults(_ suffix: String = #function) throws -> UserDefaultsMigrationBackend {
-        let name = stableSuiteName("MigrationAdapterTests.\(suffix)")
+    private func defaults(
+        _ suffix: String = "defaults",
+        function: String = #function
+    ) throws -> UserDefaultsMigrationBackend {
+        let name = stableSuiteName("MigrationAdapterTests.\(suffix)", function: function)
         let defaults = UserDefaults(suiteName: name)!
 
         addTeardownBlock {

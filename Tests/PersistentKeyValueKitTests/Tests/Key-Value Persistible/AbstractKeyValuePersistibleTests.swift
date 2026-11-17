@@ -22,7 +22,8 @@ where
     UbiquitousStoreRepresentation: Equatable,
     UserDefaultsRepresentation: Equatable
 {
-    private let userDefaults = UserDefaults()
+    private var userDefaults: UserDefaults!
+    private var suiteName: String!
     
     // MARK: Public Abstract Interface
     
@@ -46,9 +47,16 @@ where
         return XCTestSuite(name: "Empty Suite for \(Self.self)")
     }
     
+    override public func setUpWithError() throws {
+        suiteName = stableSuiteName("AbstractKeyValuePersistibleTests", function: name)
+        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+    
     override public func tearDown() {
-        userDefaults.dictionaryRepresentation().keys.forEach(userDefaults.removeObject)
+        userDefaults.removePersistentDomain(forName: suiteName)
         userDefaults.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        userDefaults = nil
+        suiteName = nil
     }
     
     // MARK: Property List Array Tests
