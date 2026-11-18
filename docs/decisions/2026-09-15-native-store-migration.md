@@ -111,7 +111,8 @@ observation. `PersistentKeyMigrationItem` supports migrating a key unchanged
 (`.key(_:)`), renaming a key of the same value type (`.key(_:to:)`), and
 transforming a value across keys or types (`.key(_:to:transform:)`). Migrating
 within a single store is permitted when every item either maps its source key
-to a different destination key in that store or rewrites a key in place through
+to a different destination key in that store or, in `UserDefaults` or
+`NSUbiquitousKeyValueStore`, rewrites a key in place through
 `.key(_:to:transform:)` on a single store instance with byte-identical source
 and destination key identifiers (reporting `.rewritten` under any conflict
 policy without removing the key as a source, verifying before writing that
@@ -119,10 +120,12 @@ decoding the prepared result with the source key and running `transform` again
 reproduces the same stored value or else failing at `.prepare` with
 `nonIdempotentRewrite`, and recognizing an already-rewritten value on retry when
 it fails to decode with the source key's representation, decodes with the
-destination key's representation, and its snapshot remains current); duplicate
-source or destination key identifiers throw `duplicateKey(_:)`, and same-store
-batches where one item's destination is another item's source throw
-`overlappingKeys(_:)`.
+destination key's representation, and its snapshot remains current); any
+same-store, same-ID item on `InMemoryPersistentKeyValueStore` throws `sameStore`
+during setup before any key is read (same-store renames to a different key
+identifier still work), duplicate source or destination key identifiers throw
+`duplicateKey(_:)`, and same-store batches where one item's destination is
+another item's source throw `overlappingKeys(_:)`.
 
 `copy` and `move` return `PersistentKeyMigrationReport` and are not marked
 `@discardableResult`. `PersistentKeyMigrationReport.Completion` and
@@ -242,11 +245,15 @@ principles:
   launch-argument string coercion and direct property-list container casting
   remain intact. Ordinary collection writes (`propertyListArray(encoding:)` and
   `propertyListDictionary(encoding:)`) call the element or value
-  representation's `set(_:to:)` or `set(_:to:in:)` directly as a fast path and
-  fall back to checked conversion only when an array result is empty for
-  non-empty input or a dictionary entry is left absent, distinguishing a
-  built-in representation that omits `nil` optionals from an encoding failure
-  while keeping writes all-or-nothing. For `Array` and `Dictionary` checked
+  representation's `set(_:to:)` or `set(_:to:in:)` directly as a fast path and,
+  when an array result is empty for non-empty input or a dictionary entry is
+  left absent, decide from the representation's type structure (`omits(_:)` via
+  `BuiltInValueOmission`: package `OptionalPersistentKeyValueRepresentation`
+  omits `nil` and values omitted by `base`, and package proxy representations
+  via `BuiltInProxyConversion` omit when their inner `Proxy` representation
+  omits, converting to the proxy only when `Proxy` can omit values) whether the
+  value was intentionally omitted instead of encoding again, keeping failed
+  writes linear while keeping writes all-or-nothing. For `Array` and `Dictionary` checked
   conversion (`Array.decode`/`encode` and `Dictionary.decode`/`encode`, used by
   migration and `UserDefaults.register(_:)`), representations defined by the
   package (`PrimitivePersistentKeyValueRepresentation` for `Array` and
@@ -280,16 +287,18 @@ principles:
   representations that append to `propertyListArray`). Because an external
   representation's container methods report failure only by returning `nil`,
   leaving the array empty for non-empty input, or leaving `dictionaryKey`
-  absent, and re-running scalar conversion to reconstruct an error or check
-  whether every element encoded to `nil` causes exponential work on recursive
-  types, checked conversion throws the generic
+  absent, and re-running conversion to reconstruct an error or check whether
+  every element encoded to `nil` causes exponential work on recursive types,
+  checked conversion throws the generic
   `PersistentKeyValueConversionError.invalidStorageValue` or `.encodingFailed`
-  directly. Consequently, for representations defined outside the package,
-  writing a dictionary in which a value's `encode` returns `nil` fails and
-  leaves the store unchanged, and a non-empty array whose every element encodes
-  to `nil` fails and leaves the store unchanged (whereas
-  `OptionalPersistentKeyValueRepresentation` is built in and omits `nil` values
-  before calling its base representation).
+  directly and ordinary collection writes check `omits(_:)` (`BuiltInValueOmission`)
+  without invoking encoding hooks. Consequently, for representations defined
+  outside the package, an entry left out by a container write hook counts as a
+  failure: writing a dictionary in which a value's `encode` returns `nil` fails
+  and leaves the store unchanged, and a non-empty array whose every element
+  encodes to `nil` fails and leaves the store unchanged (whereas package
+  `OptionalPersistentKeyValueRepresentation` and package proxies over omitting
+  representations are recognized by `BuiltInValueOmission`).
 - **Storage-location contract (`PersistentKeyProtocol.id`)**: A key's value
   lives under its `id` in every store. Store-specific `PersistentKeyProtocol`
   methods (`get`, `set`, and `remove` on `UserDefaults`,
@@ -368,15 +377,15 @@ principles:
   `nil` when no other value is visible), while ordinary `UserDefaults` `set`
   keeps Foundation's lossy path behavior and `[URL]` stores `absoluteString`
   values in `.propertyList` format. In `InMemoryPersistentKeyValueStore`,
-  snapshots and prepared writes capture `ReferenceContents` for Foundation
-  property-list objects (such as `NSMutableArray`, including nested
-  `NSDecimalNumber` values, including when wrapped in `Optional`) using
+  snapshots capture an exact immutable copy for Foundation property-list
+  objects (such as `NSMutableArray`, including nested `NSDecimalNumber` values,
+  including when wrapped in `Optional`) using
   `PropertyListMigrationStorage.exactCopy` (an immutable deep copy that
   preserves exact decimals rather than binary property-list serialization, which
-  converts `NSDecimalNumber` to `Double`), and `commitMigrationWrite` verifies
-  the committed entry against the contents captured when the write was prepared;
-  other reference types cannot be copied, so snapshots verify them by revision
-  only and in-place rewrites reject them as unverifiable.
+  converts `NSDecimalNumber` to `Double`), and `commitMigrationWrite` snapshots
+  (and copies) the committed entry before notifying observers to verify it
+  afterward; other reference types (including references inside Swift values)
+  cannot be copied, so snapshots verify them by revision only.
 - **Post-cleanup destination recheck on `move`**: Removing a move's source key
   notifies synchronous observers, which can modify or delete the destination
   key before `move` returns. Both `.overwriteDestination` and
@@ -395,9 +404,11 @@ principles:
   its initial snapshot before removal so the move did not remove it (other
   writers or observers may have modified or removed either store's entry).
 - **Same-store in-place rewrite via `.key(_:to:transform:)` (and retry/instance rules)**:
-  An app that must keep an externally defined key name can upgrade its stored
-  representation or value type in one checked, tracked step by passing
-  `.key(k, to: k, transform:)` with byte-identical key identifiers
+  In `UserDefaults` and `NSUbiquitousKeyValueStore`
+  (`PersistentKeyValueMigrationRewriteBackend`), an app that must keep an
+  externally defined key name can upgrade its stored representation or value
+  type in one checked, tracked step by passing `.key(k, to: k, transform:)` with
+  byte-identical key identifiers
   (`source.id.utf8.elementsEqual(destination.id.utf8)`), using
   `transform: { $0 }` for a representation-only change. Every copy or move
   conflict policy rewrites the existing value in place without removing the key
@@ -405,38 +416,42 @@ principles:
   still throw `.sameStore`. A rewrite also requires `source` and `destination`
   to be the same store instance (`migrationHandle`), throwing `.sameStore` when
   two distinct instances alias one backing store (such as case-variant
-  `UserDefaults` suite handles that can hold different cached values). Because a
-  tracked batch replays from the start after a later item fails, a rewrite whose
-  stored value fails to decode with `source`'s representation checks whether the
-  snapshot decodes with `destination`'s representation, rechecks that the
-  snapshot is still current at stage `.write` (failing with `.destinationChanged`
-  if it changed while decoding), and reports `.rewritten` without running
-  `transform` or writing again. If the initial `transform` call throws, the item
-  fails at `.transform`. Before writing a newly transformed value, the rewrite
-  decodes the prepared write with the `source` key and, if it decodes to a
-  non-`nil` value, runs `transform` and prepares the write a second time,
-  verifying that the resulting write matches the first and that the first
-  prepared write's contents remain unchanged (`migrationWriteIsUnchanged`); if
-  the replay `transform` throws, if the destination encoding is not reproducible
-  (such as `JSONEncoder` without `.sortedKeys` when the encoded result still
-  decodes with `source`'s representation), or if the result changed or cannot be
-  verified, the item fails at `.prepare` with
-  `PersistentKeyMigrationError.nonIdempotentRewrite` before mutating the store.
-  In Foundation stores, where `NSNumber` bridges booleans, integers, and floats,
-  overlapping numeric rewrites such as `Int` seconds to `Double` milliseconds or
-  dollars to cents are therefore rejected at `.prepare` (use a rename via `move`
-  instead), whereas `Int` to `String` and identity representation-only rewrites
-  with reproducible encoding succeed. In `InMemoryPersistentKeyValueStore`,
-  which bypasses representations and keeps references without copying them,
-  same-type rewrites compare values with `Equatable`, check
-  `migrationWriteIsUnchanged` against the `ReferenceContents` captured when the
-  first write was prepared, and reject with `.nonIdempotentRewrite` values that
-  do not conform to `Equatable`, Foundation property-list results that the
-  verification pass mutates in place, or any other reference result (whose
-  mutations the store cannot detect). The rule is based on the transform
-  overload and literal key identity rather than comparing value types or
-  representations because `PersistentKeyValueRepresentation` instances cannot be
-  compared for equality.
+  `UserDefaults` suite handles that can hold different cached values).
+  `InMemoryPersistentKeyValueStore` does not support same-key in-place rewrites:
+  any same-store, same-ID item on an in-memory store, including
+  `.key(_:to:transform:)`, throws `.sameStore` during setup before any key is
+  read, while same-store renames to a different key identifier via `move` or
+  `copy` still work. The in-memory store has no representations, so an in-place
+  rewrite there cannot upgrade a representation and can only change the value
+  itself, which is the unsafe kind of rewrite when retried, and because it keeps
+  live Swift values and references nested inside them without copying them,
+  replay verification cannot reliably prevent or detect in-place mutations of a
+  prepared result or stored source (such as an `Equatable` struct wrapping a
+  mutable reference or a transform returning a reference shared with the
+  source). Because a tracked batch replays from the start after a later item
+  fails, a rewrite whose stored value fails to decode with `source`'s
+  representation checks whether the snapshot decodes with `destination`'s
+  representation, rechecks that the snapshot is still current at stage `.write`
+  (failing with `.destinationChanged` if it changed while decoding), and reports
+  `.rewritten` without running `transform` or writing again. If the initial
+  `transform` call throws, the item fails at `.transform`. Before writing a
+  newly transformed value, the rewrite decodes the prepared write (a frozen
+  property list that decoding cannot mutate) with the `source` key and, if it
+  decodes to a non-`nil` value, runs `transform` and prepares the write a second
+  time, verifying that the resulting write matches the first
+  (`migrationWrite(_:matches:)`); if the replay `transform` throws, if the
+  destination encoding is not reproducible (such as `JSONEncoder` without
+  `.sortedKeys` when the encoded result still decodes with `source`'s
+  representation), or if the repeated write does not match, the item fails at
+  `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` before
+  mutating the store. Where `NSNumber` bridges booleans, integers, and floats in
+  Foundation stores, overlapping numeric rewrites such as `Int` seconds to
+  `Double` milliseconds or dollars to cents are therefore rejected at `.prepare`
+  (use a rename via `move` instead), whereas `Int` to `String` and identity
+  representation-only rewrites with reproducible encoding succeed. The rule is
+  based on the transform overload and literal key identity rather than comparing
+  value types or representations because `PersistentKeyValueRepresentation`
+  instances cannot be compared for equality.
 - **Dotted-key `UserDefaults` monitor and observation scope**: Because
   key-value observation treats `.` as a key-path separator, dotted
   `UserDefaults` keys are observed through one `UserDefaultsKeyChangeMonitor`
@@ -451,16 +466,22 @@ principles:
   when the pass begins, reads each literal UTF-16 key identifier once, compares
   the read against each registration's comparison value (reusing the previous
   comparison result across registrations that share the same comparison object
-  reference, and fast-pathing identical cached non-`NSNumber` object references
-  before `PropertyListMigrationStorage.equal`), and invokes callbacks outside
-  its lock without checking weak observer liveness or releasing observer
-  references under the lock (matching `StoreKeyObservationRegistry` and
+  reference, including `NSNumber`, and fast-pathing identical cached
+  non-`NSNumber` object references before `PropertyListMigrationStorage.equal`),
+  notifies any registration that joined while that reconciliation was in
+  progress if any change was reported since it joined (after its first read
+  began), even when the value read equals its comparison value (so it may get
+  one extra, possibly repeated, emission rather than missing a concurrent write
+  that overlapped its initial read), and invokes callbacks outside its lock
+  without checking weak observer liveness or releasing observer references under
+  the lock (matching `StoreKeyObservationRegistry` and
   `InMemoryPersistentKeyValueStore`). Changes are sampled rather than queued: a
   registration is notified only by reads made after it joined its key, multiple
-  changes between two reads produce at most one notification, and a change that
-  restores a registration's comparison value before the next read produces none.
-  Because Foundation posts `didChangeNotification` only for in-process defaults
-  writes and not for `addSuite(named:)` or `removeSuite(named:)`, dotted-key
+  changes between two reads produce at most one notification, a change that is
+  undone before it is sampled (`A` to `B` to `A`) can produce no notification
+  for any subscriber, and consecutive emitted values can be equal. Because
+  Foundation posts `didChangeNotification` only for in-process defaults writes
+  and not for `addSuite(named:)` or `removeSuite(named:)`, dotted-key
   observation is scoped to in-process changes to `object(forKey:)`, and
   callbacks under concurrent writes can arrive on the reconciling thread.
 - **NFC normalization of migration IDs and dotless completion markers**:

@@ -86,10 +86,14 @@ public protocol PersistentKeyValueStore {
     /// is used for identifiers without a period (`.`). Key-value observation treats a period as a key-path separator,
     /// so a key whose identifier contains one is observed through `UserDefaults.didChangeNotification` instead. After
     /// each such notification, the key is read from this instance, and `target` is notified when the property-list
-    /// value read differs from the previous read. Foundation posts that notification only for changes made in the
-    /// current process, and not for `addSuite(named:)` or `removeSuite(named:)`, so changes to such a key made by
-    /// another process, or caused only by a suite-list change, might not be delivered. For these keys `target` can be
-    /// notified on a thread other than the one that made the change, while that thread delivers concurrent changes.
+    /// value read differs from the previous read (or once on the next reconciliation pass if the registration joined
+    /// while a reconciliation was in progress and any change was reported since it joined, even when the value read
+    /// equals its comparison value). Changes are sampled rather than queued, so rapid writes between reads can
+    /// coalesce and a change that is undone before it is sampled can produce no notification. Foundation posts that
+    /// notification only for changes made in the current process, and not for `addSuite(named:)` or
+    /// `removeSuite(named:)`, so changes to such a key made by another process, or caused only by a suite-list change,
+    /// might not be delivered. For these keys `target` can be notified on a thread other than the one that made the
+    /// change, while that thread delivers concurrent changes.
     ///
     /// If `Self` is `NSUbiquitousKeyValueStore` then notifications will be used and `target` will be notified through
     /// the `selector` with the store's change notification. `target` is notified when the notification lists `key`, and
