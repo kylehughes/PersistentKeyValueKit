@@ -250,12 +250,16 @@ principles:
   `propertyListArrays(encoding:)`, `propertyListDictionary(encoding:)`, and
   `propertyListDictionaries(encoding:)`) route built-in `Optional` and proxy
   representations through `BuiltInValueOmission`
-  (`builtInOrdinaryPropertyListArray(encoding:)` and
-  `builtInOrdinaryPropertyListDictionary(encoding:)` on
+  (`builtInOrdinaryPropertyListArray(encoding:)`,
+  `builtInOrdinaryPropertyListDictionary(encoding:)`, and
+  `builtInOrdinaryDictionaryEntryWriter()` on
   `OptionalPersistentKeyValueRepresentation` and `BuiltInProxyConversion`),
   which unwraps optionals or converts each value to its proxy once and decides
-  omission from that conversion before delegating to the inner representation,
-  while encoding any other representation directly with `set(_:to:)` or
+  omission from that conversion (converting each dictionary entry through every
+  wrapper layer before the next entry when wrapping another
+  `BuiltInValueOmission` representation, or writing directly with
+  `set(_:to:in:)` otherwise, so the first failing entry stops the write), while
+  encoding any other representation directly with `set(_:to:)` or
   `set(_:to:in:)`. Converting each value once keeps both failed and all-omitted
   writes linear even for recursive proxy-over-optional types while keeping
   writes all-or-nothing. For `Array` and `Dictionary` checked
@@ -335,9 +339,12 @@ principles:
   keys by literal UTF-16 code units, whereas Swift `String` equality merges
   canonically equivalent spellings (such as NFC and NFD spellings of `"café"`).
   The package uses literal UTF-16 key identity across Foundation stores:
-  `UserDefaultsMigrationBackend` sends `persistentDomain(forName:)` through
-  Objective-C to keep the unbridged `NSDictionary` and looks up keys as
-  `NSString`, `PropertyListMigrationStorage.equal` compares strings and
+  `PersistentKey` and `PersistentDebugKey` `Equatable` and `Hashable`
+  conformances compare and hash `id.utf16` so NFC and NFD spellings remain
+  distinct set members, `UserDefaultsMigrationBackend` sends
+  `persistentDomain(forName:)` through Objective-C to keep the unbridged
+  `NSDictionary` and looks up keys as `NSString`,
+  `PropertyListMigrationStorage.equal` compares strings and
   dictionary keys with `NSString.isEqual` and `NSDictionary.object(forKey:)`,
   duplicate/overlap/`sameStore` validation in `UserDefaults` and
   `NSUbiquitousKeyValueStore` uses literal UTF-16 identity,
@@ -364,7 +371,15 @@ principles:
   as a `Double`, and compares two decimals with exact `compare(_:) == .orderedSame`
   and `NaN` equality), `CFNumberIsFloatType`, `CFNumberGetByteSize` (`Float`
   versus `Double`), `NaN`, and floating-point bit patterns (`0.0` versus `-0.0`)
-  recursively across arrays and dictionaries. `UserDefaultsMigrationBackend`
+  recursively across arrays and dictionaries. When preparing a write to
+  `UserDefaults` or `NSUbiquitousKeyValueStore`,
+  `PropertyListMigrationStorage.freezeExactly` normalizes the encoded object
+  through a binary property list and verifies that
+  `PropertyListMigrationStorage.equal(object, frozen)` still holds, throwing
+  `PersistentKeyValueConversionError.encodingFailed` at `.prepare` before any
+  mutation when binary property-list normalization would change the value or
+  stored type (including any `NSDecimalNumber`, even when exact, because binary
+  property lists store decimals as `Double`). `UserDefaultsMigrationBackend`
   removes an existing key before writing when the replacement object is
   `CFEqual` to the snapshot but has a different property-list type so
   `UserDefaults` does not ignore the write, rechecking that the key is still
@@ -388,9 +403,12 @@ principles:
   `NSDecimalNumber` values, including when wrapped in `Optional`) using
   `PropertyListMigrationStorage.exactCopy` (an immutable deep copy that
   preserves exact decimals rather than binary property-list serialization, which
-  converts `NSDecimalNumber` to `Double`), and the verification snapshot for a
-  committed write carries the copy captured when the write was prepared, before
-  the value was stored and visible to other readers or observers; other
+  converts `NSDecimalNumber` to `Double`), the verification snapshot for a
+  committed write carries the copy captured when the write was prepared before
+  the value was stored and visible to other readers or observers, and
+  `migrationSnapshotIsCurrent` compares the current object's contents outside
+  the lock and then rechecks under the lock that the stored entry still has the
+  snapshot's revision (which is never reused); other
   reference types (including references inside Swift values) cannot be copied,
   so snapshots verify them by revision only.
 - **Post-cleanup destination recheck on `move`**: Removing a move's source key
@@ -454,8 +472,13 @@ principles:
   mutating the store. Where `NSNumber` bridges booleans, integers, and floats in
   Foundation stores, overlapping numeric rewrites such as `Int` seconds to
   `Double` milliseconds or dollars to cents are therefore rejected at `.prepare`
-  (migrate to a new key identifier instead, so a repeated `move` finds no source
-  value and a repeated `copy` converts the original source again), whereas `Int`
+  (migrate to a new key identifier instead so a retry never reads its own
+  result: a retry's behavior depends on whether the source remains and whether
+  the retry writes, so a `move` that removed its source finds no source value,
+  `.keepDestination` and `.keepBoth` keep an existing destination value without
+  running `transform` including a value an earlier attempt wrote while
+  `.keepBoth` also leaves the source, and `.overwriteDestination` converts the
+  source again and replaces the earlier result), whereas `Int`
   to `String` and identity representation-only rewrites with reproducible
   encoding succeed. The rule is based on the transform overload and literal key
   identity rather than comparing value types or representations because
@@ -560,12 +583,15 @@ The regression tests preserve these guarantees:
   [`PrimitiveKeyValuePersistibleDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/PrimitiveKeyValuePersistibleDefaultsTests.swift),
   [`CheckedContainerConversionTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CheckedContainerConversionTests.swift),
   [`CustomContainerHookTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CustomContainerHookTests.swift),
+  [`DictionaryWriteConversionCountTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/DictionaryWriteConversionCountTests.swift),
   [`URLUserDefaultsEncodingTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/Extensions/Foundation/URLUserDefaultsEncodingTests.swift),
   and [`CanonicallyEquivalentKeyTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CanonicallyEquivalentKeyTests.swift)
   cover default store and container access built on `decode` and `encode`,
-  checked container conversion across built-in and custom hooks, lossy file URL
-  rejection, 1.x appending overrides, and literal versus canonical key identity
-  across registration, launch arguments, and dictionaries.
+  checked container conversion across built-in and custom hooks, single-pass
+  ordinary collection writes and first-failure dictionary termination, lossy
+  file URL rejection, 1.x appending overrides, and literal versus canonical key
+  identity across key equality/hashing, registration, launch arguments, and
+  dictionaries.
 - [`UserDefaultsKeyChangeObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/UserDefaults/UserDefaultsKeyChangeObservationTests.swift)
   and [`NSUbiquitousKeyValueStoreObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/NSUbiquitousKeyValueStore/NSUbiquitousKeyValueStoreObservationTests.swift)
   cover the per-instance `UserDefaults` notification monitor for

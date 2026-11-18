@@ -177,7 +177,7 @@ if let layoutID = NSUbiquitousKeyValueStore.default.get(.selectedLayoutID(forLis
 }
 ```
 
-Values can also be read by subscript (`store[.launchCount]`) and removed from the store's persistent domain with `remove(_:)` (subsequent reads fall back to `defaultValue` unless another `UserDefaults` search-list domain, such as launch arguments or registered defaults, supplies a value). Built-in representations coerce string values from `UserDefaults.argumentDomain` unless a managed preference overrides the key. `InMemoryPersistentKeyValueStore` keeps Swift values in memory for tests and previews; class instances are shared, so use immutable or `Sendable` reference types across concurrency domains.
+Values can also be read by subscript (`store[.launchCount]`) and removed from the persistent domain with `remove(_:)` (reads then return `defaultValue` unless another `UserDefaults` domain, such as launch arguments or registered defaults, supplies a value). Built-in representations coerce `UserDefaults.argumentDomain` strings unless a managed preference overrides the key. `InMemoryPersistentKeyValueStore` keeps Swift values in memory for tests and previews; class instances are shared, so use immutable or `Sendable` reference types across concurrency domains.
 
 #### Define and Access a Debug Key
 
@@ -205,7 +205,7 @@ let isRatingEnabled = userDefaults.get(.isAppStoreRatingEnabled) // false in Deb
 
 #### SwiftUI State
 
-`@PersistentValue` reads, writes, and observes a key in a store (defaulting to `defaultPersistentKeyValueStore` in the environment, which defaults to `UserDefaults.standard`), switching when the view updates with a new key or store. A projected `$binding` captures the key and store active when created, keeping only that store alive (not later stores or view state).
+`@PersistentValue` reads, writes, and observes a key in a store (defaulting to `defaultPersistentKeyValueStore` in the environment, which defaults to `UserDefaults.standard`), switching when the view updates with a new key or store. A projected `$binding` captures the active key and store when created, keeping only that store alive (not later stores or view state).
 
 ```swift
 @PersistentValue(.isAppStoreRatingEnabled)
@@ -291,7 +291,7 @@ let cancellable = UserDefaults.standard.changesPublisher(for: .username)
 
 Values are delivered synchronously on the thread requesting demand or reporting a change (or on the thread already delivering when a concurrent update arrives, so a setter returning does not mean its update has been delivered); use `.receive(on: DispatchQueue.main)` before updating UI. Exhausted demand coalesces intermediate updates, and subscriptions deregister when cancelled or released.
 
-For `UserDefaults` keys that key-value observation cannot observe (empty keys, keys starting with `@`, keys containing a `.` code unit even inside a combined character, keys containing NUL, and the literal keys `valueForKey:` / `ValueForKey:`), observation uses `UserDefaults.didChangeNotification` instead (same-process property-list changes only, not cross-process writes or `addSuite(named:)` / `removeSuite(named:)`); all other keys use KVO and also see other processes' changes.
+For `UserDefaults` keys KVO cannot observe (empty keys, keys starting with `@`, keys containing a `.` code unit even in a combined character, keys containing NUL, and `valueForKey:` / `ValueForKey:`), observation uses `UserDefaults.didChangeNotification` instead (same-process property-list changes only, not cross-process writes or `addSuite(named:)` / `removeSuite(named:)`); other keys use KVO and also see cross-process changes.
 
 ### Make a Type Persistible
 
@@ -307,7 +307,7 @@ public protocol KeyValuePersistible {
 
 #### Built-In Types
 
-The following standard library and Foundation types conform to `KeyValuePersistible` out of the box:
+These standard library and Foundation types conform to `KeyValuePersistible`:
 
 - `Array<Element> where Element: KeyValuePersistible`
 - `Bool`
@@ -320,7 +320,7 @@ The following standard library and Foundation types conform to `KeyValuePersisti
 - `String`
 - `URL`
 
-`Array` and `Dictionary` writes are all-or-nothing (omitting `Optional` `nil` values; external representations that encode a dictionary entry or all elements of a non-empty array to `nil` fail the write). Ordinary `Array` reads are all-or-nothing, whereas ordinary `Dictionary` reads omit undecodable entries; checked conversion (migration and `UserDefaults.register(_:)`) fails if any element or entry cannot be decoded (unless a custom representation's container hook omits it). `URL` supports absolute and relative URLs; checked `.userDefaults` encoding rejects file URLs whose stored path cannot reproduce the URL (such as a file URL host or nonexistent directory trailing slash, including through `Optional` and proxies), while ordinary `set` keeps Foundation's path storage and `[URL]` stores `absoluteString` values.
+`Array` and `Dictionary` writes are all-or-nothing (omitting `Optional` `nil` values; external representations that encode a dictionary entry or all elements of a non-empty array to `nil` fail the write). Ordinary `Array` reads are all-or-nothing, whereas ordinary `Dictionary` reads omit undecodable entries; checked conversion (migration and `UserDefaults.register(_:)`) fails if any element or entry fails to decode (unless a custom container hook omits it). `URL` supports absolute and relative URLs; checked `.userDefaults` encoding rejects file URLs whose stored path cannot reproduce the URL (such as a file URL host or nonexistent directory trailing slash, including through `Optional` and proxies), while ordinary `set` keeps Foundation's path storage and `[URL]` stores `absoluteString` values.
 
 #### `RawRepresentablePersistentKeyValueRepresentation`
 
@@ -342,7 +342,7 @@ extension NotificationFrequency: KeyValuePersistible {
 
 #### `CodablePersistentKeyValueRepresentation`
 
-`CodablePersistentKeyValueRepresentation` encodes and decodes a `Codable` value using a Combine `TopLevelEncoder` and `TopLevelDecoder` whose output type conforms to `KeyValuePersistible` (defaulting to `JSONEncoder()` and `JSONDecoder()`):
+`CodablePersistentKeyValueRepresentation` encodes and decodes a `Codable` value with a Combine `TopLevelEncoder` and `TopLevelDecoder` whose output conforms to `KeyValuePersistible` (defaulting to `JSONEncoder()` and `JSONDecoder()`):
 
 ```swift
 struct Contact: Codable, Sendable {
@@ -460,7 +460,7 @@ let report = try UserDefaults.standard.move(
 try report.throwIfIncomplete()
 ```
 
-Same-store migrations are allowed when every item maps its source key to a different destination key (with no duplicate or overlapping source/destination keys) or, in `UserDefaults` or `NSUbiquitousKeyValueStore`, rewrites a key in place with `.key(_:to:transform:)` (`InMemoryPersistentKeyValueStore` does not support in-place rewrites and throws `.sameStore` during setup). Within a single `UserDefaults` or `NSUbiquitousKeyValueStore` instance, `.key(source, to: destination, transform:)` with the same key identifier rewrites the stored value in place and reports `.rewritten` under any conflict policy (pass `transform: { $0 }` for a representation-only upgrade). Before writing, a rewrite decodes its prepared result with the source key and, if that decodes, runs `transform` and encodes again, failing at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` unless the result fails the source key's decoder (`Int` to `String`) or reproduces the same encoded value (requiring reproducible encoding such as `JSONEncoder` with `.sortedKeys` when the source key still decodes the result). For overlapping formats such as `Int` to `Double` (seconds to milliseconds) or dollars to cents, migrate to a new key identifier instead (a repeated `move` finds no source value; a repeated `copy` converts the original source again).
+Same-store migrations are allowed when every item maps its source key to a different destination key (no duplicate or overlapping keys) or, in `UserDefaults` or `NSUbiquitousKeyValueStore`, rewrites a key in place with `.key(_:to:transform:)` (`InMemoryPersistentKeyValueStore` throws `.sameStore` at setup). Within one `UserDefaults` or `NSUbiquitousKeyValueStore` instance, `.key(source, to: destination, transform:)` with the same key ID rewrites the value in place and reports `.rewritten` under any conflict policy (pass `transform: { $0 }` for a representation-only upgrade). Before writing, a rewrite decodes its prepared result with the source key and, if that decodes, runs `transform` and encodes again, failing at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` unless the result fails the source key's decoder (`Int` to `String`) or reproduces the same encoded value (requiring reproducible encoding such as `JSONEncoder` with `.sortedKeys` when the source key decodes the result). For overlapping formats such as `Int` to `Double` (seconds to milliseconds) or dollars to cents, migrate to a new key ID instead (a retry's behavior depends on whether the source remains and whether the retry writes: a `move` that removed its source finds no source value; under `.keepDestination` or `.keepBoth`, a retry keeps the existing destination, including a value an earlier attempt wrote, without running `transform`, and `.keepBoth` also leaves the source; under `.overwriteDestination`, a retry converts the source again and replaces the earlier result).
 
 ```swift
 let legacyColorSchemeKey = PersistentKey<Int>("RuntimeColorScheme", defaultValue: 0)
@@ -480,7 +480,7 @@ let report = try userDefaults.move(
 try report.throwIfIncomplete()
 ```
 
-`transform` runs when both keys are enabled (`isMigrationEnabled == true`) and the item will write to the destination; if its initial call throws, the item fails at `.transform` and the migration writes to neither store (whereas a failure during rewrite verification fails at `.prepare` with `.nonIdempotentRewrite`). An `InMemoryPersistentKeyValueStore` source passes stored Swift values directly without running representation codecs, so copy a mutable reference input in `transform` before changing it.
+`transform` runs when both keys are enabled (`isMigrationEnabled == true`) and the item writes; if its first call throws, the item fails at `.transform` and writes to neither store (a failure during rewrite verification fails at `.prepare` with `.nonIdempotentRewrite`). An `InMemoryPersistentKeyValueStore` source passes stored Swift values without running representation codecs, so copy a mutable reference input in `transform` before mutating it.
 
 #### Conflict Policies and Partial Changes
 
@@ -494,7 +494,7 @@ try report.throwIfIncomplete()
 
 `.keepBoth` on a `move` leaves conflicting source values in place; use `.keepDestinationAndRemoveSource` or `.overwriteDestination` to remove conflicting source entries. Only values persisted in each store's own domain participate (registered defaults, launch arguments, added suites, and `defaultValue` are ignored).
 
-Setup errors (`PersistentKeyMigrationError`) are thrown before any key is accessed. Once the batch begins, per-item failures are recorded in `report.outcomes` (`.failed(FailureStage)` at `.snapshot`, `.decode`, `.transform`, `.prepare`, `.write`, or `.cleanup`, with `outcome.error`) while remaining items continue. Migrations do not roll back completed work, and a `move` failing at `.cleanup` keeps its destination write (`.sourceChanged` at `.cleanup` means the source changed before removal and was not removed; `.destinationChanged` at `.cleanup` means the source was removed and the destination then differed from its expected snapshot; other writers or observers may have changed or removed either store's value). Coordinate other writers and processes before migrating; local completion does not guarantee disk durability or iCloud delivery, and removing a key from `NSUbiquitousKeyValueStore` removes it across the user's devices.
+Setup errors (`PersistentKeyMigrationError`) are thrown before any key is accessed. Once the batch begins, per-item failures are recorded in `report.outcomes` (`.failed(FailureStage)` at `.snapshot`, `.decode`, `.transform`, `.prepare`, `.write`, or `.cleanup`, with `outcome.error`; native writes fail at `.prepare` with `PersistentKeyValueConversionError.encodingFailed` when property-list normalization would change the value or stored type, such as any `NSDecimalNumber`, including exact ones, becoming `Double`) while remaining items continue. Migrations do not roll back completed work: after `.sourceChanged` at `.cleanup`, the `move` did not remove the source; after `.destinationChanged` at `.cleanup`, the `move` had removed the source and does not roll back its destination write; other writers may have changed or removed either store's value. Coordinate other writers and processes before migrating; local completion does not guarantee disk durability or iCloud delivery, and removing a key from `NSUbiquitousKeyValueStore` removes it across the user's devices.
 
 ```swift
 let report = try UserDefaults.standard.copy(
@@ -511,13 +511,13 @@ if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.e
 
 #### Completion Tracking
 
-`PersistentKeyMigrationTracking` offers `.untracked` (`report.completion` is always `.untracked`), `.once(id:)` (recording `.isMigrationCompleted(id:)` in the destination store), and `.once(id:recordedIn:)`. With `.once`, completion is recorded when every item resolves without failure (`.recorded`), and later calls skip the batch (`.alreadyRecorded`); if any item fails, `report.completion` is `.notRecorded`, and if writing or verifying the marker fails after all items succeed, `report.completion` is `.failed` with `report.completionError`. In all tracking modes, any item or marker failure leaves `report.isComplete == false`, and `try report.throwIfIncomplete()` throws `PersistentKeyMigrationIncompleteError`. Until a `.once` marker is recorded, retrying re-runs the batch (including completed items) under its conflict policy. Remove `.isMigrationCompleted(id:)` (or set it to `false`) to reset tracking, or choose a new `id` when changing a migration.
+`PersistentKeyMigrationTracking` offers `.untracked` (`report.completion` is always `.untracked`), `.once(id:)` (recording `.isMigrationCompleted(id:)` in the destination store), and `.once(id:recordedIn:)`. With `.once`, completion is recorded when every item succeeds (`.recorded`), and later calls skip the batch (`.alreadyRecorded`); if any item fails, `report.completion` is `.notRecorded`, and if writing or verifying the marker fails after all items succeed, `report.completion` is `.failed` with `report.completionError`. In all tracking modes, any item or marker failure leaves `report.isComplete == false`, and `try report.throwIfIncomplete()` throws `PersistentKeyMigrationIncompleteError`. Until a `.once` marker is recorded, retrying re-runs the batch (including completed items) under its conflict policy. Remove `.isMigrationCompleted(id:)` (or set it to `false`) to reset tracking, or choose a new `id` when changing a migration.
 
-A marker recorded in `NSUbiquitousKeyValueStore` syncs across devices; pass `.once(id:recordedIn: UserDefaults.standard)` to run a local-to-iCloud migration once per device instead. When migrating *from* `NSUbiquitousKeyValueStore`, a `.once` migration that runs before initial sync sees missing keys as `.sourceAbsent` and permanently records completion; use `.untracked` until initial sync has completed or record completion under your app's own control.
+A marker recorded in `NSUbiquitousKeyValueStore` syncs across devices; pass `.once(id:recordedIn: UserDefaults.standard)` to run a local-to-iCloud migration once per device instead. When migrating *from* `NSUbiquitousKeyValueStore`, a `.once` migration before initial sync sees missing keys as `.sourceAbsent` and records completion; use `.untracked` until initial sync completes or record completion yourself.
 
 #### Named `UserDefaults` Suites
 
-Any named `UserDefaults` suite that a migration reads, writes, or uses for `recordedIn:` must be created with `UserDefaults.migratable(suiteName:)`, which returns the native `UserDefaults` instance with process-local domain metadata attached for its lifetime (`nil` for empty, path-shaped, `.plist`-suffixed, or reserved domain names). `UserDefaults.standard` (requiring a non-empty `Bundle.main.bundleIdentifier`, or throwing `.missingApplicationIdentifier`), `NSUbiquitousKeyValueStore.default`, and `InMemoryPersistentKeyValueStore` need no special setup, and ordinary `UserDefaults(suiteName:)` instances continue to work outside migrations. See the [2.0.0 Release Notes](docs/release-notes/2.0.0.md) and the [native-store migration decision record](docs/decisions/2026-09-15-native-store-migration.md) for validation and verification details.
+Any named `UserDefaults` suite a migration reads, writes, or uses for `recordedIn:` must be created with `UserDefaults.migratable(suiteName:)`, returning the native `UserDefaults` instance with process-local domain metadata attached for its lifetime (`nil` for empty, path-shaped, `.plist`-suffixed, or reserved domain names). `UserDefaults.standard` (requiring a non-empty `Bundle.main.bundleIdentifier`, or throwing `.missingApplicationIdentifier`), `NSUbiquitousKeyValueStore.default`, and `InMemoryPersistentKeyValueStore` need no special setup, and ordinary `UserDefaults(suiteName:)` instances work outside migrations. See the [2.0.0 Release Notes](docs/release-notes/2.0.0.md) and the [native-store migration decision record](docs/decisions/2026-09-15-native-store-migration.md) for validation and verification details.
 
 ### `UserDefaults` Registration
 
@@ -572,7 +572,7 @@ For structured heterogeneous data, use `CodablePersistentKeyValueRepresentation`
 
 ### `NSUbiquitousKeyValueStore` Observation Scope
 
-Foundation posts `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` on the writing `NSUbiquitousKeyValueStore` instance whenever a value is written or removed through the package. Observation therefore sees remote iCloud updates and in-app changes made through `PersistentKeyValueKit` on that same instance (use `NSUbiquitousKeyValueStore.default` everywhere, as Apple requires), and refreshes all observed keys on account-change or keyless external notifications.
+Foundation posts `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for iCloud changes, so `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` on the writing `NSUbiquitousKeyValueStore` instance when a value is written or removed through the package. Observation sees remote iCloud updates and in-app changes made through `PersistentKeyValueKit` on that instance (use `NSUbiquitousKeyValueStore.default` everywhere, as Apple requires), and refreshes all observed keys on account-change or keyless external notifications.
 
 ## Contributions
 

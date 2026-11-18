@@ -82,11 +82,12 @@ swift test -c release
 swift test -Xswiftc -strict-concurrency=complete -Xswiftc -warn-concurrency -Xswiftc -enable-actor-data-race-checks
 ```
 
-Run the public API checks, the documentation sample check, and the combined Debug and Release coverage gate on macOS:
+Run the public API checks, the documentation sample and DocC build checks, and the combined Debug and Release coverage gate on macOS:
 
 ```sh
 bash Scripts/check-public-api.sh
 ruby Scripts/check-documentation-samples.rb
+bash Scripts/check-documentation-build.sh
 swift test --enable-code-coverage
 swift test -c release --enable-code-coverage
 ruby Scripts/check-swift-coverage.rb \
