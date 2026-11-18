@@ -417,7 +417,7 @@ Returning `nil` from `encode(_:format:)` removes the key from a store; ordinary 
 
 ### Migrate Values Between Stores
 
-Use `copy` or `move` (taking a key, a `PersistentKeyMigrationItem`, `[any PersistentKeyProtocol]`, or `items: [PersistentKeyMigrationItem]`) to transfer persisted values between stores or rename and transform keys in place. Every call requires `onConflict:` and `tracking:`, and returns a `PersistentKeyMigrationReport`:
+Use `copy` or `move` (taking a key, a `PersistentKeyMigrationItem`, `[any PersistentKeyProtocol]`, or `items: [PersistentKeyMigrationItem]`) to transfer persisted values between stores or rename and transform keys within a store. Every call requires `onConflict:` and `tracking:`, and returns a `PersistentKeyMigrationReport`:
 
 ```swift
 func makeAppGroupDefaults() throws -> UserDefaults? {
@@ -460,9 +460,9 @@ let report = try UserDefaults.standard.move(
 try report.throwIfIncomplete()
 ```
 
-Same-store migrations are allowed when every item maps its source key to a different destination key (no duplicate or overlapping keys) or, in one `UserDefaults` or `NSUbiquitousKeyValueStore` instance, rewrites a key in place with `.key(source, to: destination, transform:)` using the same key ID, reporting `.rewritten` under any conflict policy (pass `transform: { $0 }` for a representation-only upgrade; `InMemoryPersistentKeyValueStore` throws `.sameStore` at setup). Before writing, a rewrite decodes its prepared result and binary-plist readback (where another process reads `Int32` as `Int64`) with the source key and, for each reading that decodes, runs `transform` and encodes again (`transform` can run up to three times), failing at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` unless every reading fails the source decoder (`Int` to `String`) or reproduces the same encoded value (requiring reproducible encoding such as `JSONEncoder` with `.sortedKeys` when the source decodes the result). For overlapping formats such as `Int` to `Double` (seconds to milliseconds) or dollars to cents, migrate to a new key ID instead (on retry, a `move` that removed its source finds no source value; `.keepDestination` and `.keepBoth` keep an existing destination, including an earlier attempt's write, without running `transform` while `.keepBoth` also keeps the source; `.overwriteDestination` reconverts the source and replaces the earlier result).
+Same-store migrations are allowed when every item maps its source key to a different destination key (no duplicate or overlapping keys); any same-store item whose source and destination key identifiers are the same throws `PersistentKeyMigrationError.sameStore` at setup before any key is read. To change a key's stored representation or value format, migrate it to a new key ID with `move` (on retry, a `move` that removed its source finds no source value; `.keepDestination` and `.keepBoth` keep an existing destination, including an earlier attempt's write, without running `transform` while `.keepBoth` also keeps the source; `.overwriteDestination` reconverts the source and replaces the earlier result).
 
-`transform` runs when both keys are enabled (`isMigrationEnabled == true`) and the item writes; if its first call throws, the item fails at `.transform` and writes to neither store (a failure during rewrite verification fails at `.prepare` with `.nonIdempotentRewrite`). An `InMemoryPersistentKeyValueStore` source passes stored Swift values without running representation codecs, so copy a mutable reference input in `transform` before mutating it.
+`transform` runs when both keys are enabled (`isMigrationEnabled == true`) and the item writes; if it throws, the item fails at `.transform` and writes to neither store. An `InMemoryPersistentKeyValueStore` source passes stored Swift values without running representation codecs, so copy a mutable reference input in `transform` before mutating it.
 
 #### Conflict Policies and Partial Changes
 
@@ -499,7 +499,7 @@ A marker recorded in `NSUbiquitousKeyValueStore` syncs across devices; pass `.on
 
 #### Named `UserDefaults` Suites
 
-Any named `UserDefaults` suite a migration reads, writes, or uses for `recordedIn:` must be created with `UserDefaults.migratable(suiteName:)`, returning the native `UserDefaults` instance with process-local domain metadata attached for its lifetime (`nil` for empty, path-shaped, `.plist`-suffixed, or reserved domain names). `UserDefaults.standard` (requiring a non-empty `Bundle.main.bundleIdentifier`, or throwing `.missingApplicationIdentifier`), `NSUbiquitousKeyValueStore.default`, and `InMemoryPersistentKeyValueStore` need no special setup, and ordinary `UserDefaults(suiteName:)` instances work outside migrations. See the [2.0.0 Release Notes](docs/release-notes/2.0.0.md) and the [native-store migration decision record](docs/decisions/2026-09-15-native-store-migration.md) for validation and verification details.
+Any named `UserDefaults` suite a migration reads, writes, or uses for `recordedIn:` must be created with `UserDefaults.migratable(suiteName:)`, returning the native `UserDefaults` instance with process-local domain metadata attached for its lifetime (`nil` for empty, NUL-containing, path-shaped, `.plist`-suffixed, or reserved domain names). `UserDefaults.standard` (requiring a non-empty `Bundle.main.bundleIdentifier`, or throwing `.missingApplicationIdentifier`), `NSUbiquitousKeyValueStore.default`, and `InMemoryPersistentKeyValueStore` need no special setup, and ordinary `UserDefaults(suiteName:)` instances work outside migrations. See the [2.0.0 Release Notes](docs/release-notes/2.0.0.md) and the [native-store migration decision record](docs/decisions/2026-09-15-native-store-migration.md) for validation and verification details.
 
 ### `UserDefaults` Registration
 

@@ -77,16 +77,17 @@ storage, but migration throws `PersistentKeyMigrationError.missingMigrationDomai
 before mutation because the framework cannot identify its persistent domain.
 `UserDefaults` domain names are compared ignoring case and Unicode
 normalization for migration identity and reserved-domain validation, and
-`UserDefaults.migratable(suiteName:)` also rejects names containing `/`,
+`UserDefaults.migratable(suiteName:)` also rejects names containing `/` or NUL,
 starting with `~`, or ending with `.plist` (in any case, checked by UTF-8 code
 units). On case-insensitive
 or normalization-insensitive file systems (the macOS default), suite names that
-differ only by case or Unicode normalization, or that use path or `.plist`
-aliases, can resolve to the same preferences file, so treating them as distinct
-stores risked a move removing the values it had just written. Because this
-comparison folds case and canonical equivalence on every platform, two
-genuinely distinct suites on a case-sensitive volume whose names differ only by
-case are also treated as one store, and migrations between them are rejected.
+differ only by case or Unicode normalization, or that use path, `.plist`, or
+NUL-truncated aliases, can resolve to the same preferences domain, so treating
+them as distinct stores risked a move removing the values it had just written.
+Because this comparison folds case and canonical equivalence on every platform,
+two genuinely distinct suites on a case-sensitive volume whose names differ
+only by case are also treated as one store, and migrations between them are
+rejected.
 
 The public migration operation stays generic. Its opaque, throwing endpoint
 requirement is part of `PersistentKeyValueStore`; wrappers forward it to their
@@ -110,26 +111,17 @@ code units) and can be observed directly by `UserDefaults` key-value
 observation. `PersistentKeyMigrationItem` supports migrating a key unchanged
 (`.key(_:)`), renaming a key of the same value type (`.key(_:to:)`), and
 transforming a value across keys or types (`.key(_:to:transform:)`). Migrating
-within a single store is permitted when every item either maps its source key
-to a different destination key in that store or, in `UserDefaults` or
-`NSUbiquitousKeyValueStore`, rewrites a key in place through
-`.key(_:to:transform:)` on a single store instance with byte-identical source
-and destination key identifiers (reporting `.rewritten` under any conflict
-policy without removing the key as a source, verifying before writing that
-decoding each reading of the prepared result with the source key and running
-`transform` again reproduces the same stored value or else failing at `.prepare`
-with `nonIdempotentRewrite`, and recognizing an already-rewritten value on retry when
-it fails to decode with the source key's representation, decodes with the
-destination key's representation, and its snapshot remains current); any
-same-store, same-ID item on `InMemoryPersistentKeyValueStore` throws `sameStore`
-during setup before any key is read (same-store renames to a different key
-identifier still work), duplicate source or destination key identifiers throw
-`duplicateKey(_:)`, and same-store batches where one item's destination is
-another item's source throw `overlappingKeys(_:)`.
+within a single store is permitted when every item maps its source key to a
+different destination key in that store; any same-store item whose source and
+destination key identifiers are the same throws `sameStore` during setup before
+any key is read (to change a key's stored representation or value format, move
+it to a new key identifier), duplicate source or destination key identifiers
+throw `duplicateKey(_:)`, and same-store batches where one item's destination
+is another item's source throw `overlappingKeys(_:)`.
 
 `copy` and `move` return `PersistentKeyMigrationReport` and are not marked
 `@discardableResult`. `PersistentKeyMigrationReport.Completion` and
-`PersistentKeyMigrationReport.Status` (including `.rewritten` and
+`PersistentKeyMigrationReport.Status` (including
 `.failed(FailureStage)`) are `Hashable`, while `completionError` and
 `Outcome.error` carry any thrown error alongside the status.
 `report.throwIfIncomplete()` throws `PersistentKeyMigrationIncompleteError`
@@ -233,11 +225,12 @@ principles:
   `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16 code units.
 - **Same-store key mapping and `overlappingKeys`**: Migrating within a single
   store is allowed when every item maps its source key to a different
-  destination key in that store, enabling in-place key renames and value
-  transforms. Rejecting same-store batches where one item's destination is
-  another item's source (`overlappingKeys(_:)`, such as `A -> B` and `B -> C`
-  or `A -> B` and `B -> A`) guarantees that batch results do not depend on item
-  order.
+  destination key in that store, enabling key renames and value transforms
+  within that store while rejecting any same-store item whose source and
+  destination key identifiers are the same with `sameStore` during setup.
+  Rejecting same-store batches where one item's destination is another item's
+  source (`overlappingKeys(_:)`, such as `A -> B` and `B -> C` or `A -> B` and
+  `B -> A`) guarantees that batch results do not depend on item order.
 - **Representation defaults, container hooks in checked conversion, and the append-or-assign contract**:
   Providing default implementations of the eight store- and container-specific
   `get` and `set` methods on `PersistentKeyValueRepresentation` and
@@ -323,17 +316,18 @@ principles:
   conform to `LocalizedError` because they are developer diagnostics and the
   package ships no localized resources (its only bundled resource is
   `PrivacyInfo.xcprivacy`).
-- **Suite alias rejection (`/`, `~`, and `.plist`)**: Core Foundation resolves
-  suite names containing `/` (or starting with `~`) as file paths and strips a
-  `.plist` suffix in any case, which lets two different suite names open the
-  same preferences file under distinct domain identities (or cause
-  `persistentDomain(forName:)` to read the wrong domain). `UserDefaults.migratable(suiteName:)`
-  returns `nil` when `suiteName` contains `/`, starts with `~`, or ends with
-  `.plist` (ignoring case), checking those delimiters by UTF-8 code units
-  because a combining or prepended mark changes the Swift `Character` while Core
-  Foundation still sees the ASCII delimiter, and compares domain names using
-  case-folded Swift `String` equality (which also folds Unicode canonical
-  equivalence).
+- **Suite alias rejection (`/`, `~`, `.plist`, and NUL)**: Core Foundation
+  resolves suite names containing `/` (or starting with `~`) as file paths,
+  strips a `.plist` suffix in any case, and ends a domain name at its first NUL
+  byte (so `base\0a`, `base\0b`, and `base` resolve to the same domain), which
+  lets different suite names open the same preferences domain under distinct
+  migration identities (or cause `persistentDomain(forName:)` to read the wrong
+  domain). `UserDefaults.migratable(suiteName:)` returns `nil` when `suiteName`
+  contains `/` or NUL, starts with `~`, or ends with `.plist` (ignoring case),
+  checking those delimiters by UTF-8 code units because a combining or
+  prepended mark changes the Swift `Character` while Core Foundation still sees
+  the ASCII delimiter, and compares domain names using case-folded Swift
+  `String` equality (which also folds Unicode canonical equivalence).
 - **Literal key identity (and the in-memory and dictionary-value exceptions)**:
   `UserDefaults` and `NSUbiquitousKeyValueStore` store and look up `NSString`
   keys by literal UTF-16 code units, whereas Swift `String` equality merges
@@ -458,66 +452,22 @@ principles:
   `.failed(.cleanup)` with `.sourceChanged` means the source no longer matched
   its initial snapshot before removal so the move did not remove it (other
   writers or observers may have modified or removed either store's entry).
-- **Same-store in-place rewrite via `.key(_:to:transform:)` (and retry/instance rules)**:
-  In `UserDefaults` and `NSUbiquitousKeyValueStore`
-  (`PersistentKeyValueMigrationRewriteBackend`), an app that must keep an
-  externally defined key name can upgrade its stored representation or value
-  type in one checked, tracked step by passing `.key(k, to: k, transform:)` with
-  byte-identical key identifiers
-  (`source.id.utf8.elementsEqual(destination.id.utf8)`), using
-  `transform: { $0 }` for a representation-only change. Every copy or move
-  conflict policy rewrites the existing value in place without removing the key
-  as a source and reports `.rewritten`, while `.key(k)` and `.key(k, to: k)`
-  still throw `.sameStore`. A rewrite also requires `source` and `destination`
-  to be the same store instance (`migrationHandle`), throwing `.sameStore` when
-  two distinct instances alias one backing store (such as case-variant
-  `UserDefaults` suite handles that can hold different cached values).
-  `InMemoryPersistentKeyValueStore` does not support same-key in-place rewrites:
-  any same-store, same-ID item on an in-memory store, including
-  `.key(_:to:transform:)`, throws `.sameStore` during setup before any key is
-  read, while same-store renames to a different key identifier via `move` or
-  `copy` still work. The in-memory store has no representations, so an in-place
-  rewrite there cannot upgrade a representation and can only change the value
-  itself, which is the unsafe kind of rewrite when retried, and because it keeps
-  live Swift values and references nested inside them without copying them,
-  replay verification cannot reliably prevent or detect in-place mutations of a
-  prepared result or stored source (such as an `Equatable` struct wrapping a
-  mutable reference or a transform returning a reference shared with the
-  source). Because a tracked batch replays from the start after a later item
-  fails, a rewrite whose stored value fails to decode with `source`'s
-  representation checks whether the snapshot decodes with `destination`'s
-  representation, rechecks that the snapshot is still current at stage `.write`
-  (failing with `.destinationChanged` if it changed while decoding), and reports
-  `.rewritten` without running `transform` or writing again. If the initial
-  `transform` call throws, the item fails at `.transform`. Before writing a
-  newly transformed value, the rewrite checks every reading from
-  `migrationReadings(of:)` (both the prepared write's exact immutable
-  property-list copy, as the writing process reads it back, and its
-  binary-property-list-serialized readback via `PropertyListMigrationStorage.freeze`,
-  as other processes and later launches read it back, where an encoded `Int32`
-  is read as a 64-bit integer that `source`'s decoder may accept even when it
-  rejects `Int32`): for each reading that decodes with the `source` key to a
-  non-`nil` value, it runs `transform` and prepares the write again (so
-  `transform` can run up to three times), verifying that each resulting write
-  matches the first (`migrationWrite(_:matches:)`); if any replay `transform` or
-  encoding throws, if the destination encoding is not reproducible (such as
-  `JSONEncoder` without `.sortedKeys` when a reading still decodes with
-  `source`'s representation), or if a repeated write does not match, the item
-  fails at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite`
-  before mutating the store. Where `NSNumber` bridges booleans, integers, and floats in
-  Foundation stores, overlapping numeric rewrites such as `Int` seconds to
-  `Double` milliseconds or dollars to cents are therefore rejected at `.prepare`
-  (migrate to a new key identifier instead so a retry never reads its own
-  result: a retry's behavior depends on whether the source remains and whether
-  the retry writes, so a `move` that removed its source finds no source value,
-  `.keepDestination` and `.keepBoth` keep an existing destination value without
-  running `transform` including a value an earlier attempt wrote while
-  `.keepBoth` also leaves the source, and `.overwriteDestination` converts the
-  source again and replaces the earlier result), whereas `Int`
-  to `String` and identity representation-only rewrites with reproducible
-  encoding succeed. The rule is based on the transform overload and literal key
-  identity rather than comparing value types or representations because
-  `PersistentKeyValueRepresentation` instances cannot be compared for equality.
+- **Rejection of same-store in-place rewrites**: Same-store in-place rewrites
+  (mapping a key to its own identifier with `.key(_:to:transform:)`) were
+  designed and implemented during development, then removed before the 2.0.0
+  release. Any same-store item whose source and destination key identifiers are
+  the same throws `PersistentKeyMigrationError.sameStore` during setup, before
+  any key is read, in every store. Retry safety could not be guaranteed for
+  in-place rewrites because a tracked batch that fails on a later item replays
+  from the start and can read back the old format, the new format, or a widened
+  or immutable property-list variant written or read by another process (for
+  example, an encoded `Int32` widened to a 64-bit integer that neither or only
+  one representation accepts, or an `NSMutableArray` read back as an immutable
+  `NSArray`), and each replay guard closed one variant while review found the
+  next (including double conversion and an abort on an identity rewrite with a
+  consuming decoder). Moving a value to a new key identifier with `move` is
+  retry-safe because a successful move removes the source key, so a retry finds
+  nothing to convert.
 - **Notification-monitored `UserDefaults` keys and observation scope**: Because
   key-value observation parses an identifier by code units as a key path (it
   raises an exception for the empty key and keys containing NUL, treats `.` as
@@ -607,11 +557,11 @@ The regression tests preserve these guarantees:
   covers setup failures before storage access, suite aliases, added-suite fallbacks,
   and migration through generic and existential store types.
 - [`MigrationKeyMappingTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationKeyMappingTests.swift),
-  [`MigrationRewriteTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationRewriteTests.swift),
+  [`MigrationSameKeyTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationSameKeyTests.swift),
   [`MigrationNativeFidelityTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationNativeFidelityTests.swift),
   [`MigrationReportTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationReportTests.swift),
   and [`MigrationSetupValidationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationSetupValidationTests.swift)
-  cover same-store and cross-store key mapping, in-place rewrites, transforms,
+  cover same-store and cross-store key mapping, same-key rejection, transforms,
   literal key and property-list type fidelity, post-cleanup rechecks, overlap
   and length validation, report invariants, and completion tracking.
 - [`PersistentKeyValueRepresentationDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Representation/PersistentKeyValueRepresentationDefaultsTests.swift),
