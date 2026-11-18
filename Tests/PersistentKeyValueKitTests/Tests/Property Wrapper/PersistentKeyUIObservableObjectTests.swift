@@ -243,14 +243,194 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
         storelessObserver.store = nil
 
         XCTAssertEqual(changeCount, 0)
-        XCTAssertEqual(store.registrationCount, 2)
-        XCTAssertEqual(store.deregistrationCount, 1)
+        XCTAssertEqual(store.registrationCount, 1)
+        XCTAssertEqual(store.deregistrationCount, 0)
 
         store.notifyObservers(keyPath: key.id)
 
         XCTAssertEqual(changeCount, 1)
 
         cancellables.forEach { $0.cancel() }
+    }
+
+    @MainActor
+    func test_store_set_nil_notifiesWithDefaultValue() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 17)
+        let observer = PersistentKeyUIObservableObject(store: store, key: key)
+        var notifiedValues: [Int] = []
+        let cancellable = observer.objectWillChange.sink {
+            notifiedValues.append(observer.value)
+        }
+
+        store.set(key, to: 9)
+        notifiedValues = []
+
+        observer.store = nil
+
+        XCTAssertNil(observer.store)
+        XCTAssertEqual(notifiedValues, [17])
+        XCTAssertEqual(observer.value, 17)
+
+        store.set(key, to: 10)
+
+        XCTAssertEqual(notifiedValues, [17])
+
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func test_store_set_observesStoreSelectedWhilePreviousRegistrationIsRemoved() {
+        let previousStore = ObservablePersistentKeyValueStore()
+        let selectedStore = ObservablePersistentKeyValueStore()
+        let finalStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: previousStore, key: key)
+        var changeCount = 0
+        let cancellable = observer.objectWillChange.sink {
+            changeCount += 1
+        }
+
+        // Removing the previous registration selects another store before the selection that removed it returns.
+        previousStore.onNextDeregistration {
+            observer.store = finalStore
+        }
+
+        finalStore.set(key, to: 3)
+        observer.store = selectedStore
+
+        XCTAssertTrue(observer.store as AnyObject === finalStore)
+        XCTAssertEqual(observer.value, 3)
+        XCTAssertEqual(selectedStore.registrationCount, 1)
+        XCTAssertEqual(selectedStore.deregistrationCount, 1)
+
+        changeCount = 0
+        selectedStore.notifyObservers(keyPath: key.id)
+
+        XCTAssertEqual(changeCount, 0)
+
+        finalStore.set(key, to: 4)
+
+        XCTAssertEqual(changeCount, 1)
+
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func test_store_set_observesStoreSelectedWhilePreviousStoreIsReleased() throws {
+        let selectedStore = InMemoryPersistentKeyValueStore()
+        let finalStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: InMemoryPersistentKeyValueStore(), key: key)
+        var notifiedValues: [Int] = []
+        let cancellable = observer.objectWillChange.sink {
+            notifiedValues.append(observer.value)
+        }
+
+        selectedStore.set(key, to: 2)
+        finalStore.set(key, to: 3)
+
+        // The observer holds the only reference to its first store, whose release selects another store.
+        do {
+            let releasedStore = try XCTUnwrap(observer.store as? InMemoryPersistentKeyValueStore)
+
+            releasedStore.set(
+                ReleaseAction {
+                    observer.store = finalStore
+                },
+                forKey: "releaseAction:\(#function)"
+            )
+        }
+
+        observer.store = selectedStore
+
+        XCTAssertTrue(observer.store as AnyObject === finalStore)
+        XCTAssertEqual(observer.value, 3)
+        XCTAssertEqual(notifiedValues, [3, 3])
+
+        notifiedValues = []
+        selectedStore.set(key, to: 4)
+
+        XCTAssertEqual(notifiedValues, [])
+
+        finalStore.set(key, to: 5)
+
+        XCTAssertEqual(notifiedValues, [5])
+
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func test_store_set_sameStore_observesConcurrentWrites() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: store, key: key)
+        var notifiedValue = 0
+        let cancellable = observer.objectWillChange.sink {
+            notifiedValue = observer.value
+        }
+        var missedWrites = 0
+
+        // Each write races repeated assignments of the store that is already selected.
+        for value in 1...100 {
+            let written = DispatchSemaphore(value: 0)
+
+            DispatchQueue.global().async {
+                store.set(key, to: value)
+                written.signal()
+            }
+
+            for _ in 0..<40 {
+                observer.store = store
+            }
+
+            written.wait()
+
+            // A delivered change is already enqueued on the main queue when the write returns.
+            let deadline = Date().addingTimeInterval(0.25)
+
+            while notifiedValue != value, Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.001))
+            }
+
+            if notifiedValue != value {
+                missedWrites += 1
+            }
+        }
+
+        XCTAssertEqual(missedWrites, 0)
+
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func test_store_set_valueTypeStore_observesChangeDuringReplacement() {
+        let base = ObservablePersistentKeyValueStore()
+        let store = ValueTypeStore(base: base)
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: store, key: key)
+        var notifiedValues: [Int] = []
+        let cancellable = observer.objectWillChange.sink {
+            notifiedValues.append(observer.value)
+        }
+
+        // A value-type store has no identity, so setting it again replaces the registration, and a write lands while
+        // the previous registration is removed.
+        base.onNextDeregistration {
+            base.set(key, to: 4)
+        }
+
+        observer.store = store
+
+        XCTAssertEqual(base.registrationCount, 2)
+        XCTAssertEqual(base.deregistrationCount, 1)
+        XCTAssertEqual(notifiedValues, [4, 4])
+
+        base.set(key, to: 5)
+
+        XCTAssertEqual(notifiedValues, [4, 4, 5])
+
+        cancellable.cancel()
     }
 
     @MainActor
@@ -343,4 +523,65 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
         XCTAssertEqual(observer.value, "defaultValue")
     }
     #endif
+}
+
+// MARK: - ReleaseAction Definition
+
+/// An object that performs an action when it is released.
+private final class ReleaseAction {
+    private let action: @MainActor () -> Void
+
+    // MARK: Internal Initialization
+
+    init(_ action: @escaping @MainActor () -> Void) {
+        self.action = action
+    }
+
+    // MARK: Deinitialization
+
+    deinit {
+        MainActor.assumeIsolated(action)
+    }
+}
+
+// MARK: - ValueTypeStore Definition
+
+/// A value-type store that forwards every operation to a backing store.
+private struct ValueTypeStore: PersistentKeyValueStore {
+    let base: ObservablePersistentKeyValueStore
+
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        get throws {
+            try base.migrationEndpoint
+        }
+    }
+
+    func deregister<Key>(
+        _ observer: NSObject,
+        for key: Key,
+        context: UnsafeMutableRawPointer?
+    ) where Key: PersistentKeyProtocol {
+        base.deregister(observer, for: key, context: context)
+    }
+
+    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        base.get(key)
+    }
+
+    func register<Key>(
+        observer: NSObject,
+        for key: Key,
+        with context: UnsafeMutableRawPointer?,
+        and selector: Selector
+    ) where Key: PersistentKeyProtocol {
+        base.register(observer: observer, for: key, with: context, and: selector)
+    }
+
+    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
+        base.remove(key)
+    }
+
+    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        base.set(key, to: value)
+    }
 }

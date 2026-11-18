@@ -14,12 +14,12 @@ final class PersistentKeyUIObservableObjectAssertionTests: XCTestCase {
     // MARK: Tests
 
     @MainActor
-    func test_nilStoreAccessAssertsInDebug() throws {
+    func test_nilStoreWriteAssertsInDebug() throws {
         if ProcessInfo.processInfo.environment["PKVK_ASSERTION_CHILD"] == "1" {
             let key = PersistentKey("key:\(#function)", defaultValue: 0)
             let observer = PersistentKeyUIObservableObject(store: nil, key: key)
 
-            _ = observer.value
+            observer.value = 1
             return
         }
 
@@ -43,7 +43,7 @@ final class PersistentKeyUIObservableObjectAssertionTests: XCTestCase {
         process.arguments = [
             "xctest",
             "-XCTest",
-            "PersistentKeyValueKitTests.PersistentKeyUIObservableObjectAssertionTests/test_nilStoreAccessAssertsInDebug",
+            "PersistentKeyValueKitTests.PersistentKeyUIObservableObjectAssertionTests/test_nilStoreWriteAssertsInDebug",
             Bundle(for: Self.self).bundleURL.path,
         ]
 

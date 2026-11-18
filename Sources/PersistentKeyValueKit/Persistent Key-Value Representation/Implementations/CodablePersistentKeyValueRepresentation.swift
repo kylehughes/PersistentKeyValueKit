@@ -63,6 +63,8 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
 
     /// Encodes `value` into `Proxy` with ``encoder`` and encodes the result for `format`, rethrowing any `Encoder`
     /// error.
+    ///
+    /// Returns an immutable copy of `Proxy`'s encoding after verifying that `Proxy` decodes that copy.
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
         let proxy = try encoder.encode(value)
         return try encodeStorageRepresentation(

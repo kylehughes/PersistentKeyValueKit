@@ -41,6 +41,12 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// This is the string key used in the underlying stores, and the store-specific requirements must keep the value
     /// under it.
     ///
+    /// `UserDefaults` and `NSUbiquitousKeyValueStore` compare identifiers literally, so canonically equivalent
+    /// spellings, such as composed and decomposed "café", are different keys. `ID` is `String`, which treats those
+    /// spellings as equal, so `Identifiable` identity merges them: SwiftUI's `ForEach(keys)` shows one row for both.
+    /// When their values are `Hashable`, ``PersistentKey`` and ``PersistentDebugKey`` are `Hashable` and compare
+    /// identifiers literally, so use the key itself as the identity: `ForEach(keys, id: \.self)`.
+    ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     var id: ID { get }
 

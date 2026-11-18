@@ -169,7 +169,9 @@ extension PersistentKeyMigrationReport {
         /// Encoding or validating the value with the destination key's representation failed before mutating the
         /// destination. This includes an encoded object that the destination store cannot keep exactly, such as an
         /// `NSDecimalNumber` that a `UserDefaults` or `NSUbiquitousKeyValueStore` store would keep as a `Double`
-        /// (``PersistentKeyValueConversionError/encodingFailed``).
+        /// (``PersistentKeyValueConversionError/encodingFailed``). An integer's width is not part of the value these
+        /// stores keep, so an encoded `Int32` does not fail. As after an ordinary write, the writing process reads it
+        /// back as written, while other processes and later launches can read a 64-bit integer.
         case prepare
 
         /// Writing to or verifying the destination store failed. A move had not started removing the source value.

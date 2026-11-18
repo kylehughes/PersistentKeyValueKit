@@ -9,6 +9,7 @@ import Foundation
 import PersistentKeyValueKit
 
 final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @unchecked Sendable {
+    private var deregistrationHandler: (() -> Void)?
     private var deregistrations: Int
     private let lock: NSLock
     private var observations: [Observation]
@@ -41,6 +42,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     }
 
     init() {
+        deregistrationHandler = nil
         deregistrations = 0
         lock = NSLock()
         observations = []
@@ -68,12 +70,19 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
         for key: Key,
         context: UnsafeMutableRawPointer?
     ) where Key: PersistentKeyProtocol {
-        withLock {
+        let handler = withLock {
             deregistrations += 1
             observations.removeAll {
                 $0.observer === observer && $0.keyID == key.id && $0.context == context
             }
+
+            let handler = deregistrationHandler
+            deregistrationHandler = nil
+
+            return handler
         }
+
+        handler?()
     }
 
     func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
@@ -92,6 +101,13 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
 
         for observer in observers {
             observer.observeValue(forKeyPath: keyPath, of: self, change: nil, context: nil)
+        }
+    }
+
+    /// Runs `handler` once, after the next deregistration is removed.
+    func onNextDeregistration(_ handler: @escaping () -> Void) {
+        withLock {
+            deregistrationHandler = handler
         }
     }
 

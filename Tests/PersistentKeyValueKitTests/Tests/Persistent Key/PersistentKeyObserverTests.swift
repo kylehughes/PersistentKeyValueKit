@@ -217,7 +217,7 @@ extension PersistentKeyObserverTests {
     }
 
     @MainActor
-    func test_deinitialization_deregistersCurrentRegistrationAfterStoreChangesToSameStore() {
+    func test_deinitialization_deregistersOriginalRegistrationAfterStoreIsSetToSameStore() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: store, key: key)
@@ -226,11 +226,11 @@ extension PersistentKeyObserverTests {
 
         observer?.store = store
 
-        XCTAssertEqual(store.registrationCount, 2)
-        XCTAssertEqual(store.deregistrationCount, 1)
+        XCTAssertEqual(store.registrationCount, 1)
+        XCTAssertEqual(store.deregistrationCount, 0)
 
         observer = nil
 
-        XCTAssertEqual(store.deregistrationCount, 2)
+        XCTAssertEqual(store.deregistrationCount, 1)
     }
 }

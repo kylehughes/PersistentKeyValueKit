@@ -3,7 +3,8 @@ import Foundation
 /// The migration backend for one UserDefaults persistent domain.
 ///
 /// Snapshots read `userDefaults`' persistent domain, and writes and removals go through `userDefaults` so its observers
-/// are notified.
+/// are notified. Snapshots and prepared writes hold exact immutable copies, so migration decodes the object that an
+/// ordinary read returns and commits the object that an ordinary write stores.
 ///
 /// The wrapped Foundation object and domain name are immutable after initialization. Subclasses used for testing must
 /// preserve UserDefaults' thread-safety guarantees.
@@ -114,7 +115,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         return MigrationSnapshot(
             identity: migrationIdentity,
             keyID: keyID,
-            object: try PropertyListMigrationStorage.freeze(object)
+            object: try PropertyListMigrationStorage.exactCopy(object)
         )
     }
 
@@ -147,7 +148,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
             return MigrationWrite(
                 identity: migrationIdentity,
                 keyID: key.id,
-                object: try PropertyListMigrationStorage.freezeExactly(object)
+                object: try PropertyListMigrationStorage.storableCopy(of: object)
             )
         }
 
@@ -171,7 +172,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
 extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationRewriteBackend {
     // MARK: Internal Instance Interface
 
-    /// A prepared write holds a frozen property list, so decoding it cannot change the write.
+    /// A prepared write holds an immutable copy of the encoded object, so decoding it cannot change the write.
     func migrationValue<Key>(
         for key: Key,
         writtenBy write: MigrationWrite

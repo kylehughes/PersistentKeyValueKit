@@ -120,6 +120,31 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
+    func testDefaultsDestinationCommitsEncodingThatValidationCannotConsume() throws {
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.consumingDecoder")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
+
+        defer {
+            destination.removePersistentDomain(forName: destinationName)
+        }
+
+        try assertEncodingThatValidationCannotConsumeIsCommitted(to: destination)
+    }
+
+    func testDefaultsIntegerWidthMatchesOrdinaryAccess() throws {
+        let sourceName = stableSuiteName("MigrationNativeFidelityTests.integerWidth.source")
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.integerWidth.destination")
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
+
+        defer {
+            source.removePersistentDomain(forName: sourceName)
+            destination.removePersistentDomain(forName: destinationName)
+        }
+
+        try assertIntegerWidthMatchesOrdinaryAccess(from: source, to: destination)
+    }
+
     func testDefaultsDestinationLookupDistinguishesNormalizationForms() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.destination")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
@@ -342,6 +367,27 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(destination.get(optionalKey))
     }
 
+    func testImmutableCopyHoldsOnlyImmutableFoundationObjects() throws {
+        let nested = NSMutableDictionary(
+            dictionary: [
+                "string": NSMutableString(string: "text"),
+                "data": NSMutableData(bytes: [1] as [UInt8], length: 1),
+            ]
+        )
+        let original = NSMutableArray(array: [nested, NSMutableArray(array: [1.5])])
+        let copy = try XCTUnwrap(PropertyListMigrationStorage.immutableCopy(of: original) as? NSArray)
+        let dictionary = try XCTUnwrap(copy[0] as? NSDictionary)
+        let array = try XCTUnwrap(copy[1] as? NSArray)
+
+        XCTAssertFalse(copy is NSMutableArray)
+        XCTAssertFalse(dictionary is NSMutableDictionary)
+        XCTAssertFalse(dictionary["string"] is NSMutableString)
+        XCTAssertFalse(dictionary["data"] is NSMutableData)
+        XCTAssertFalse(array is NSMutableArray)
+        XCTAssertTrue(equal(copy, original))
+        XCTAssertTrue(type(of: PropertyListMigrationStorage.immutableCopy(of: 1.5)) is AnyClass)
+    }
+
     func testMemorySourceDecimalEditDuringMoveFailsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -379,6 +425,8 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(equal(0, false))
         XCTAssertTrue(equal(1, 1))
         XCTAssertFalse(equal(1, 2))
+        XCTAssertTrue(equal(Int32(1), Int64(1)))
+        XCTAssertFalse(equal(Int32(1), Int64(2)))
         XCTAssertFalse(equal(1, 1.0))
         XCTAssertTrue(equal(1.5, 1.5))
         XCTAssertFalse(equal(1.5, 2.5))
@@ -424,12 +472,25 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
+    func testUbiquitousDestinationCommitsEncodingThatValidationCannotConsume() throws {
+        try assertEncodingThatValidationCannotConsumeIsCommitted(to: StrictMigrationUbiquitousStore())
+    }
+
+    @available(watchOS 9.0, *)
     func testUbiquitousDestinationRejectsNumberThatStorageWouldChange() throws {
         let destination = StrictMigrationUbiquitousStore()
 
         try assertNumbersThatStorageWouldChangeFailBeforeWriting(to: destination) {
             destination.storedValue(for: $0)
         }
+    }
+
+    @available(watchOS 9.0, *)
+    func testUbiquitousIntegerWidthMatchesOrdinaryAccess() throws {
+        try assertIntegerWidthMatchesOrdinaryAccess(
+            from: StrictMigrationUbiquitousStore(),
+            to: StrictMigrationUbiquitousStore()
+        )
     }
 
     @available(watchOS 9.0, *)
@@ -443,6 +504,94 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     // MARK: Private Instance Interface
+
+    /// Moves a value over an ordinary destination value with a representation whose decoder empties a writable
+    /// encoding, as migration write validation decodes it.
+    private func assertEncodingThatValidationCannotConsumeIsCommitted<Store>(
+        to destination: Store,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws where Store: PersistentKeyValueStore {
+        let source = InMemoryPersistentKeyValueStore()
+        let legacy = PersistentKey("key:\(#function).legacy", defaultValue: "")
+        let packet = PersistentKey("key:\(#function)", defaultValue: "missing", representation: PacketCodec())
+
+        source.set(legacy, to: "actual")
+        destination.set(packet, to: "ordinary")
+
+        XCTAssertEqual(destination.get(packet), "ordinary", file: file, line: line)
+
+        let report = try source.move(
+            .key(legacy, to: packet),
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved], file: file, line: line)
+        XCTAssertEqual(report.completion, .recorded, file: file, line: line)
+        XCTAssertEqual(destination.get(packet), "actual", file: file, line: line)
+        XCTAssertNil(source.object(forKey: legacy.id), file: file, line: line)
+        destination.remove(packet)
+        destination.remove(.isMigrationCompleted(id: #function))
+    }
+
+    /// Moves integers whose width a format-aware representation observes, expecting migration to read and write them as
+    /// ordinary `get` and `set` do in the same process.
+    private func assertIntegerWidthMatchesOrdinaryAccess<Store>(
+        from source: Store,
+        to destination: Store,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws where Store: PersistentKeyValueStore {
+        let field = PersistentKey(
+            "key:\(#function).field",
+            defaultValue: SignedField.int64(0),
+            representation: SignedFieldCodec()
+        )
+        let ordinary = PersistentKey(
+            "key:\(#function).ordinary",
+            defaultValue: SignedField.int64(0),
+            representation: SignedFieldCodec()
+        )
+        let count = PersistentKey("key:\(#function).count", defaultValue: 0)
+        let text = PersistentKey("key:\(#function).text", defaultValue: "missing")
+
+        source.set(field, to: .int32(-200_000_023))
+        destination.set(ordinary, to: .int32(-200_000_023))
+
+        XCTAssertEqual(source.get(field), .int32(-200_000_023), file: file, line: line)
+
+        let sourceReport = try source.move(
+            .key(field, to: text) {
+                "\($0)"
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(sourceReport.outcomes.map(\.status), [.moved], file: file, line: line)
+        XCTAssertEqual(destination.get(text), "int32(-200000023)", file: file, line: line)
+
+        source.set(count, to: -200_000_023)
+
+        let destinationReport = try source.move(
+            .key(count, to: field) {
+                .int32(Int32($0))
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(destinationReport.outcomes.map(\.status), [.moved], file: file, line: line)
+        XCTAssertEqual(destination.get(field), destination.get(ordinary), file: file, line: line)
+        XCTAssertEqual(destination.get(field), .int32(-200_000_023), file: file, line: line)
+        destination.remove(field)
+        destination.remove(ordinary)
+        destination.remove(text)
+    }
 
     /// Moves counts whose encoded decimal a binary property list would store as a double, then an exact unsigned count.
     ///
@@ -583,11 +732,11 @@ final class MigrationNativeFidelityTests: XCTestCase {
         )
     }
 
-    /// Compares two values after freezing them, as the native backends do.
+    /// Compares exact copies of two values, as the native backends do.
     private func equal(_ lhs: Any, _ rhs: Any) -> Bool {
         PropertyListMigrationStorage.equal(
-            try? PropertyListMigrationStorage.freeze(lhs),
-            try? PropertyListMigrationStorage.freeze(rhs)
+            try? PropertyListMigrationStorage.exactCopy(lhs),
+            try? PropertyListMigrationStorage.exactCopy(rhs)
         )
     }
 }
@@ -655,6 +804,24 @@ private struct CounterCodec: PersistentKeyValueRepresentation {
     }
 }
 
+// MARK: - Packet Codec Definition
+
+/// Stores a string as the only field of an array, and consumes that field when it decodes a writable array.
+private struct PacketCodec: PersistentKeyValueRepresentation {
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> String {
+        guard let array = storageObject as? NSArray, let field = array.firstObject as? String else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        (array as? NSMutableArray)?.removeObject(at: 0)
+        return field
+    }
+
+    func encode(_ value: String, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        NSMutableArray(array: [value])
+    }
+}
+
 // MARK: - Setting Definition
 
 private enum Setting: Equatable, Sendable {
@@ -713,6 +880,35 @@ private struct WidthCodec: PersistentKeyValueRepresentation {
             NSNumber(value: 1.25 as Double)
         case .single:
             NSNumber(value: 1.25 as Float)
+        }
+    }
+}
+
+// MARK: - Signed Field Definition
+
+private enum SignedField: Equatable, Sendable {
+    case int32(Int32)
+    case int64(Int64)
+}
+
+// MARK: - Signed Field Codec Definition
+
+/// Decodes a stored integer by its width as the store returns it.
+private struct SignedFieldCodec: PersistentKeyValueRepresentation {
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> SignedField {
+        guard let number = storageObject as? NSNumber, !CFNumberIsFloatType(number) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return CFNumberGetByteSize(number) == 4 ? .int32(number.int32Value) : .int64(number.int64Value)
+    }
+
+    func encode(_ value: SignedField, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        switch value {
+        case .int32(let value):
+            NSNumber(value: value)
+        case .int64(let value):
+            NSNumber(value: value)
         }
     }
 }

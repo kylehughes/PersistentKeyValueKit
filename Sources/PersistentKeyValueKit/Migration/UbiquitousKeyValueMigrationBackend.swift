@@ -2,6 +2,9 @@ import Foundation
 
 /// The migration backend for an iCloud key-value store.
 ///
+/// Snapshots and prepared writes hold exact immutable copies, so migration decodes the object that an ordinary read
+/// returns and commits the object that an ordinary write stores.
+///
 /// The wrapped store and identity are immutable after initialization. Subclasses and test doubles must preserve the
 /// thread-safety expected from NSUbiquitousKeyValueStore. A successful local write does not establish cloud delivery
 /// or durability.
@@ -85,8 +88,8 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
             return nil
         }
 
-        let frozen = try PropertyListMigrationStorage.freeze(object, allowingLegacyURL: true)
-        return MigrationSnapshot(identity: migrationIdentity, keyID: keyID, object: frozen)
+        let copy = try PropertyListMigrationStorage.exactCopy(object, allowingLegacyURL: true)
+        return MigrationSnapshot(identity: migrationIdentity, keyID: keyID, object: copy)
     }
 
     func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
@@ -115,12 +118,12 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
     ) throws -> MigrationWrite where Key: PersistentKeyProtocol {
         let object = try encodeStorageValue(value, for: key, format: .ubiquitousKeyValueStore)
         if let object {
-            let frozen = try PropertyListMigrationStorage.freezeExactly(object)
-            if try PropertyListMigrationStorage.byteCount(frozen) > 1_048_576 {
+            let copy = try PropertyListMigrationStorage.storableCopy(of: object)
+            if try PropertyListMigrationStorage.byteCount(copy) > 1_048_576 {
                 throw PersistentKeyValueConversionError.invalidStorageValue
             }
 
-            return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: frozen)
+            return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: copy)
         }
 
         return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: nil)
@@ -145,7 +148,7 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
 extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationRewriteBackend {
     // MARK: Internal Instance Interface
 
-    /// A prepared write holds a frozen property list, so decoding it cannot change the write.
+    /// A prepared write holds an immutable copy of the encoded object, so decoding it cannot change the write.
     func migrationValue<Key>(
         for key: Key,
         writtenBy write: MigrationWrite

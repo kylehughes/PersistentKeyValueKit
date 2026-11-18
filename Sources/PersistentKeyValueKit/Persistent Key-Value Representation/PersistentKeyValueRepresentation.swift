@@ -779,16 +779,23 @@ internal func decodeStorageValue<Key: PersistentKeyProtocol>(
     try key.representation.decode(storageObject: object, format: format)
 }
 
+/// Returns an immutable copy of the object that `representation` encodes for `value`, after verifying that the copy
+/// decodes.
+///
+/// The decoder validates the returned copy itself. The copy holds no mutable container or leaf, so a decoder that
+/// consumes writable input cannot change the object a caller stores.
 internal func encodeStorageRepresentation<Value, Representation: PersistentKeyValueRepresentation>(
     _ representation: Representation,
     value: Value,
     format: PersistentKeyValueStorageFormat
 ) throws -> Any?
 where Representation.Value == Value {
-    let object = try representation.encode(value, format: format)
-    if let object {
-        _ = try representation.decode(storageObject: object, format: format)
+    guard let encoded = try representation.encode(value, format: format) else {
+        return nil
     }
+
+    let object = PropertyListMigrationStorage.immutableCopy(of: encoded)
+    _ = try representation.decode(storageObject: object, format: format)
     return object
 }
 

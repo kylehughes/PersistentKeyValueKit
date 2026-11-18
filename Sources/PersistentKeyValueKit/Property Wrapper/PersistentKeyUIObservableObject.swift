@@ -60,30 +60,41 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     /// The store that the key is being observed in.
     ///
     /// Setting a different store observes it and then sends `objectWillChange`, so subscribers, including SwiftUI views,
-    /// read ``value`` from the new store. Setting the same store instance, or `nil` when there is no store, sends
-    /// nothing; a value-type store has no identity, so setting one always sends. If a subscriber to `objectWillChange`
-    /// sets the store again, including while the new store is being registered, the latest store is observed and the
-    /// earlier registration is removed.
+    /// read ``value`` from the new store. Setting `nil` stops observing, and ``value`` then reads the key's default
+    /// value.
+    ///
+    /// Setting the same store instance, or `nil` when there is no store, does nothing: the existing observation
+    /// continues and nothing is sent. A value-type store has no identity, so setting one always observes it again and
+    /// sends `objectWillChange`. The new observation starts before the previous one ends, so a change made while the
+    /// store is replaced is still observed.
+    ///
+    /// If code that runs during the replacement sets the store again, the latest store is observed and the earlier
+    /// observations end. That code includes subscribers to `objectWillChange`, the stores' observer registration and
+    /// removal, and the release of the previous store.
     public var store: (any PersistentKeyValueStore)? {
         get {
             _store
         }
         set {
-            let selectionChanged = !Self.isSameStore(_store, newValue)
+            guard !Self.isSameStore(_store, newValue) else {
+                return
+            }
 
             select(newValue)
 
             // Notifying after the selection lets a subscriber that selects another store have the last word.
-            if selectionChanged {
-                objectWillChange.send()
-            }
+            objectWillChange.send()
         }
     }
     
     /// The value of the key in the store.
     ///
+    /// Reading the value without a store returns the key's default value, as reading a key that a store has no value
+    /// for does.
+    ///
     /// Setting the value writes to the key and store that are current when the setter is called, even if a subscriber
-    /// to `objectWillChange` replaces the store before the write.
+    /// to `objectWillChange` replaces the store before the write. Setting the value without a store is a programmer
+    /// error: the value is discarded, and debug builds stop with an assertion failure.
     public var value: Key.Value {
         get {
             Self.value(for: key, in: _store)
@@ -102,17 +113,15 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
 
     /// Returns the value of `key` in `store`, or the key's default value when there is no store.
     internal static func value(for key: Key, in store: (any PersistentKeyValueStore)?) -> Key.Value {
-        assertStoreExists(store)
-
-        return store?.get(key) ?? key.defaultValue
+        store?.get(key) ?? key.defaultValue
     }
 
-    /// Writes `newValue` for `key` in `store`.
+    /// Writes `newValue` for `key` in `store`, asserting that there is a store to write to.
     ///
     /// The caller captures `key` and `store` before notifying subscribers that the object will change, so a subscriber
     /// that replaces the observed key or store cannot redirect the write.
     internal static func setValue(_ newValue: Key.Value, for key: Key, in store: (any PersistentKeyValueStore)?) {
-        assertStoreExists(store)
+        assert(store != nil, "Store should always be set on initialization or immediately after.")
 
         store?.set(key, to: newValue)
     }
@@ -129,22 +138,23 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     /// This does not send `objectWillChange`: SwiftUI calls it while updating the view, which then reads ``value``,
     /// and publishing changes during a view update is not allowed.
     internal func update(key newKey: Key, store newStore: any PersistentKeyValueStore) {
-        let keyIDChanged = !StoreKeyObservationRegistry.keyIDsMatch(newKey.id, key.id)
+        let previousKey = key
+        let keyIDChanged = !StoreKeyObservationRegistry.keyIDsMatch(newKey.id, previousKey.id)
 
-        key = newKey
+        // Release the previous key only after the update finishes, so a deinitializer it runs cannot re-enter this
+        // object while its properties are being written.
+        withExtendedLifetime(previousKey) {
+            key = newKey
 
-        guard keyIDChanged || !Self.isSameStore(_store, newStore) else {
-            return
+            guard keyIDChanged || !Self.isSameStore(_store, newStore) else {
+                return
+            }
+
+            select(newStore)
         }
-
-        select(newStore)
     }
 
     // MARK: Private Static Interface
-
-    private static func assertStoreExists(_ store: (any PersistentKeyValueStore)?) {
-        assert(store != nil, "Store should always be set on initialization or immediately after.")
-    }
 
     /// Returns whether two stores are the same instance, or are both absent.
     ///
@@ -200,12 +210,20 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     }
 
     /// Replaces the observed store with `store` without notifying subscribers.
+    ///
+    /// The previous store and observation stay alive until the new observation is registered. Ending the observation
+    /// deregisters it, and releasing either one can run other code, such as a `deinit` that selects another store. That
+    /// code must not run while this method writes these properties, and running it last lets its selection win. It also
+    /// means no change goes unobserved while the store is replaced.
     private func select(_ store: (any PersistentKeyValueStore)?) {
-        observation = nil
+        let previousSelection = (store: _store, observation: observation)
 
-        _store = store
+        withExtendedLifetime(previousSelection) {
+            _store = store
+            observation = nil
 
-        registerObserver(on: store)
+            registerObserver(on: store)
+        }
     }
 }
 

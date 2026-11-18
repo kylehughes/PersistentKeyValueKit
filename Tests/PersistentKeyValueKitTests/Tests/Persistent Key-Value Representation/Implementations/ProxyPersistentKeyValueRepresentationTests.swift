@@ -112,6 +112,22 @@ extension ProxyPersistentKeyValueRepresentationTests {
     }
 
     @MainActor
+    func test_protocol_encodeValidatesWithoutConsumingTheEncodedObject() throws {
+        let representation = ProxyPersistentKeyValueRepresentation<String, Packet>(
+            to: {
+                Packet(field: $0)
+            },
+            from: {
+                $0.field
+            }
+        )
+
+        let object = try XCTUnwrap(try representation.encode("actual", format: .userDefaults))
+
+        XCTAssertEqual(try representation.decode(storageObject: object, format: .userDefaults), "actual")
+    }
+
+    @MainActor
     func test_protocol_failedSerializationLeavesPropertyListArrayUnchanged() {
         let representation = ProxyPersistentKeyValueRepresentation<Int, String>(
             to: { _ in
@@ -206,5 +222,34 @@ extension ProxyPersistentKeyValueRepresentationTests {
         )
 
         XCTAssertNil(representation.get(from: ["1", "invalid"]))
+    }
+}
+
+// MARK: - Packet Definition
+
+/// A value stored as the only field of an array, whose representation consumes that field when it decodes a writable
+/// array.
+private struct Packet: KeyValuePersistible, Sendable {
+    static let persistentKeyValueRepresentation = Representation()
+
+    let field: String
+}
+
+// MARK: - Packet Representation Definition
+
+extension Packet {
+    struct Representation: PersistentKeyValueKit.PersistentKeyValueRepresentation {
+        func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Packet {
+            guard let array = storageObject as? NSArray, let field = array.firstObject as? String else {
+                throw PersistentKeyValueConversionError.invalidStorageValue
+            }
+
+            (array as? NSMutableArray)?.removeObject(at: 0)
+            return Packet(field: field)
+        }
+
+        func encode(_ value: Packet, format: PersistentKeyValueStorageFormat) throws -> Any? {
+            NSMutableArray(array: [value.field])
+        }
     }
 }
