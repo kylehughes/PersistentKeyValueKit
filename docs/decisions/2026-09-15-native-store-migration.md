@@ -370,15 +370,18 @@ principles:
   `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
   number's `CFNumber` type, including integer width and `NSDecimalNumber`), so
   migration decodes the exact object an ordinary `get` returns.
-  `PropertyListMigrationStorage.equal` checks `CFBooleanGetTypeID()`,
-  `NSDecimalNumber` (which never compares equal to a non-decimal `NSNumber` such
-  as a `Double`, and compares two decimals with exact `compare(_:) == .orderedSame`),
-  `CFNumberIsFloatType` (comparing integers by value with `isEqual(to:)`
-  regardless of width because `UserDefaults` does not preserve integer width
-  across processes or launches, returning an `Int32` as written in the writing
-  process and as `Int64` elsewhere), `CFNumberGetByteSize` (`Float` versus
-  `Double`), and `NaN` and floating-point bit patterns (`0.0` versus `-0.0`) for
-  both floating-point numbers and `Date` time intervals
+  `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths:)` checks
+  `CFBooleanGetTypeID()`, `NSDecimalNumber` (which never compares equal to a
+  non-decimal `NSNumber` such as a `Double`, and compares two decimals with
+  exact `compare(_:) == .orderedSame`), `CFNumberIsFloatType` (by default, for
+  `UserDefaults` and `NSUbiquitousKeyValueStore` migration verification,
+  comparing integers by value with `isEqual(to:)` regardless of width because
+  `UserDefaults` does not preserve integer width across processes or launches,
+  returning an `Int32` as written in the writing process and as `Int64`
+  elsewhere; when `distinguishingIntegerWidths` is `true`, comparing integer
+  byte sizes with `CFNumberGetByteSize` as well), `CFNumberGetByteSize` (`Float`
+  versus `Double`), and `NaN` and floating-point bit patterns (`0.0` versus
+  `-0.0`) for both floating-point numbers and `Date` time intervals
   (`timeIntervalSinceReferenceDate`, so an unchanged `NaN` date verifies)
   recursively across arrays and dictionaries. Checked encoding through
   `encodeStorageRepresentation` (used by
@@ -409,7 +412,15 @@ principles:
   `UserDefaults` does not ignore the write, rechecking that the key is still
   absent after removal and failing at `.write` with
   `PersistentKeyMigrationError.destinationChanged` if an observer wrote during
-  removal. Because `UserDefaults` stores file URLs as paths (which strips a
+  removal. For `.userDefaults`, `URL.decode(storageObject:format: .userDefaults)`
+  reads stored path strings through `NSURL.fileURL(withPath:)` after tilde
+  expansion (`(path as NSString).expandingTildeInPath`) so stored paths
+  (including tilde-prefixed and relative paths) decode exactly as
+  `UserDefaults.url(forKey:)` reads them, and paths that
+  `UserDefaults.url(forKey:)` reads as `nil` (such as an empty string or a path
+  containing NUL) throw `PersistentKeyValueConversionError.invalidStorageValue`,
+  so a migration fails at `.decode` and keeps the source entry. Because
+  `UserDefaults` stores file URLs as paths (which strips a
   non-existent directory's trailing slash or drops a file URL host),
   `URL.encode(format: .userDefaults)` verifies that decoding the tilde-abbreviated
   path reproduces `url.absoluteString` and throws
@@ -430,7 +441,10 @@ principles:
   converts `NSDecimalNumber` to `Double`), the verification snapshot for a
   committed write carries the copy captured when the write was prepared before
   the value was stored and visible to other readers or observers, and
-  `migrationSnapshotIsCurrent` compares the current object's contents outside
+  `migrationSnapshotIsCurrent` compares the current object's contents with
+  `PropertyListMigrationStorage.equal(contents, object, distinguishingIntegerWidths: true)`
+  (treating integer width as significant recursively because in-memory objects
+  remain unserialized) outside
   the lock and then rechecks under the lock that the stored entry still has the
   snapshot's revision (which is never reused); other
   reference types (including references inside Swift values) cannot be copied,
@@ -489,7 +503,10 @@ principles:
   the read against each registration's comparison value (reusing the previous
   comparison result across registrations that share the same comparison object
   reference, including `NSNumber`, and fast-pathing identical cached
-  non-`NSNumber` object references before `PropertyListMigrationStorage.equal`),
+  non-`NSNumber` object references before calling
+  `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths: true)`,
+  which compares integer widths recursively because `UserDefaults` returns
+  in-process writes with their written `CFNumber` width),
   notifies any registration that joined while that reconciliation was in
   progress if any change was reported since it joined (after its first read
   began), even when the value read equals its comparison value (so it may get
