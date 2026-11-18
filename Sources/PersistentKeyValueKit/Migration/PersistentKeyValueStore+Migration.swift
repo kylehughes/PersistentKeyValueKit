@@ -526,11 +526,12 @@ extension PersistentKeyValueStore {
     /// ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
-    /// A failure before the destination write, including a transform failure, leaves the source value in place.
+    /// A failure before the destination write, including a transform failure, does not modify either store.
     /// Migrations do not roll back completed items, and a move that fails during
-    /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` leaves the written value in `destination`. After removing
-    /// the source, the move checks the destination again, because observers notified of the removal can change it. An
-    /// empty batch is valid; with completion tracking, it records the marker.
+    /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` does not roll back its destination write (though another
+    /// writer or observer may have modified or removed the value in either store). After removing the source, the move
+    /// checks the destination again, because observers notified of the removal can change it. An empty batch is valid;
+    /// with completion tracking, it records the marker.
     ///
     /// - Parameter items: The items to move, processed in order.
     /// - Parameter destination: The destination store.

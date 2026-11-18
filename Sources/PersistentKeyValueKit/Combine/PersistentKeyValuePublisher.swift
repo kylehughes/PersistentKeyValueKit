@@ -27,8 +27,8 @@ import Foundation
 ///
 /// - Important: The publisher does not schedule delivery on any queue. Values are delivered synchronously on the
 ///   thread that requests demand or that reports a store change, which can be a background thread. While one thread
-///   is delivering values, changes reported on other threads are delivered by that thread. Use
-///   `receive(on: DispatchQueue.main)` before updating UI.
+///   is delivering values, changes reported on other threads are delivered by that thread, so a concurrent write can
+///   return before its change is delivered. Use `receive(on: DispatchQueue.main)` before updating UI.
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
 /// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process

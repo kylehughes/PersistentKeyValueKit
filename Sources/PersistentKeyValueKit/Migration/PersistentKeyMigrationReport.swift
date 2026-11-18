@@ -163,7 +163,7 @@ extension PersistentKeyMigrationReport {
         /// Decoding the source snapshot with the source key's representation failed.
         case decode
 
-        /// The item's transform threw. Neither store was modified.
+        /// The initial call to the item's transform threw. Neither store was modified.
         case transform
 
         /// Encoding or validating the value with the destination key's representation failed before mutating the
@@ -258,11 +258,12 @@ extension PersistentKeyMigrationReport {
         case discardedSource
 
         /// The item failed at the given stage. The error is available in ``Outcome/error``. If failure occurred at
-        /// ``FailureStage/cleanup`` after a move wrote the destination, the written value remains in the destination
-        /// store unless something else changed it. A cleanup failure with
-        /// ``PersistentKeyMigrationError/sourceChanged`` left the changed source value in place. A cleanup failure
-        /// with ``PersistentKeyMigrationError/destinationChanged`` means the source value was removed and the
-        /// destination then changed, for example because an observer of the source key modified it.
+        /// ``FailureStage/cleanup`` after a move wrote the destination, the move does not roll back its destination
+        /// write. A cleanup failure with ``PersistentKeyMigrationError/sourceChanged`` means the source no longer
+        /// matched its initial snapshot before removal, so the move did not remove it. A cleanup failure with
+        /// ``PersistentKeyMigrationError/destinationChanged`` means the move removed the source value and the
+        /// destination then no longer matched its expected snapshot. In either case, another writer or observer may
+        /// have modified or removed the value in either store.
         case failed(FailureStage)
 
         /// The existing destination value was preserved under ``PersistentKeyCopyConflictPolicy/keepDestination`` or
@@ -279,8 +280,9 @@ extension PersistentKeyMigrationReport {
         /// The value was rewritten in place by an item that maps a key to its own identifier within one store, under
         /// any copy or move conflict policy, or was found already rewritten because it decodes only with the
         /// destination key's representation. A move did not remove the key as its source. A rewrite is safe to retry
-        /// only when its result fails to decode with the source key's representation or the transform is idempotent;
-        /// otherwise it fails with ``PersistentKeyMigrationError/nonIdempotentRewrite`` before writing. See
+        /// only when its result fails to decode with the source key's representation or when the transform and
+        /// destination encoding are idempotent without mutating the prepared result in place; otherwise it fails with
+        /// ``PersistentKeyMigrationError/nonIdempotentRewrite`` before writing. See
         /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
         case rewritten
 

@@ -240,21 +240,33 @@ principles:
   `encode(format:)`), while built-in representations and primitive types keep
   their specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
   launch-argument string coercion and direct property-list container casting
-  remain intact. For `Array` and `Dictionary` checked conversion
-  (`Array.decode`/`encode` and `Dictionary.decode`/`encode`, used by migration
-  and `UserDefaults.register(_:)`), representations defined by the package
-  (`PrimitivePersistentKeyValueRepresentation` for `Array` and `Dictionary`,
-  `OptionalPersistentKeyValueRepresentation`,
+  remain intact. Ordinary collection writes (`propertyListArray(encoding:)` and
+  `propertyListDictionary(encoding:)`) call the element or value
+  representation's `set(_:to:)` or `set(_:to:in:)` directly as a fast path and
+  fall back to checked conversion only when an array result is empty for
+  non-empty input or a dictionary entry is left absent, distinguishing a
+  built-in representation that omits `nil` optionals from an encoding failure
+  while keeping writes all-or-nothing. For `Array` and `Dictionary` checked
+  conversion (`Array.decode`/`encode` and `Dictionary.decode`/`encode`, used by
+  migration and `UserDefaults.register(_:)`), representations defined by the
+  package (`PrimitivePersistentKeyValueRepresentation` for `Array` and
+  `Dictionary`, `OptionalPersistentKeyValueRepresentation`,
   `ProxyPersistentKeyValueRepresentation`,
   `RawRepresentablePersistentKeyValueRepresentation`,
   `LosslessStringConvertiblePersistentKeyValueRepresentation`, and
   `CodablePersistentKeyValueRepresentation` via `BuiltInContainerConversion`,
-  plus built-in scalar primitives) convert their containers through strict,
-  linear checked paths on any thread and propagate the first underlying error
-  (such as `EncodingError` or `DecodingError`) without relying on ambient
-  task-local state that can be lost across threads or leak into ordinary store
-  reads inside a codec. Representations defined outside the package (including
-  custom `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible`
+  plus built-in scalar primitives via `BuiltInScalarPrimitive` and
+  `BuiltInScalarConversion`) convert their containers through strict, linear
+  checked paths on any thread without relying on ambient task-local state that
+  can be lost across threads or leak into ordinary store reads inside a codec:
+  checked array decoding finishes both storage decoding and proxy conversion for
+  each element (`checkedValues(decoding:converting:)`) before reading the next
+  so it rethrows the first element's error in input order, whereas checked
+  encoding converts proxy layers first (`values.map(checkedProxy(for:))`) and
+  can therefore report a later element's outer proxy error before an earlier
+  element's inner encoding error (such as `EncodingError`). Representations
+  defined outside the package (including custom
+  `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible`
   conformances and consumer types conforming to
   `ProxyPersistentKeyValueRepresentationProtocol`) have their `get(from:)`,
   `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)` container methods called as
@@ -353,15 +365,18 @@ principles:
   mutation for direct `URL` keys, `Optional<URL>`, and proxy representations
   over `URL`, and that `UserDefaults.register(_:)` skips such defaults (so typed
   `get(_:)` returns the declared default while raw `url(forKey:)` returns
-  `nil`), while ordinary `UserDefaults` `set` keeps Foundation's lossy path
-  behavior and `[URL]` stores `absoluteString` values in `.propertyList` format.
-  In `InMemoryPersistentKeyValueStore`, snapshots capture Foundation
+  `nil` when no other value is visible), while ordinary `UserDefaults` `set`
+  keeps Foundation's lossy path behavior and `[URL]` stores `absoluteString`
+  values in `.propertyList` format. In `InMemoryPersistentKeyValueStore`,
+  snapshots and prepared writes capture `ReferenceContents` for Foundation
   property-list objects (such as `NSMutableArray`, including nested
-  `NSDecimalNumber` values) using `PropertyListMigrationStorage.exactCopy`
-  (an immutable deep copy that preserves exact decimals rather than binary
-  property-list serialization, which converts `NSDecimalNumber` to `Double`) and
-  compare their contents before writing or removing, while other reference types
-  verify by revision only.
+  `NSDecimalNumber` values, including when wrapped in `Optional`) using
+  `PropertyListMigrationStorage.exactCopy` (an immutable deep copy that
+  preserves exact decimals rather than binary property-list serialization, which
+  converts `NSDecimalNumber` to `Double`), and `commitMigrationWrite` verifies
+  the committed entry against the contents captured when the write was prepared;
+  other reference types cannot be copied, so snapshots verify them by revision
+  only and in-place rewrites reject them as unverifiable.
 - **Post-cleanup destination recheck on `move`**: Removing a move's source key
   notifies synchronous observers, which can modify or delete the destination
   key before `move` returns. Both `.overwriteDestination` and
@@ -371,12 +386,14 @@ principles:
   recording) if the destination changed. Under `.keepDestinationAndRemoveSource`,
   verifying that the preserved destination value has not changed before removing
   the source runs at stage `.write` (reporting `.failed(.write)` with
-  `.destinationChanged` and leaving the source in place), because a typed read of
+  `.destinationChanged` without removing the source), because a typed read of
   the source key cannot distinguish a remaining stored value equal to
   `defaultValue` from a removed entry. Consequently, `.failed(.cleanup)` with
-  `.destinationChanged` always means the source was removed and the destination
-  then changed, whereas `.failed(.cleanup)` with `.sourceChanged` means the
-  source changed before removal and remains in place.
+  `.destinationChanged` always means the move removed the source and the
+  destination then no longer matched its expected snapshot, whereas
+  `.failed(.cleanup)` with `.sourceChanged` means the source no longer matched
+  its initial snapshot before removal so the move did not remove it (other
+  writers or observers may have modified or removed either store's entry).
 - **Same-store in-place rewrite via `.key(_:to:transform:)` (and retry/instance rules)**:
   An app that must keep an externally defined key name can upgrade its stored
   representation or value type in one checked, tracked step by passing
@@ -394,18 +411,29 @@ principles:
   snapshot decodes with `destination`'s representation, rechecks that the
   snapshot is still current at stage `.write` (failing with `.destinationChanged`
   if it changed while decoding), and reports `.rewritten` without running
-  `transform` or writing again. Before writing a newly transformed value, the
-  rewrite decodes the prepared write with the `source` key and, if it decodes to
-  a non-`nil` value, runs `transform` a second time and verifies that the
-  resulting write matches the first; otherwise it fails at `.prepare` with
+  `transform` or writing again. If the initial `transform` call throws, the item
+  fails at `.transform`. Before writing a newly transformed value, the rewrite
+  decodes the prepared write with the `source` key and, if it decodes to a
+  non-`nil` value, runs `transform` and prepares the write a second time,
+  verifying that the resulting write matches the first and that the first
+  prepared write's contents remain unchanged (`migrationWriteIsUnchanged`); if
+  the replay `transform` throws, if the destination encoding is not reproducible
+  (such as `JSONEncoder` without `.sortedKeys` when the encoded result still
+  decodes with `source`'s representation), or if the result changed or cannot be
+  verified, the item fails at `.prepare` with
   `PersistentKeyMigrationError.nonIdempotentRewrite` before mutating the store.
   In Foundation stores, where `NSNumber` bridges booleans, integers, and floats,
   overlapping numeric rewrites such as `Int` seconds to `Double` milliseconds or
   dollars to cents are therefore rejected at `.prepare` (use a rename via `move`
   instead), whereas `Int` to `String` and identity representation-only rewrites
-  succeed. In `InMemoryPersistentKeyValueStore`, which bypasses representations,
-  same-type rewrites compare values with `Equatable` and reject non-`Equatable`
-  values with `.nonIdempotentRewrite`. The rule is based on the transform
+  with reproducible encoding succeed. In `InMemoryPersistentKeyValueStore`,
+  which bypasses representations and keeps references without copying them,
+  same-type rewrites compare values with `Equatable`, check
+  `migrationWriteIsUnchanged` against the `ReferenceContents` captured when the
+  first write was prepared, and reject with `.nonIdempotentRewrite` values that
+  do not conform to `Equatable`, Foundation property-list results that the
+  verification pass mutates in place, or any other reference result (whose
+  mutations the store cannot detect). The rule is based on the transform
   overload and literal key identity rather than comparing value types or
   representations because `PersistentKeyValueRepresentation` instances cannot be
   compared for equality.
@@ -413,19 +441,26 @@ principles:
   key-value observation treats `.` as a key-path separator, dotted
   `UserDefaults` keys are observed through one `UserDefaultsKeyChangeMonitor`
   associated with each `UserDefaults` instance. The monitor installs its
-  `UserDefaults.didChangeNotification` observer before the first read, reads a
-  newly registered key's first comparison value outside the lock before
-  registration returns (reconciling again if a change arrived during that read,
-  so any write after `register` returns is delivered), deduplicates reads and
-  comparison values per literal UTF-16 key identifier (fast-pathing identical
-  cached non-`NSNumber` object references before
-  `PropertyListMigrationStorage.equal`), and serializes reconciliation with a
-  single-drainer loop that reads values, compares Foundation objects, and
-  invokes callbacks outside its lock without checking weak observer liveness or
-  releasing observer references under the lock (matching
-  `StoreKeyObservationRegistry` and `InMemoryPersistentKeyValueStore`). Because
-  Foundation posts `didChangeNotification` only for in-process defaults writes
-  and not for `addSuite(named:)` or `removeSuite(named:)`, dotted-key
+  `UserDefaults.didChangeNotification` observer before the first read, reads and
+  stores each registration's own initial comparison value outside the lock
+  before registration returns (joining an in-progress same-thread first read for
+  that key, such as from an overridden `object(forKey:)`, instead of calling the
+  getter again, and reconciling again if a change arrived during the first
+  read), and serializes reconciliation with a single-drainer loop. Each
+  reconciliation pass snapshots the observed keys and the registrations present
+  when the pass begins, reads each literal UTF-16 key identifier once, compares
+  the read against each registration's comparison value (reusing the previous
+  comparison result across registrations that share the same comparison object
+  reference, and fast-pathing identical cached non-`NSNumber` object references
+  before `PropertyListMigrationStorage.equal`), and invokes callbacks outside
+  its lock without checking weak observer liveness or releasing observer
+  references under the lock (matching `StoreKeyObservationRegistry` and
+  `InMemoryPersistentKeyValueStore`). Changes are sampled rather than queued: a
+  registration is notified only by reads made after it joined its key, multiple
+  changes between two reads produce at most one notification, and a change that
+  restores a registration's comparison value before the next read produces none.
+  Because Foundation posts `didChangeNotification` only for in-process defaults
+  writes and not for `addSuite(named:)` or `removeSuite(named:)`, dotted-key
   observation is scoped to in-process changes to `object(forKey:)`, and
   callbacks under concurrent writes can arrive on the reconciling thread.
 - **NFC normalization of migration IDs and dotless completion markers**:
@@ -444,8 +479,10 @@ principles:
   undecodable ones so a single unknown entry (such as an enum case written by a
   newer app version) does not blank the whole dictionary. Checked conversion
   (`decode(storageObject:format:)`, used by migration) is strict for both
-  `Array` and `Dictionary`, failing at `.decode` and preserving the source entry
-  instead of silently dropping dictionary entries.
+  `Array` and `Dictionary` across built-in representations, failing at `.decode`
+  and preserving the source entry instead of silently dropping dictionary
+  entries, while representations defined outside the package run their container
+  hooks as written.
 - **Privacy manifest (`PrivacyInfo.xcprivacy`) reasons**: The library ships
   `PrivacyInfo.xcprivacy` declaring `NSPrivacyAccessedAPICategoryUserDefaults`
   with reasons `CA92.1` and `1C8F.1`. Reason `C56D.1` is not declared because

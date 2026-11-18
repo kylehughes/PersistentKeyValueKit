@@ -54,7 +54,8 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     /// Encodes the elements into a `[Any]` array, omitting elements whose encoding returns `nil`.
     ///
     /// Throws if any element fails to encode. Built-in element representations encode each element with their own
-    /// checked conversion and rethrow the first error. Other element representations encode the array with their
+    /// checked conversion (converting outer proxy layers before encoding the resulting proxies) and rethrow the
+    /// thrown error. Other element representations encode the array with their
     /// ``PersistentKeyValueRepresentation/set(_:to:)`` exactly as it is implemented and throw
     /// ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the array empty for nonempty values.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {

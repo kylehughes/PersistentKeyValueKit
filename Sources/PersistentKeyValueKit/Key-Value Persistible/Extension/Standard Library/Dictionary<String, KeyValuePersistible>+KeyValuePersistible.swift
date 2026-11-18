@@ -17,7 +17,8 @@ extension Dictionary: KeyValuePersistible where Key == String, Value: KeyValuePe
     /// Writes are all or nothing: if any value fails to encode, the store or container is left unchanged, so a failed
     /// write never partially overwrites a stored dictionary. Values that encode to `nil` are omitted. Ordinary reads
     /// keep every entry that decodes and omit entries that fail to decode, because entries are independent. Checked
-    /// conversion through ``decode(storageObject:format:)``, which migration uses, fails if any entry fails to decode.
+    /// conversion through ``decode(storageObject:format:)``, which migration uses, fails if any entry fails to decode
+    /// (unless a custom value representation's container hook omits nested entries).
     ///
     /// Foundation keeps keys that are canonically equivalent but spelled differently, such as composed and decomposed
     /// "café", as separate entries, while a Swift dictionary holds at most one of them. An ordinary read of a stored

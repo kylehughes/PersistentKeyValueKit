@@ -110,8 +110,9 @@ extension UserDefaults {
     ///
     /// Each key's default value is encoded with ``PersistentKeyValueStorageFormat/userDefaults``. Keys whose default
     /// values fail to encode (such as a file `URL` whose stored path cannot reproduce its `absoluteString`, for which
-    /// typed ``get(_:)`` still returns `defaultValue` while `url(forKey:)` returns `nil`) are skipped, and keys whose
-    /// default values encode to `nil` are removed from the registration dictionary.
+    /// typed ``get(_:)`` still returns `defaultValue` while `url(forKey:)` returns `nil` when no other value is
+    /// visible) are skipped, and keys whose default values encode to `nil` are removed from the registration
+    /// dictionary.
     ///
     /// Identifiers are compared literally, as `UserDefaults` compares them, so identifiers that are canonically
     /// equivalent but spelled differently register separately. When two keys have the same identifier, the later one

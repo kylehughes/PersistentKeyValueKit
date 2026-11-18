@@ -67,8 +67,10 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     ///
     /// The item fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` before anything is written. This happens
     /// when the source and destination representations share a storage format, including numbers that Foundation
-    /// bridges, such as an integer and an integral `Double`. Migrate the value to a new key instead; see
-    /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
+    /// bridges, such as an integer and an integral `Double`, when the second run of the transform throws, or when the
+    /// destination representation does not encode the same value identically on each run (for example, `JSONEncoder`
+    /// without `.sortedKeys` when the source representation can still decode the encoded result). Migrate the value to
+    /// a new key instead; see ``PersistentKeyMigrationItem/key(_:to:transform:)``.
     ///
     /// Checking a rewrite runs the transform again on its own result, as a retry would. In an
     /// ``InMemoryPersistentKeyValueStore``, which keeps references without copying them, the rewrite also fails with

@@ -73,11 +73,11 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// Migrates `source` to `destination`, converting each value with `transform`.
     ///
     /// `transform` runs synchronously during the migration, after the source value is decoded and before anything is
-    /// written. If it throws, the item fails at ``PersistentKeyMigrationReport/FailureStage/transform`` with the thrown
-    /// error, and neither store is modified for this item, including the source during a move. `transform` does not
-    /// run when the source value is absent, when either key is disabled, or when the conflict policy keeps the existing
-    /// destination value. It can run again if the migration is retried, and an in-place rewrite can run it again on
-    /// its own result, as described below.
+    /// written. If its initial call throws, the item fails at ``PersistentKeyMigrationReport/FailureStage/transform``
+    /// with the thrown error, and neither store is modified for this item, including the source during a move.
+    /// `transform` does not run when the source value is absent, when either key is disabled, or when the conflict
+    /// policy keeps the existing destination value. It can run again if the migration is retried, and an in-place
+    /// rewrite can run it again on its own result, as described below.
     ///
     /// When the migration's source and destination are the same store and `source` and `destination` have the same
     /// identifier, the item rewrites the stored value in place: it decodes the value with `source`'s representation,
@@ -98,19 +98,21 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// ``PersistentKeyMigrationError/destinationChanged`` if it changed), the item reports
     /// ``PersistentKeyMigrationReport/Status/rewritten`` without running `transform` or writing. A rewritten value that
     /// still decodes with `source`'s representation would be rewritten again, so before writing, the item decodes its
-    /// result that way and runs `transform` on it again. Unless that produces the same stored value, the item fails at
+    /// result that way and runs `transform` on it again. Unless that succeeds without changing the first prepared
+    /// result and produces the same stored value (requiring reproducible encoding, such as `JSONEncoder` with
+    /// `.sortedKeys`, when `source` can decode the encoded result), the item fails at
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyMigrationError/nonIdempotentRewrite``
     /// and nothing is written.
     ///
     /// A rewrite is therefore safe to retry only when every value `destination`'s representation stores fails to
-    /// decode with `source`'s representation, such as an integer rewritten as a string, or when `transform` is
-    /// idempotent on its own results. Storage formats overlap more than their Swift types suggest: Foundation stores
-    /// bridge numbers, so a `Bool`, an `Int`, and an integral `Double` can decode as one another, and an
-    /// ``InMemoryPersistentKeyValueStore`` skips representations, so it decodes any value of the source key's type (and
-    /// rejects same-type rewrites of non-`Equatable` values because it cannot verify that re-running `transform`
-    /// produces the same value). To change a value in an overlapping format, such as converting dollars to cents or
-    /// seconds to milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead, so a repeated run finds
-    /// no source value.
+    /// decode with `source`'s representation, such as an integer rewritten as a string, or when `transform` and
+    /// `destination`'s encoding are idempotent on their own results. Storage formats overlap more than their Swift
+    /// types suggest: Foundation stores bridge numbers, so a `Bool`, an `Int`, and an integral `Double` can decode as
+    /// one another, and an ``InMemoryPersistentKeyValueStore`` skips representations, so it decodes any value of the
+    /// source key's type (and rejects same-type rewrites of non-`Equatable` values, reference results other than
+    /// Foundation property-list objects, or results that verification mutates in place). To change a value in an
+    /// overlapping format, such as converting dollars to cents or seconds to milliseconds, migrate it to a new key
+    /// with ``key(_:to:transform:)`` instead, so a repeated run finds no source value.
     ///
     /// - Parameter source: The key to read from the source store.
     /// - Parameter destination: The key to write in the destination store.
