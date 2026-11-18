@@ -266,8 +266,10 @@ extension BuiltInProxyConversion {
     /// Converts each value to its proxy, then writes the proxy as an ordinary dictionary write of `Proxy` does.
     ///
     /// A `Proxy` representation that cannot omit values reports a failure by leaving an entry absent, so its entries
-    /// are written directly. Otherwise each value is written with ``builtInOrdinaryDictionaryEntryWriter()``, which
-    /// converts it through every layer of `Proxy` before converting the next value.
+    /// are written directly; an entry that a `Proxy` representation defined outside this package writes also fails
+    /// unless it is a property list that a store accepts. Otherwise each value is written with
+    /// ``builtInOrdinaryDictionaryEntryWriter()``, which converts it through every layer of `Proxy` before converting
+    /// the next value.
     func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
         let proxyRepresentation = Proxy.persistentKeyValueRepresentation
 
@@ -275,6 +277,7 @@ extension BuiltInProxyConversion {
             return propertyListDictionary(encoding: values, with: builtInOrdinaryDictionaryEntryWriter())
         }
 
+        let validating = !(proxyRepresentation is any BuiltInPrimitiveConversion)
         var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
 
         for (key, value) in values {
@@ -284,7 +287,7 @@ extension BuiltInProxyConversion {
 
             proxyRepresentation.set(key, to: proxy, in: &objects)
 
-            guard objects[key] != nil else {
+            guard isStorableEntry(objects[key], validating: validating) else {
                 return nil
             }
         }

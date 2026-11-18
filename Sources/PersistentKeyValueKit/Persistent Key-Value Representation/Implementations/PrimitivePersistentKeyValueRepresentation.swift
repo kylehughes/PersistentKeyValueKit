@@ -121,9 +121,18 @@ extension PrimitivePersistentKeyValueRepresentation: BuiltInContainerConversion 
     }
 }
 
+// MARK: - BuiltInPrimitiveConversion Extension
+
+extension PrimitivePersistentKeyValueRepresentation: BuiltInPrimitiveConversion where Value: BuiltInPrimitive {}
+
 // MARK: - BuiltInScalarConversion Extension
 
 extension PrimitivePersistentKeyValueRepresentation: BuiltInScalarConversion where Value: BuiltInScalarPrimitive {}
+
+// MARK: - Built-In Primitive Definition
+
+/// A primitive type defined by this package, whose container methods write only property lists that a store accepts.
+internal protocol BuiltInPrimitive: PrimitiveKeyValuePersistible {}
 
 // MARK: - Built-In Container Primitive Definition
 
@@ -132,10 +141,10 @@ extension PrimitivePersistentKeyValueRepresentation: BuiltInScalarConversion whe
 ///
 /// Built-in scalar primitives conform to ``BuiltInScalarPrimitive`` instead: their container methods cast or convert
 /// each element exactly as their checked conversion does, so checked conversion calls those methods.
-internal protocol BuiltInContainerPrimitive: PrimitiveKeyValuePersistible {}
+internal protocol BuiltInContainerPrimitive: BuiltInPrimitive {}
 
 // MARK: - Built-In Scalar Primitive Definition
 
 /// A built-in scalar primitive, such as `Int` or `URL`, whose container methods cast or convert each element exactly
 /// as its checked conversion does.
-internal protocol BuiltInScalarPrimitive: PrimitiveKeyValuePersistible {}
+internal protocol BuiltInScalarPrimitive: BuiltInPrimitive {}

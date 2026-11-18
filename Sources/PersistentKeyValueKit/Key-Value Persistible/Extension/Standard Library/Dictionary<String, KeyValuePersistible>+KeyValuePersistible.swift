@@ -35,6 +35,10 @@ extension Dictionary: KeyValuePersistible where Key == String, Value: KeyValuePe
 
 extension Dictionary: BuiltInContainerPrimitive where Key == String, Value: KeyValuePersistible {}
 
+// MARK: - BuiltInPrimitive Extension
+
+extension Dictionary: BuiltInPrimitive where Key == String, Value: KeyValuePersistible {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Dictionary: PrimitiveKeyValuePersistible

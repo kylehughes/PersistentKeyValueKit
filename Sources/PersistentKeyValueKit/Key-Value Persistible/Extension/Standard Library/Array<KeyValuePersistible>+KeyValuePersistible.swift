@@ -30,6 +30,10 @@ extension Array: KeyValuePersistible where Element: KeyValuePersistible {
 
 extension Array: BuiltInContainerPrimitive where Element: KeyValuePersistible {}
 
+// MARK: - BuiltInPrimitive Extension
+
+extension Array: BuiltInPrimitive where Element: KeyValuePersistible {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible {

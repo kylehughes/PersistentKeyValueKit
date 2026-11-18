@@ -200,13 +200,15 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
     /// Encodes the non-`nil` values as an ordinary write of `base` does.
     ///
     /// A `base` that cannot omit values reports a failure by leaving an entry absent, so its entries are written
-    /// directly. Otherwise each value is written with ``builtInOrdinaryDictionaryEntryWriter()``, which converts it
-    /// through every layer of `base` before converting the next value.
+    /// directly; an entry that a `base` defined outside this package writes also fails unless it is a property list
+    /// that a store accepts. Otherwise each value is written with ``builtInOrdinaryDictionaryEntryWriter()``, which
+    /// converts it through every layer of `base` before converting the next value.
     func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
         guard !(base is any BuiltInValueOmission) else {
             return propertyListDictionary(encoding: values, with: builtInOrdinaryDictionaryEntryWriter())
         }
 
+        let validating = !(base is any BuiltInPrimitiveConversion)
         var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
 
         for (key, value) in values {
@@ -216,7 +218,7 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
 
             base.set(key, to: value, in: &objects)
 
-            guard objects[key] != nil else {
+            guard isStorableEntry(objects[key], validating: validating) else {
                 return nil
             }
         }

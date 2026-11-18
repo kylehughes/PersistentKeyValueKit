@@ -60,7 +60,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
     /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
     /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
-    /// `nil`.
+    /// `nil`. So does a result that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept,
+    /// such as one that contains the UIDs in a keyed archive's property list.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to write the encoded values into.
@@ -86,7 +87,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
     /// `dictionaryKey`. Dictionary writes, registration, and migration call this method for a `dictionaryKey` that
     /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
-    /// values cannot be encoded, so an absent entry counts as a failure, even if the value encodes to `nil`.
+    /// values cannot be encoded, so an absent entry counts as a failure, even if the value encodes to `nil`. So does an
+    /// entry that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept, such as one that
+    /// contains the UIDs in a keyed archive's property list.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -289,26 +292,34 @@ extension PersistentKeyValueRepresentation {
     ///
     /// A built-in representation that can omit values, such as `nil` optionals, converts each value once and tells an
     /// omitted value from a failed one as it converts it. Any other representation is encoded with ``set(_:to:)``,
-    /// which reports a failure by leaving the array empty, so an empty result for nonempty `values` is a failure.
+    /// which reports a failure by leaving the array empty, so an empty result for nonempty `values` is a failure. A
+    /// result that a representation defined outside this package writes also fails unless it is a property list that
+    /// a store accepts.
     @usableFromInline
     internal func propertyListArray(encoding values: [Value]) -> [Any]? {
+        if self is any BuiltInPrimitiveConversion {
+            return propertyListArray(setting: values, validating: false)
+        }
+
         if let omitting = self as? any BuiltInValueOmission {
             return builtInOrdinaryPropertyListArray(encoding: values, with: omitting)
         }
 
-        return propertyListArray(setting: values)
+        return propertyListArray(setting: values, validating: true)
     }
 
     /// Returns the property-list arrays that ordinary writes store for each of `arrays`, or `nil` if any element fails
     /// to encode.
     ///
-    /// This encodes each array as ``propertyListArray(encoding:)`` does, but decides only once whether this
-    /// representation can omit values, because that decision costs as much as writing a small array.
+    /// This encodes each array as ``propertyListArray(encoding:)`` does, but decides only once how this representation
+    /// writes them, because that decision costs as much as writing a small array.
     internal func propertyListArrays(encoding arrays: [[Value]]) -> [Any]? {
-        let encode: ([Value]) -> [Any]? = if let omitting = self as? any BuiltInValueOmission {
+        let encode: ([Value]) -> [Any]? = if self is any BuiltInPrimitiveConversion {
+            { propertyListArray(setting: $0, validating: false) }
+        } else if let omitting = self as? any BuiltInValueOmission {
             { builtInOrdinaryPropertyListArray(encoding: $0, with: omitting) }
         } else {
-            { propertyListArray(setting: $0) }
+            { propertyListArray(setting: $0, validating: true) }
         }
         var objects: [Any] = []
 
@@ -352,28 +363,35 @@ extension PersistentKeyValueRepresentation {
     ///
     /// A built-in representation that can omit values, such as `nil` optionals, converts each value once and tells an
     /// omitted value from a failed one as it converts it. Any other representation encodes each entry with
-    /// ``set(_:to:in:)``, which reports a failure by leaving the entry absent, so an absent entry is a failure. Either
-    /// way, the write stops at the first value that fails to encode.
+    /// ``set(_:to:in:)``, which reports a failure by leaving the entry absent, so an absent entry is a failure. An
+    /// entry that a representation defined outside this package writes also fails unless it is a property list that a
+    /// store accepts. Either way, the write stops at the first value that fails to encode.
     @usableFromInline
     internal func propertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
+        if self is any BuiltInPrimitiveConversion {
+            return propertyListDictionary(setting: values, validating: false)
+        }
+
         if let omitting = self as? any BuiltInValueOmission {
             return builtInOrdinaryPropertyListDictionary(encoding: values, with: omitting)
         }
 
-        return propertyListDictionary(setting: values)
+        return propertyListDictionary(setting: values, validating: true)
     }
 
     /// Returns the property-list dictionaries that ordinary writes store for each of `dictionaries`, or `nil` if any
     /// value fails to encode.
     ///
-    /// This encodes each dictionary as ``propertyListDictionary(encoding:)`` does, but decides only once whether this
-    /// representation can omit values, because that decision costs as much as writing a small dictionary.
+    /// This encodes each dictionary as ``propertyListDictionary(encoding:)`` does, but decides only once how this
+    /// representation writes them, because that decision costs as much as writing a small dictionary.
     @usableFromInline
     internal func propertyListDictionaries(encoding dictionaries: [[String: Value]]) -> [Any]? {
-        let encode: ([String: Value]) -> [String: Any]? = if let omitting = self as? any BuiltInValueOmission {
+        let encode: ([String: Value]) -> [String: Any]? = if self is any BuiltInPrimitiveConversion {
+            { propertyListDictionary(setting: $0, validating: false) }
+        } else if let omitting = self as? any BuiltInValueOmission {
             { builtInOrdinaryPropertyListDictionary(encoding: $0, with: omitting) }
         } else {
-            { propertyListDictionary(setting: $0) }
+            { propertyListDictionary(setting: $0, validating: true) }
         }
         var objects: [Any] = []
 
@@ -414,7 +432,8 @@ extension PersistentKeyValueRepresentation {
     /// that can omit values, such as `nil` optionals, converts the value once and passes the result inward through
     /// each representation it wraps, so a failure at any layer stops the write before the next value is converted.
     /// Any other representation writes the entry with ``set(_:to:in:)``, which reports a failure by leaving the entry
-    /// absent.
+    /// absent; an entry that a representation defined outside this package writes also fails unless it is a property
+    /// list that a store accepts.
     ///
     /// Calling the function costs more than writing the entry directly, so a built-in representation writes through
     /// it only when the representation it wraps can omit values.
@@ -423,10 +442,12 @@ extension PersistentKeyValueRepresentation {
             return builtInOrdinaryDictionaryEntryWriter(with: omitting)
         }
 
+        let validating = !(self is any BuiltInPrimitiveConversion)
+
         return { key, value, objects in
             set(key, to: value, in: &objects)
 
-            return objects[key] != nil
+            return isStorableEntry(objects[key], validating: validating)
         }
     }
 
@@ -534,6 +555,39 @@ extension PersistentKeyValueRepresentation {
         return values
     }
 
+    /// Encodes `values` with ``set(_:to:)``, which reports a failure by leaving the array empty.
+    ///
+    /// If `validating`, a result that is not a property list that a store accepts is also a failure.
+    internal func propertyListArray(setting values: [Value], validating: Bool) -> [Any]? {
+        var objects: [Any] = []
+
+        set(values, to: &objects)
+
+        // A Swift array cannot contain itself, so validating each element validates the array without bridging it.
+        guard !objects.isEmpty || values.isEmpty, !validating || objects.allSatisfy(isStorablePropertyList) else {
+            return nil
+        }
+
+        return objects
+    }
+
+    /// Encodes each entry of `values` with ``set(_:to:in:)``, which reports a failure by leaving the entry absent.
+    ///
+    /// If `validating`, an entry that is not a property list that a store accepts is also a failure.
+    internal func propertyListDictionary(setting values: [String: Value], validating: Bool) -> [String: Any]? {
+        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+
+        for (key, value) in values {
+            set(key, to: value, in: &objects)
+
+            guard isStorableEntry(objects[key], validating: validating) else {
+                return nil
+            }
+        }
+
+        return objects
+    }
+
     // MARK: Private Instance Interface
 
     // `builtIn` is `self`, so its `Value` is this representation's `Value`; the cast only restores the static type.
@@ -569,34 +623,6 @@ extension PersistentKeyValueRepresentation {
         try builtIn.builtInValues(decoding: propertyListArray) {
             try convert($0 as! Value)
         }
-    }
-
-    /// Encodes `values` with ``set(_:to:)``, which reports a failure by leaving the array empty.
-    private func propertyListArray(setting values: [Value]) -> [Any]? {
-        var objects: [Any] = []
-
-        set(values, to: &objects)
-
-        guard !objects.isEmpty || values.isEmpty else {
-            return nil
-        }
-
-        return objects
-    }
-
-    /// Encodes each entry of `values` with ``set(_:to:in:)``, which reports a failure by leaving the entry absent.
-    private func propertyListDictionary(setting values: [String: Value]) -> [String: Any]? {
-        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
-
-        for (key, value) in values {
-            set(key, to: value, in: &objects)
-
-            guard objects[key] != nil else {
-                return nil
-            }
-        }
-
-        return objects
     }
 
     // Ordinary writes are a hot path, and `as!` casts a collection element by element, so these reinterpret it
@@ -692,6 +718,19 @@ internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
 /// converts each element: it then decodes one element at a time so that it reports the first error in input order.
 internal protocol BuiltInScalarConversion: PersistentKeyValueRepresentation {}
 
+// MARK: - Built-In Primitive Conversion Definition
+
+/// A representation of a built-in primitive type, such as `Int` or `[String: Int]`, whose container methods write only
+/// property lists that a store accepts.
+///
+/// Container methods implemented outside this package can write any object, including one that binary property-list
+/// validation accepts but a store rejects, such as the UIDs in a keyed archive's property list, so ordinary writes
+/// validate what such methods write before a store receives it. A conforming representation's container methods
+/// write only such property lists, or encode the elements of a container through the ordinary writes of their own
+/// representation, which validate what they write, so ordinary writes skip that validation. A built-in proxy or
+/// optional representation does not conform; it writes through ``BuiltInValueOmission`` instead.
+internal protocol BuiltInPrimitiveConversion: PersistentKeyValueRepresentation {}
+
 // MARK: - Built-In Value Omission Definition
 
 /// A representation defined by this package whose ordinary container writes can omit a value instead of storing it.
@@ -755,44 +794,124 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 /// Returns `object` wrapped for storage, or `nil` when it is not a property list that a store accepts.
 ///
 /// Foundation stores raise an Objective-C exception for non-property-list objects, so the default write paths treat
-/// such an object as a failed encoding.
+/// such an object as a failed encoding. The wrapped object is the Foundation object that validation bridged `object`
+/// to, so a store, or a later validation of a collection that holds it, does not bridge it again.
 internal func storableEncoding(_ object: Any?) -> Any?? {
     guard let object else {
         return .some(nil)
     }
 
-    guard isStorablePropertyList(object) else {
+    guard let storableObject = storablePropertyList(object) else {
         return nil
     }
 
-    return .some(object)
+    return .some(storableObject)
 }
 
-/// Returns whether `object` is a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept: a string,
-/// number (including a Boolean), date, or data object, or an array or string-keyed dictionary of such objects.
+/// Returns whether `object` is a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept.
 ///
-/// Binary property-list validation also accepts other objects, such as the UIDs in a keyed archive's property list.
-/// `UserDefaults` removes the key's previous value before rejecting such an object, so a write must not pass one to a
-/// store. Validation runs first because it also rejects non-string dictionary keys and a container that contains
-/// itself, which would otherwise recurse forever.
+/// See ``storablePropertyList(_:)``.
 internal func isStorablePropertyList(_ object: Any) -> Bool {
-    PropertyListSerialization.propertyList(object, isValidFor: .binary) && containsOnlyStorableObjects(object)
+    storablePropertyList(object) != nil
 }
 
-/// Returns whether every leaf of `object`, a valid property list, is a string, number, date, or data object.
-private func containsOnlyStorableObjects(_ object: Any) -> Bool {
-    switch object {
-    case is NSString, is NSNumber, is NSDate, is NSData:
+/// Returns whether `object`, the entry that a dictionary container method wrote, is present and, if `validating`, is
+/// a property list that a store accepts.
+internal func isStorableEntry(_ object: Any?, validating: Bool) -> Bool {
+    guard let object else {
+        return false
+    }
+
+    return !validating || isStorablePropertyList(object)
+}
+
+/// Returns the Foundation object that `object` bridges to if it is a property list that `UserDefaults` and
+/// `NSUbiquitousKeyValueStore` accept, or `nil` otherwise.
+///
+/// Such a property list is a string, number (including a Boolean), date, or data object, or an array or string-keyed
+/// dictionary of such objects that does not contain itself. Binary property-list validation also accepts other
+/// objects, such as the UIDs in a keyed archive's property list. `UserDefaults` removes the key's previous value before
+/// rejecting such an object, so a write must not pass one to a store.
+internal func storablePropertyList(_ object: Any) -> AnyObject? {
+    let bridgedObject = object as AnyObject
+    var enclosingContainers: [ObjectIdentifier] = []
+
+    guard isStorablePropertyList(bridgedObject, within: &enclosingContainers) else {
+        return nil
+    }
+
+    return bridgedObject
+}
+
+/// Returns whether `object` is a storable property list, given the containers that enclose it.
+///
+/// This compares Core Foundation type identifiers, which are what property-list validation compares and cost less than
+/// dynamic casts, and reads container elements through Core Foundation without bridging them to Swift values.
+private func isStorablePropertyList(_ object: AnyObject, within enclosingContainers: inout [ObjectIdentifier]) -> Bool {
+    switch CFGetTypeID(object) {
+    case CFStringGetTypeID(), CFNumberGetTypeID(), CFBooleanGetTypeID(), CFDateGetTypeID(), CFDataGetTypeID():
         return true
-    case let array as NSArray:
-        return array.allSatisfy(containsOnlyStorableObjects)
-    case let dictionary as NSDictionary:
-        return dictionary.allSatisfy {
-            containsOnlyStorableObjects($0.value)
+    case CFArrayGetTypeID():
+        let array = unsafeDowncast(object, to: CFArray.self)
+        let count = CFArrayGetCount(array)
+
+        return withElements(of: object, within: &enclosingContainers) { enclosingContainers in
+            withUnsafeTemporaryAllocation(of: UnsafeRawPointer?.self, capacity: count) { elements in
+                CFArrayGetValues(array, CFRange(location: 0, length: count), elements.baseAddress)
+
+                return elements.allSatisfy {
+                    isStorablePropertyList(storedObject(at: $0), within: &enclosingContainers)
+                }
+            }
+        }
+    case CFDictionaryGetTypeID():
+        let dictionary = unsafeDowncast(object, to: CFDictionary.self)
+        let count = CFDictionaryGetCount(dictionary)
+
+        return withElements(of: object, within: &enclosingContainers) { enclosingContainers in
+            withUnsafeTemporaryAllocation(of: UnsafeRawPointer?.self, capacity: count) { keys in
+                withUnsafeTemporaryAllocation(of: UnsafeRawPointer?.self, capacity: count) { values in
+                    CFDictionaryGetKeysAndValues(dictionary, keys.baseAddress, values.baseAddress)
+
+                    return zip(keys, values).allSatisfy { key, value in
+                        CFGetTypeID(storedObject(at: key)) == CFStringGetTypeID()
+                            && isStorablePropertyList(storedObject(at: value), within: &enclosingContainers)
+                    }
+                }
+            }
         }
     default:
         return false
     }
+}
+
+/// Returns the result of validating the elements of `container` with `body`, or `false` if `container` encloses
+/// itself, which would otherwise recurse forever.
+private func withElements(
+    of container: AnyObject,
+    within enclosingContainers: inout [ObjectIdentifier],
+    _ body: (inout [ObjectIdentifier]) -> Bool
+) -> Bool {
+    let identifier = ObjectIdentifier(container)
+
+    guard !enclosingContainers.contains(identifier) else {
+        return false
+    }
+
+    enclosingContainers.append(identifier)
+
+    defer {
+        enclosingContainers.removeLast()
+    }
+
+    return body(&enclosingContainers)
+}
+
+/// Returns the object at `pointer`, an element that a Core Foundation container returned without retaining it.
+///
+/// Foundation containers cannot hold `nil`, so `pointer` is never `nil`.
+private func storedObject(at pointer: UnsafeRawPointer?) -> AnyObject {
+    Unmanaged<AnyObject>.fromOpaque(pointer!).takeUnretainedValue()
 }
 
 internal func checkedStorageValue<Value>(from object: Any, as type: Value.Type = Value.self) throws -> Value {

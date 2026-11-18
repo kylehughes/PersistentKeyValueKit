@@ -19,7 +19,8 @@ internal enum PropertyListMigrationStorage {
     /// `NSDecimalNumber`, which only an exact copy preserves, from other reals, and compares decimals exactly. Reals
     /// and date intervals compare exactly, as a binary property list keeps them, so `NaN` equals `NaN` and a real `0.0`
     /// differs from `-0.0`. Strings and dictionary keys compare by their literal UTF-16 contents, as Foundation stores
-    /// them, rather than by Swift's canonical equivalence.
+    /// them, rather than by Swift's canonical equivalence. The UIDs in a keyed archive's property list, which an
+    /// in-memory store can hold, compare by value.
     ///
     /// By default, integers compare by value regardless of width: a property list stores an integer by its value, so
     /// `UserDefaults` returns an `Int32` as written only to the process that wrote it, and a 64-bit integer to other
@@ -50,7 +51,7 @@ internal enum PropertyListMigrationStorage {
         case (let lhs as URL, let rhs as URL):
             return lhs == rhs
         default:
-            return false
+            return otherLeavesEqual(lhs, rhs)
         }
     }
 
@@ -134,6 +135,26 @@ internal enum PropertyListMigrationStorage {
         default:
             return object as AnyObject
         }
+    }
+
+    /// Whether two objects of a type that ``equal(_:_:distinguishingIntegerWidths:)`` does not otherwise compare, such
+    /// as the UIDs in a keyed archive's property list, are the same binary property-list value.
+    ///
+    /// A UID compares by identity and has no public accessor for its value, but a binary property list stores only
+    /// that value, so two objects of the same Core Foundation type are equal when they serialize to the same bytes.
+    /// Objects that are not property lists are never equal.
+    private static func otherLeavesEqual(_ lhs: Any?, _ rhs: Any?) -> Bool {
+        guard
+            let lhs,
+            let rhs,
+            CFGetTypeID(lhs as AnyObject) == CFGetTypeID(rhs as AnyObject),
+            let lhsData = try? PropertyListSerialization.data(fromPropertyList: lhs, format: .binary, options: 0),
+            let rhsData = try? PropertyListSerialization.data(fromPropertyList: rhs, format: .binary, options: 0)
+        else {
+            return false
+        }
+
+        return lhsData == rhsData
     }
 
     private static func numbersEqual(_ lhs: NSNumber, _ rhs: NSNumber, distinguishingIntegerWidths: Bool) -> Bool {

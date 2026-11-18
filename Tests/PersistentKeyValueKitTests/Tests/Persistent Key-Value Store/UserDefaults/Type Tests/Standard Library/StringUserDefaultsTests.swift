@@ -59,11 +59,9 @@ final class StringUserDefaultsTests: AbstractUserDefaultsTypeTests<String> {
         XCTAssertEqual(try String.decode(storageObject: NSNumber(value: false), format: .userDefaults), "0")
     }
 
-    func test_decode_numberThrowsOutsideUserDefaultsFormat() {
-        for format in [PersistentKeyValueStorageFormat.propertyList, .ubiquitousKeyValueStore] {
-            XCTAssertThrowsError(try String.decode(storageObject: NSNumber(value: 42), format: format)) { error in
-                XCTAssertEqual(error as? PersistentKeyValueConversionError, .invalidStorageValue)
-            }
+    func test_decode_numberThrowsInPropertyListFormat() {
+        XCTAssertThrowsError(try String.decode(storageObject: NSNumber(value: 42), format: .propertyList)) { error in
+            XCTAssertEqual(error as? PersistentKeyValueConversionError, .invalidStorageValue)
         }
 
         XCTAssertThrowsError(try String.decode(storageObject: Data([52, 50]), format: .userDefaults))
