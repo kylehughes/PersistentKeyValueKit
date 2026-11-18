@@ -341,7 +341,9 @@ principles:
   The package uses literal UTF-16 key identity across Foundation stores:
   `PersistentKey` and `PersistentDebugKey` `Equatable` and `Hashable`
   conformances compare and hash `id.utf16` so NFC and NFD spellings remain
-  distinct set members, `UserDefaultsMigrationBackend` sends
+  distinct set members (and SwiftUI callers can pass `ForEach(keys, id: \.self)`
+  instead of relying on `Identifiable`, whose `id: String` merges them),
+  `UserDefaultsMigrationBackend` sends
   `persistentDomain(forName:)` through Objective-C to keep the unbridged
   `NSDictionary` and looks up keys as `NSString`,
   `PropertyListMigrationStorage.equal` compares strings and
@@ -365,21 +367,39 @@ principles:
 - **Type-aware recursive snapshot verification, mutable in-memory references, and file URLs**:
   Core Foundation treats boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)`
   as equal under `==` and `CFEqual`, even though format-aware representations
-  distinguish booleans, integers, and floating-point widths.
+  distinguish booleans, integers, and floating-point widths. Snapshots in
+  `UserDefaultsMigrationBackend` and `UbiquitousKeyValueMigrationBackend` capture
+  `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
+  number's `CFNumber` type, including integer width and `NSDecimalNumber`), so
+  migration decodes the exact object an ordinary `get` returns.
   `PropertyListMigrationStorage.equal` checks `CFBooleanGetTypeID()`,
   `NSDecimalNumber` (which never compares equal to a non-decimal `NSNumber` such
-  as a `Double`, and compares two decimals with exact `compare(_:) == .orderedSame`
-  and `NaN` equality), `CFNumberIsFloatType`, `CFNumberGetByteSize` (`Float`
-  versus `Double`), `NaN`, and floating-point bit patterns (`0.0` versus `-0.0`)
-  recursively across arrays and dictionaries. When preparing a write to
-  `UserDefaults` or `NSUbiquitousKeyValueStore`,
-  `PropertyListMigrationStorage.freezeExactly` normalizes the encoded object
-  through a binary property list and verifies that
-  `PropertyListMigrationStorage.equal(object, frozen)` still holds, throwing
+  as a `Double`, and compares two decimals with exact `compare(_:) == .orderedSame`),
+  `CFNumberIsFloatType` (comparing integers by value with `isEqual(to:)`
+  regardless of width because `UserDefaults` does not preserve integer width
+  across processes or launches, returning an `Int32` as written in the writing
+  process and as `Int64` elsewhere), `CFNumberGetByteSize` (`Float` versus
+  `Double`), `NaN`, and floating-point bit patterns (`0.0` versus `-0.0`)
+  recursively across arrays and dictionaries. Checked encoding through
+  `encodeStorageRepresentation` (used by
+  `ProxyPersistentKeyValueRepresentationProtocol.encode(_:format:)`,
+  `CodablePersistentKeyValueRepresentation.encode(_:format:)`, and migration
+  write preparation) converts the encoded object with
+  `PropertyListMigrationStorage.immutableCopy(of:)` (an immutable
+  Foundation-bridged deep copy) before validating it with
+  `decode(storageObject:format:)` and returns that copy, so a decoder that
+  consumes or mutates writable input during validation cannot alter what is
+  returned or written. When preparing a write to `UserDefaults` or
+  `NSUbiquitousKeyValueStore`, `PropertyListMigrationStorage.storableCopy(of:)`
+  captures `exactCopy(object)`, verifies that
+  `PropertyListMigrationStorage.equal(copy, try freeze(copy))` holds against a
+  binary-property-list-serialized copy, and returns `copy` so the backend commits
+  the exact immutable copy that an ordinary `set` writes, throwing
   `PersistentKeyValueConversionError.encodingFailed` at `.prepare` before any
-  mutation when binary property-list normalization would change the value or
+  mutation when binary property-list serialization would change the value or
   stored type (including any `NSDecimalNumber`, even when exact, because binary
-  property lists store decimals as `Double`). `UserDefaultsMigrationBackend`
+  property lists store decimals as `Double`, while allowing integers of any width
+  such as `Int32`). `UserDefaultsMigrationBackend`
   removes an existing key before writing when the replacement object is
   `CFEqual` to the snapshot but has a different property-list type so
   `UserDefaults` does not ignore the write, rechecking that the key is still
@@ -460,8 +480,9 @@ principles:
   (failing with `.destinationChanged` if it changed while decoding), and reports
   `.rewritten` without running `transform` or writing again. If the initial
   `transform` call throws, the item fails at `.transform`. Before writing a
-  newly transformed value, the rewrite decodes the prepared write (a frozen
-  property list that decoding cannot mutate) with the `source` key and, if it
+  newly transformed value, the rewrite decodes the prepared write (an exact
+  immutable property-list copy that decoding cannot mutate) with the `source`
+  key and, if it
   decodes to a non-`nil` value, runs `transform` and prepares the write a second
   time, verifying that the resulting write matches the first
   (`migrationWrite(_:matches:)`); if the replay `transform` throws, if the

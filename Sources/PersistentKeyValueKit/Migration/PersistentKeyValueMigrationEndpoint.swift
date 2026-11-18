@@ -79,7 +79,8 @@ protocol PersistentKeyValueMigrationBackend {
 ///
 /// Before writing, a rewrite decodes its prepared write with the source key and prepares the rewrite again, so that a
 /// retry cannot convert the value twice. That check is sound only when the code that receives the decoded value
-/// cannot change the prepared write, as with the frozen property lists that the Foundation stores prepare.
+/// cannot change the prepared write, as with the exact immutable property-list copies that the Foundation stores
+/// prepare.
 /// ``InMemoryPersistentKeyValueStore`` keeps Swift values, including the references inside them, without copying
 /// them, so it does not conform, and migration setup rejects a rewrite in it with
 /// ``PersistentKeyMigrationError/sameStore``.
