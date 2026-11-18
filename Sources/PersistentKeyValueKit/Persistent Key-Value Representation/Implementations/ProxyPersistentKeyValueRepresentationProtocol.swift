@@ -15,6 +15,13 @@ import Foundation
 /// ``LosslessStringConvertiblePersistentKeyValueRepresentation`` conform to this protocol. Use
 /// ``ProxyPersistentKeyValueRepresentation`` for closure-based proxy conversions without defining a new representation
 /// type.
+///
+/// This protocol provides default implementations of ``decode(storageObject:format:)``, ``encode(_:format:)``, and the
+/// store- and container-specific `get` and `set` methods that delegate to `Proxy.persistentKeyValueRepresentation`.
+/// Proxy representations defined by this package convert property-list containers through `Proxy`'s checked conversion
+/// during migration and `UserDefaults.register(_:)`, whereas types defined outside this package use their
+/// `get(from:)`, `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)` implementations as written (so a custom type whose
+/// `Proxy` is a dictionary inherits `Dictionary`'s lenient entry decoding unless it overrides those methods).
 public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: PersistentKeyValueRepresentation {
     // MARK: Associated Types
     

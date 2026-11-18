@@ -23,9 +23,12 @@ import Foundation
 /// Because the store keeps the Swift value itself rather than an encoded copy, a class-typed value is shared, not
 /// copied: every read returns the same instance that was written, and mutating it changes the stored value. Use
 /// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
-/// A migration detects a mutated Foundation property-list object stored as a key's value, such as an `NSMutableArray`,
-/// by its contents, so the migration fails instead of removing or overwriting it. It detects other references only
-/// when they are replaced, so do not mutate them while a migration runs.
+/// A migration captures an exact copy of a Foundation property-list object stored as a key's value, such as an
+/// `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents so in-place edits fail the
+/// migration instead of removing or overwriting the value. It detects other references only when they are replaced, so
+/// do not mutate them while a migration runs. Same-type in-place rewrites compare the prepared result with `Equatable`
+/// and fail at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+/// ``PersistentKeyMigrationError/nonIdempotentRewrite`` when the value type does not conform to `Equatable`.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
 ///   thread-safety requirement. The lock is not held while key identifiers are evaluated, observers are notified, or
