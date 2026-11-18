@@ -409,6 +409,17 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertWidthChangeIsDetected(in: source)
     }
 
+    func testDefaultsSnapshotVerifiesIntegerReplacedByEqualWiderInteger() throws {
+        let sourceName = stableSuiteName("MigrationNativeFidelityTests.integerReplacement")
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+
+        defer {
+            source.removePersistentDomain(forName: sourceName)
+        }
+
+        try assertIntegerWidthReplacementVerifiesByValue(in: source)
+    }
+
     func testFileURLThatDefaultsCannotReproduceFailsBeforeMutation() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.fileURL")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
@@ -503,6 +514,45 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(destination.get(key), [original])
     }
 
+    func testMemorySourceIntegerWidthEditDuringMoveFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = MutableArrayKey(id: "key:\(#function)")
+        let destinationKey = PersistentKey("key:\(#function).destination", defaultValue: "absent")
+        let observer = CallbackObserver {
+            // The edit keeps the value and changes only its width, which a representation can observe.
+            source.get(key).replaceObject(at: 0, with: NSNumber(value: Int64(-200_000_023)))
+        }
+
+        source.set(key, to: NSMutableArray(object: NSNumber(value: Int32(-200_000_023))))
+        destination.register(
+            observer: observer,
+            for: destinationKey,
+            with: nil,
+            and: #selector(CallbackObserver.observeValue)
+        )
+
+        defer {
+            destination.deregister(observer, for: destinationKey, context: nil)
+        }
+
+        let report = try source.move(
+            .key(key, to: destinationKey) {
+                "\(($0.firstObject as? NSNumber).map(CFNumberGetByteSize) ?? 0)"
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes[0].error as? PersistentKeyMigrationError, .sourceChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+        XCTAssertEqual((source.get(key).firstObject as? NSNumber).map(CFNumberGetByteSize), 8)
+        XCTAssertEqual(destination.get(destinationKey), "4")
+    }
+
     func testPropertyListEqualityComparesTypesAndLiteralKeys() {
         let date = Date(timeIntervalSinceReferenceDate: 12)
         let url = URL(string: "https://example.com")!
@@ -561,6 +611,30 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(PropertyListMigrationStorage.equal(NSNumber(value: 1.0), decimal))
         XCTAssertTrue(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, NSDecimalNumber.notANumber))
         XCTAssertFalse(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, decimal))
+    }
+
+    func testPropertyListEqualityDistinguishingIntegerWidthsComparesWidthsRecursively() {
+        let int32 = NSNumber(value: Int32(-200_000_023))
+        let int64 = NSNumber(value: Int64(-200_000_023))
+
+        func equalWidths(_ lhs: Any, _ rhs: Any) -> Bool {
+            PropertyListMigrationStorage.equal(lhs, rhs, distinguishingIntegerWidths: true)
+        }
+
+        XCTAssertTrue(PropertyListMigrationStorage.equal([int32] as NSArray, [int64] as NSArray))
+        XCTAssertTrue(PropertyListMigrationStorage.equal(["field": int32] as NSDictionary, ["field": int64] as NSDictionary))
+        XCTAssertTrue(equalWidths(int32, NSNumber(value: Int32(-200_000_023))))
+        XCTAssertTrue(equalWidths(int64, NSNumber(value: Int64(-200_000_023))))
+        XCTAssertFalse(equalWidths(int32, int64))
+        XCTAssertFalse(equalWidths(int64, int32))
+        XCTAssertFalse(equalWidths(int32, NSNumber(value: Int32(-200_000_024))))
+        XCTAssertFalse(equalWidths([int32] as NSArray, [int64] as NSArray))
+        XCTAssertFalse(equalWidths(["field": [int32]] as NSDictionary, ["field": [int64]] as NSDictionary))
+        XCTAssertTrue(equalWidths(["field": [int64]] as NSDictionary, ["field": [int64]] as NSDictionary))
+        XCTAssertFalse(equalWidths(true, NSNumber(value: Int8(1))))
+        XCTAssertFalse(equalWidths(1, 1.0))
+        XCTAssertFalse(equalWidths(Float(1.25), 1.25))
+        XCTAssertTrue(equalWidths(1.25, 1.25))
     }
 
     func testSelfReferentialEncodingFailsBeforeMutation() throws {
@@ -645,6 +719,11 @@ final class MigrationNativeFidelityTests: XCTestCase {
     @available(watchOS 9.0, *)
     func testUbiquitousSnapshotRejectsSingleReplacedByEqualDouble() throws {
         try assertWidthChangeIsDetected(in: StrictMigrationUbiquitousStore())
+    }
+
+    @available(watchOS 9.0, *)
+    func testUbiquitousSnapshotVerifiesIntegerReplacedByEqualWiderInteger() throws {
+        try assertIntegerWidthReplacementVerifiesByValue(in: StrictMigrationUbiquitousStore())
     }
 
     // MARK: Private Instance Interface
@@ -735,6 +814,38 @@ final class MigrationNativeFidelityTests: XCTestCase {
         destination.remove(field)
         destination.remove(ordinary)
         destination.remove(text)
+    }
+
+    /// Moves a 32-bit integer while the transform replaces it with the same value as a 64-bit integer, expecting the
+    /// source to verify and be removed, because the store does not preserve integer width across processes.
+    private func assertIntegerWidthReplacementVerifiesByValue<Store>(
+        in source: Store,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws where Store: PersistentKeyValueStore {
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: SignedField.int64(0), representation: SignedFieldCodec())
+        let sourceBox = UncheckedStore(source)
+
+        source.set(key, to: .int32(-200_000_023))
+
+        let report = try source.move(
+            .key(key, to: key) {
+                // Removing first keeps the store from ignoring a replacement that Core Foundation considers equal.
+                sourceBox.store.remove(key)
+                sourceBox.store.set(key, to: .int64(-200_000_023))
+                XCTAssertEqual(sourceBox.store.get(key), .int64(-200_000_023), file: file, line: line)
+                return $0
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved], file: file, line: line)
+        // The source returns the key's default once the move removes it.
+        XCTAssertEqual(source.get(key), .int64(0), file: file, line: line)
+        XCTAssertEqual(destination.get(key), .int32(-200_000_023), file: file, line: line)
     }
 
     /// Moves counts whose encoded decimal a binary property list would store as a double, then an exact unsigned count.

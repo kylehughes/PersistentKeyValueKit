@@ -256,6 +256,41 @@ extension UserDefaultsKeyChangeObservationTests {
         storage.deregister(observer, for: key, context: nil)
     }
 
+    func test_register_notifiesWhenOnlyIntegerWidthChanges() throws {
+        // A read returns an in-process write as written, which a representation can decode by its width. Foundation
+        // can ignore a write that Core Foundation considers equal, so the stub returns each read directly.
+        let storage = try XCTUnwrap(StubbedUserDefaults(suiteName: suiteName))
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: 0)
+        let narrow = { NSNumber(value: Int32(-200_000_023)) }
+        let wide = NSNumber(value: Int64(-200_000_023))
+        let reads: [(original: Any, sameWidth: Any, widened: Any)] = [
+            (narrow(), narrow(), wide),
+            (NSArray(object: narrow()), NSArray(object: narrow()), NSArray(object: wide)),
+            (NSDictionary(object: narrow(), forKey: "field" as NSString),
+             NSDictionary(object: narrow(), forKey: "field" as NSString),
+             NSDictionary(object: wide, forKey: "field" as NSString)),
+        ]
+
+        for read in reads {
+            let observer = RecordingKeyObserver()
+
+            storage.stubbedObject = read.original
+            storage.register(observer: observer, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+
+            storage.stubbedObject = read.sameWidth
+            NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: storage)
+
+            XCTAssertTrue(observer.observations.isEmpty, "\(read.original)")
+
+            storage.stubbedObject = read.widened
+            NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: storage)
+
+            XCTAssertEqual(observer.observations.count, 1, "\(read.original)")
+
+            storage.deregister(observer, for: key, context: nil)
+        }
+    }
+
     func test_register_registrationsForSameKeyShareOneRead() {
         let key = PersistentKey("com.example.key.\(#function)", defaultValue: 0)
         let observers = (0 ..< 3).map { _ in

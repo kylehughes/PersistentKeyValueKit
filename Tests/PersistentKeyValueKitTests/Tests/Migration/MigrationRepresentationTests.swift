@@ -169,8 +169,10 @@ final class MigrationRepresentationTests: XCTestCase {
         let representation = PrimitivePersistentKeyValueRepresentation<URL>()
         let value = try representation.decode(storageObject: "folder:name/file", format: .userDefaults)
 
+        // `UserDefaults.url(forKey:)` keeps the colon unescaped, unlike `URL(fileURLWithPath:)`.
         XCTAssertTrue(value.isFileURL)
-        XCTAssertEqual(value, URL(fileURLWithPath: "folder:name/file"))
+        XCTAssertEqual(value.relativeString, "folder:name/file")
+        XCTAssertEqual(value.path, URL(fileURLWithPath: "folder:name/file").path)
     }
 
     func testURLWebValueRoundTripsThroughUserDefaultsFormat() throws {

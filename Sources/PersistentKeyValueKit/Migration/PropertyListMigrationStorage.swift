@@ -16,18 +16,22 @@ internal enum PropertyListMigrationStorage {
     /// A format-aware representation can decode objects differently when only their type differs, so verification
     /// distinguishes booleans from numbers, integers from reals, and single-precision from double-precision reals,
     /// which a binary property list preserves, even when they compare equal numerically. It also distinguishes an
-    /// `NSDecimalNumber`, which only an exact copy preserves, from other reals, and compares decimals exactly. Integers
-    /// compare by value regardless of width: a property list stores an integer by its value, so `UserDefaults` returns
-    /// an `Int32` as written only to the process that wrote it, and a 64-bit integer to other processes and launches.
-    /// Reals and date intervals compare exactly, as a binary property list keeps them, so `NaN` equals `NaN` and a real
-    /// `0.0` differs from `-0.0`. Strings and dictionary keys compare by their literal UTF-16 contents, as Foundation
-    /// stores them, rather than by Swift's canonical equivalence.
-    static func equal(_ lhs: Any?, _ rhs: Any?) -> Bool {
+    /// `NSDecimalNumber`, which only an exact copy preserves, from other reals, and compares decimals exactly. Reals
+    /// and date intervals compare exactly, as a binary property list keeps them, so `NaN` equals `NaN` and a real `0.0`
+    /// differs from `-0.0`. Strings and dictionary keys compare by their literal UTF-16 contents, as Foundation stores
+    /// them, rather than by Swift's canonical equivalence.
+    ///
+    /// By default, integers compare by value regardless of width: a property list stores an integer by its value, so
+    /// `UserDefaults` returns an `Int32` as written only to the process that wrote it, and a 64-bit integer to other
+    /// processes and launches. Pass `true` for `distinguishingIntegerWidths` when neither object has been serialized,
+    /// such as in-memory values and in-process observation reads. Those objects keep an integer's width, which a
+    /// representation can observe through `objCType`.
+    static func equal(_ lhs: Any?, _ rhs: Any?, distinguishingIntegerWidths: Bool = false) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil):
             return true
         case (let lhs as NSNumber, let rhs as NSNumber):
-            return numbersEqual(lhs, rhs)
+            return numbersEqual(lhs, rhs, distinguishingIntegerWidths: distinguishingIntegerWidths)
         case (let lhs as NSString, let rhs as NSString):
             return lhs.isEqual(rhs)
         case (let lhs as NSData, let rhs as NSData):
@@ -36,12 +40,12 @@ internal enum PropertyListMigrationStorage {
             return realsEqual(lhs.timeIntervalSinceReferenceDate, rhs.timeIntervalSinceReferenceDate)
         case (let lhs as NSArray, let rhs as NSArray):
             return lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
-                equal($0, $1)
+                equal($0, $1, distinguishingIntegerWidths: distinguishingIntegerWidths)
             }
         case (let lhs as NSDictionary, let rhs as NSDictionary):
             // `NSDictionary` keeps keys that Swift's `String` would merge as canonically equivalent.
             return lhs.count == rhs.count && lhs.allSatisfy { key, value in
-                equal(value, rhs.object(forKey: key))
+                equal(value, rhs.object(forKey: key), distinguishingIntegerWidths: distinguishingIntegerWidths)
             }
         case (let lhs as URL, let rhs as URL):
             return lhs == rhs
@@ -132,7 +136,7 @@ internal enum PropertyListMigrationStorage {
         }
     }
 
-    private static func numbersEqual(_ lhs: NSNumber, _ rhs: NSNumber) -> Bool {
+    private static func numbersEqual(_ lhs: NSNumber, _ rhs: NSNumber, distinguishingIntegerWidths: Bool) -> Bool {
         let lhsIsBoolean = CFGetTypeID(lhs) == CFBooleanGetTypeID()
         let rhsIsBoolean = CFGetTypeID(rhs) == CFBooleanGetTypeID()
         guard !lhsIsBoolean, !rhsIsBoolean else {
@@ -155,14 +159,16 @@ internal enum PropertyListMigrationStorage {
             return false
         }
 
-        // A property list stores an integer by its value, not its width.
-        guard lhsIsReal else {
-            return lhs.isEqual(to: rhs)
+        // A binary property list keeps a real's width but stores an integer by its value. An unserialized integer
+        // keeps its width too.
+        if lhsIsReal || distinguishingIntegerWidths {
+            guard CFNumberGetByteSize(lhs as CFNumber) == CFNumberGetByteSize(rhs as CFNumber) else {
+                return false
+            }
         }
 
-        // A binary property list keeps a real's width, which a representation can observe through `objCType`.
-        guard CFNumberGetByteSize(lhs as CFNumber) == CFNumberGetByteSize(rhs as CFNumber) else {
-            return false
+        guard lhsIsReal else {
+            return lhs.isEqual(to: rhs)
         }
 
         return realsEqual(lhs.doubleValue, rhs.doubleValue)

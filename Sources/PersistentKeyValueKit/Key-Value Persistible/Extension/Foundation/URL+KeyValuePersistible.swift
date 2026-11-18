@@ -34,7 +34,9 @@ extension URL: PrimitiveKeyValuePersistible {
     /// These strings are not required to be absolute. ``encode(format:)`` writes `absoluteString`, which is a relative
     /// reference for a URL without a scheme or base URL, and decoding accepts it so such values read back.
     /// - For ``PersistentKeyValueStorageFormat/userDefaults``, accepts `NSKeyedArchiver` `Data`, a tilde-abbreviated
-    ///   file path `String`, or a `URL` object, matching `UserDefaults.url(forKey:)`.
+    ///   file path `String`, or a `URL` object, matching `UserDefaults.url(forKey:)`. A path decodes to the file URL
+    ///   that `url(forKey:)` returns, and a path it reads as `nil`, such as an empty string, throws
+    ///   ``PersistentKeyValueConversionError/invalidStorageValue``.
     public static func decode(
         storageObject: Any,
         format: PersistentKeyValueStorageFormat
@@ -58,10 +60,19 @@ extension URL: PrimitiveKeyValuePersistible {
                 }
                 return value as URL
             }
-            guard let path = storageObject as? String else {
+            // `UserDefaults.url(forKey:)` reads a path through `NSURL.fileURL(withPath:)`, which differs from
+            // `URL(fileURLWithPath:)` and returns `nil`, despite its non-optional signature, for a path it rejects, such
+            // as an empty one. `perform(_:with:)` returns that result as an optional.
+            guard
+                let path = storageObject as? String,
+                let value = NSURL.perform(
+                    #selector(NSURL.fileURL(withPath:)),
+                    with: (path as NSString).expandingTildeInPath
+                )?.takeUnretainedValue() as? NSURL
+            else {
                 throw PersistentKeyValueConversionError.invalidStorageValue
             }
-            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            return value as URL
         }
         guard let string = storageObject as? String, let value = URL(string: string) else {
             throw PersistentKeyValueConversionError.invalidStorageValue
@@ -91,10 +102,12 @@ extension URL: PrimitiveKeyValuePersistible {
         case .userDefaults:
             if isFileURL {
                 let path = (path as NSString).abbreviatingWithTildeInPath
-                let storedURL = try Self.decode(storageObject: path, format: .userDefaults)
-
-                // The path drops a host and a trailing slash that later relative resolution depends on.
-                guard storedURL.absoluteString == absoluteString else {
+                // The path drops a host and a trailing slash that later relative resolution depends on, and
+                // `url(forKey:)` reads an empty path as `nil`.
+                guard
+                    let storedURL = try? Self.decode(storageObject: path, format: .userDefaults),
+                    storedURL.absoluteString == absoluteString
+                else {
                     throw PersistentKeyValueConversionError.encodingFailed
                 }
 

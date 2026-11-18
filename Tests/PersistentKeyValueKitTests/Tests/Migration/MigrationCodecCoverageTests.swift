@@ -237,8 +237,8 @@ final class MigrationCodecCoverageTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            try representation.decode(storageObject: "path:name", format: .userDefaults),
-            URL(fileURLWithPath: "path:name")
+            try representation.decode(storageObject: "path:name", format: .userDefaults).path,
+            URL(fileURLWithPath: "path:name").path
         )
         let archive = try NSKeyedArchiver.archivedData(
             withRootObject: "wrong",

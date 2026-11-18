@@ -294,8 +294,12 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     }
 
     /// Returns whether a read differs from a comparison value.
+    ///
+    /// `UserDefaults` returns an in-process write as written, so a write that changes only an integer's width is a
+    /// change that the key's getter can observe.
     private static func isChanged(from lastObject: AnyObject?, to object: AnyObject?) -> Bool {
-        !isSameObject(lastObject, object) && !PropertyListMigrationStorage.equal(lastObject, object)
+        !isSameObject(lastObject, object)
+            && !PropertyListMigrationStorage.equal(lastObject, object, distinguishingIntegerWidths: true)
     }
 
     /// Returns whether two reads returned the same object, which makes a recursive comparison unnecessary.

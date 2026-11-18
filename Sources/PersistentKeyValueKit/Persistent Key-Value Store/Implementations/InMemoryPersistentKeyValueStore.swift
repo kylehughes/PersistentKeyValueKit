@@ -24,9 +24,9 @@ import Foundation
 /// copied: every read returns the same instance that was written, and mutating it changes the stored value. Use
 /// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
 /// A migration captures an exact copy of a Foundation property-list object that it reads or prepares as a key's value,
-/// such as an `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents so in-place edits
-/// fail the migration instead of removing or overwriting the value. It detects other references only when they are
-/// replaced, so do not mutate them while a migration runs.
+/// such as an `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents, including each
+/// integer's width, so in-place edits fail the migration instead of removing or overwriting the value. It detects other
+/// references only when they are replaced, so do not mutate them while a migration runs.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
 ///   thread-safety requirement. The lock is not held while key identifiers are evaluated, observers are notified, or
@@ -474,7 +474,8 @@ extension InMemoryPersistentKeyValueStore {
                 return true
             }
 
-            return PropertyListMigrationStorage.equal(contents, object)
+            // The store keeps objects unserialized, so an edit that changes only an integer's width is a change.
+            return PropertyListMigrationStorage.equal(contents, object, distinguishingIntegerWidths: true)
         }
 
         // MARK: Internal Static Interface
