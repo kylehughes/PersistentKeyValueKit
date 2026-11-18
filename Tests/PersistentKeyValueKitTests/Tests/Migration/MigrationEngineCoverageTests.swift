@@ -100,24 +100,6 @@ extension ScriptedMigrationStore: PersistentKeyValueMigrationBackend {
         )
     }
 
-    func migrationValue<Key>(
-        for key: Key,
-        writtenBy write: MigrationWrite
-    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
-        try base.migrationValue(
-            for: key,
-            writtenBy: .init(identity: base.migrationIdentity, keyID: write.keyID, object: write.object)
-        )
-    }
-
-    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
-        base.migrationWrite(write, matches: other)
-    }
-
-    func migrationWriteIsUnchanged(_ write: MigrationWrite) -> Bool {
-        base.migrationWriteIsUnchanged(write)
-    }
-
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key
@@ -351,25 +333,6 @@ final class MigrationEngineCoverageTests: XCTestCase {
         }
 
         XCTAssertEqual(source.get(k), 1)
-    }
-
-    func testRewriteVerificationFalseReportsWriteFailure() throws {
-        let store = ScriptedMigrationStore()
-        let k = key()
-
-        store.set(k, to: 1)
-        store.current = false
-        let report = try store.move(
-            .key(k, to: k) {
-                max($0, 2)
-            },
-            to: store,
-            onConflict: .overwriteDestination,
-            tracking: .untracked
-        )
-
-        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
-        XCTAssertEqual(report.outcomes[0].error as? PersistentKeyMigrationError, .writeVerificationFailed)
     }
 
     func testInvalidSourceAndDestinationIdentities() throws {

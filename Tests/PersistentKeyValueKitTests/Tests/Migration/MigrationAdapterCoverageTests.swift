@@ -166,26 +166,9 @@ final class MigrationAdapterCoverageTests: XCTestCase {
 
         try assertPreparedWritesDecodeAndCompare(in: defaults)
         try assertPreparedWritesDecodeAndCompare(in: cloud)
-        try assertPreparedWritesDecodeAndCompare(in: InMemoryPersistentKeyValueStore())
 
         try assertPreparedRemovalDecodesAsAbsent(in: defaults)
         try assertPreparedRemovalDecodesAsAbsent(in: cloud)
-
-        let memory = InMemoryPersistentKeyValueStore()
-        let stringWrite = try memory.prepareMigrationWrite("1", for: PersistentKey(intKey.id, defaultValue: ""))
-
-        XCTAssertThrowsError(try memory.migrationValue(for: intKey, writtenBy: stringWrite)) {
-            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .invalidValue)
-        }
-
-        // The in-memory store cannot tell whether two values that are not `Equatable` are the same.
-        let opaque = InMemoryPersistentKeyValueStore.MigrationWrite(
-            identity: memory.migrationIdentity,
-            keyID: intKey.id,
-            object: OpaqueValue()
-        )
-
-        XCTAssertFalse(memory.migrationWrite(opaque, matches: opaque))
     }
 
     func testStandardFactoryValidationAndEmptySuite() throws {
@@ -412,7 +395,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     // MARK: Private Instance Interface
 
     private func assertPreparedRemovalDecodesAsAbsent(
-        in store: some PersistentKeyValueMigrationBackend,
+        in store: some PersistentKeyValueMigrationRewriteBackend,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
@@ -429,7 +412,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     private func assertPreparedWritesDecodeAndCompare(
-        in store: some PersistentKeyValueMigrationBackend,
+        in store: some PersistentKeyValueMigrationRewriteBackend,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
@@ -454,9 +437,6 @@ final class MigrationAdapterCoverageTests: XCTestCase {
             XCTAssertEqual($0 as? PersistentKeyMigrationError, .internalInconsistency, file: file, line: line)
         }
     }
-}
-
-private struct OpaqueValue {
 }
 
 private final class RefusingDefaults: UserDefaults {

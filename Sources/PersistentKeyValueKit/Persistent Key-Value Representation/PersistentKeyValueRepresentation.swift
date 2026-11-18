@@ -282,20 +282,20 @@ extension PersistentKeyValueRepresentation {
 
     /// Returns the property-list array that stores `values`, or `nil` if any element fails to encode.
     ///
-    /// Ordinary writes encode with ``set(_:to:)``, which reports a failure by leaving the array empty. Only an empty
-    /// result for nonempty `values` falls back to checked conversion, which tells a failure apart from a built-in
-    /// representation that omits every value, such as an array of `nil` optionals.
+    /// Ordinary writes encode with ``set(_:to:)``, which reports a failure by leaving the array empty. An empty result
+    /// for nonempty `values` is a failure unless a built-in representation omitted every value, such as an array of
+    /// `nil` optionals, which ``omits(_:)`` decides without encoding the values again.
     @usableFromInline
     internal func propertyListArray(encoding values: [Value]) -> [Any]? {
         var objects: [Any] = []
 
         set(values, to: &objects)
 
-        guard objects.isEmpty, !values.isEmpty else {
-            return objects
+        guard !objects.isEmpty || values.allSatisfy({ omits($0) }) else {
+            return nil
         }
 
-        return try? checkedPropertyListArray(encoding: values)
+        return objects
     }
 
     /// Returns the property-list array that stores `values`, throwing if it cannot be encoded.
@@ -323,8 +323,8 @@ extension PersistentKeyValueRepresentation {
     /// Returns the property-list dictionary that stores `values`, or `nil` if any value fails to encode.
     ///
     /// Ordinary writes encode each entry with ``set(_:to:in:)``, which reports a failure by leaving the entry absent.
-    /// Only an absent entry falls back to checked conversion, which tells a failure apart from a built-in
-    /// representation that omits a value, such as a `nil` optional.
+    /// An absent entry is a failure unless a built-in representation omitted its value, such as a `nil` optional,
+    /// which ``omits(_:)`` decides without encoding the value again.
     @usableFromInline
     internal func propertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
         var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
@@ -332,8 +332,8 @@ extension PersistentKeyValueRepresentation {
         for (key, value) in values {
             set(key, to: value, in: &objects)
 
-            guard objects[key] != nil else {
-                return try? checkedPropertyListDictionary(encoding: values)
+            guard objects[key] != nil || omits(value) else {
+                return nil
             }
         }
 
@@ -444,6 +444,24 @@ extension PersistentKeyValueRepresentation {
         return values
     }
 
+    /// Returns whether an ordinary container write omits `value` instead of storing it.
+    ///
+    /// Only a built-in representation omits a value; any other representation reports a failure by leaving it out.
+    /// This method invokes no encoding hook, so it does not re-encode a failed value: retrying a failed write at
+    /// every level of a recursive value takes time exponential in its depth.
+    internal func omits(_ value: Value) -> Bool {
+        guard let omitting = self as? any BuiltInValueOmission else {
+            return false
+        }
+
+        return builtInOmits(value, with: omitting)
+    }
+
+    /// Whether an ordinary container write omits any value of this representation.
+    internal var omitsValues: Bool {
+        (self as? any BuiltInValueOmission)?.builtInOmitsValues ?? false
+    }
+
     // MARK: Private Instance Interface
 
     // `builtIn` is `self`, so its `Value` is this representation's `Value`; the cast only restores the static type.
@@ -479,6 +497,10 @@ extension PersistentKeyValueRepresentation {
         try builtIn.builtInValues(decoding: propertyListArray) {
             try convert($0 as! Value)
         }
+    }
+
+    private func builtInOmits<BuiltIn: BuiltInValueOmission>(_ value: Value, with builtIn: BuiltIn) -> Bool {
+        builtIn.builtInOmits(value as! BuiltIn.Value)
     }
 
     private func builtInDictionary<BuiltIn: BuiltInContainerConversion>(
@@ -538,6 +560,24 @@ internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
 /// Checked conversion uses these container methods, except when a built-in proxy or optional representation also
 /// converts each element: it then decodes one element at a time so that it reports the first error in input order.
 internal protocol BuiltInScalarConversion: PersistentKeyValueRepresentation {}
+
+// MARK: - Built-In Value Omission Definition
+
+/// A representation defined by this package whose ordinary container writes can omit a value instead of storing it.
+///
+/// ``OptionalPersistentKeyValueRepresentation`` omits `nil`, and a built-in proxy representation omits a value whose
+/// proxy its `Proxy` representation omits. An ordinary write reports a failure by leaving an array empty or a
+/// dictionary entry absent, which is also what omitting every value produces, so the write asks this protocol which
+/// happened instead of encoding the values again. Its methods invoke no encoding hook. The one exception is a proxy
+/// whose `Proxy` representation omits values, such as a proxy to an optional: deciding whether it omits a value
+/// converts that value to its proxy again.
+internal protocol BuiltInValueOmission: PersistentKeyValueRepresentation {
+    /// Whether an ordinary container write omits any value of this representation.
+    var builtInOmitsValues: Bool { get }
+
+    /// Returns whether an ordinary container write omits `value` instead of storing it.
+    func builtInOmits(_ value: Value) -> Bool
+}
 
 /// The storage format used to encode or decode a persistent value.
 public enum PersistentKeyValueStorageFormat: Sendable {

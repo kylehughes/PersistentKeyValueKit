@@ -174,6 +174,24 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInContainerConversion {
     }
 }
 
+// MARK: - BuiltInValueOmission Extension
+
+extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
+    // MARK: Internal Instance Interface
+
+    var builtInOmitsValues: Bool {
+        true
+    }
+
+    func builtInOmits(_ value: Value) -> Bool {
+        guard let value else {
+            return true
+        }
+
+        return base.omits(value)
+    }
+}
+
 // MARK: - Protocol Conveniences
 
 extension PersistentKeyValueRepresentation {

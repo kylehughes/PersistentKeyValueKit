@@ -61,24 +61,6 @@ protocol PersistentKeyValueMigrationBackend {
     ) throws -> Key.Value
     where Key: PersistentKeyProtocol
 
-    /// Decodes the value that committing `write` would store, as `key` reads it, or returns `nil` when `write` removes
-    /// the key.
-    func migrationValue<Key>(
-        for key: Key,
-        writtenBy write: MigrationWrite
-    ) throws -> Key.Value?
-    where Key: PersistentKeyProtocol
-
-    /// Whether two writes prepared for the same key would store the same value.
-    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool
-
-    /// Whether `write` still stores the contents it was prepared with.
-    ///
-    /// Code that receives a prepared value, such as a transform that a rewrite runs again to verify its result, can
-    /// change a stored reference in place. A backend returns `false` when it cannot tell whether such a change
-    /// happened.
-    func migrationWriteIsUnchanged(_ write: MigrationWrite) -> Bool
-
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key
@@ -89,6 +71,29 @@ protocol PersistentKeyValueMigrationBackend {
         for keyID: String,
         matching snapshot: MigrationSnapshot
     ) throws
+}
+
+// MARK: - Internal Rewrite Interface
+
+/// A migration backend that supports in-place rewrites, which replace a key's value under its own identifier.
+///
+/// Before writing, a rewrite decodes its prepared write with the source key and prepares the rewrite again, so that a
+/// retry cannot convert the value twice. That check is sound only when the code that receives the decoded value
+/// cannot change the prepared write, as with the frozen property lists that the Foundation stores prepare.
+/// ``InMemoryPersistentKeyValueStore`` keeps Swift values, including the references inside them, without copying
+/// them, so it does not conform, and migration setup rejects a rewrite in it with
+/// ``PersistentKeyMigrationError/sameStore``.
+protocol PersistentKeyValueMigrationRewriteBackend: PersistentKeyValueMigrationBackend {
+    /// Decodes the value that committing `write` would store, as `key` reads it, or returns `nil` when `write` removes
+    /// the key.
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value?
+    where Key: PersistentKeyProtocol
+
+    /// Whether two writes prepared for the same key would store the same value.
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool
 }
 
 // MARK: - Internal Identity

@@ -277,13 +277,14 @@ extension PersistentKeyMigrationReport {
         /// The value was written to the destination key and removed from the source key.
         case moved
 
-        /// The value was rewritten in place by an item that maps a key to its own identifier within one store, under
-        /// any copy or move conflict policy, or was found already rewritten because it decodes only with the
-        /// destination key's representation. A move did not remove the key as its source. A rewrite is safe to retry
-        /// only when its result fails to decode with the source key's representation or when the transform and
-        /// destination encoding are idempotent without mutating the prepared result in place; otherwise it fails with
-        /// ``PersistentKeyMigrationError/nonIdempotentRewrite`` before writing. See
-        /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
+        /// The value was rewritten in place by an item that maps a key to its own identifier within one `UserDefaults`
+        /// or `NSUbiquitousKeyValueStore` store, under any copy or move conflict policy, or was found already
+        /// rewritten because it decodes only with the destination key's representation. A move did not remove the key
+        /// as its source. A tracked batch runs again after any item fails, so a rewrite is safe to retry only when its
+        /// result fails to decode with the source key's representation or when the transform and destination encoding
+        /// are idempotent; otherwise it fails with ``PersistentKeyMigrationError/nonIdempotentRewrite`` before
+        /// writing. To change a value without changing its representation, such as dollars to cents, move it to a new
+        /// key instead. See ``PersistentKeyMigrationItem/key(_:to:transform:)``.
         case rewritten
 
         /// No persisted value existed for the source key in the source store.

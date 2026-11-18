@@ -179,8 +179,13 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
 // MARK: - Built-In Proxy Conversion Definition
 
 /// A proxy representation defined by this package, whose checked container conversion converts the proxies with the
-/// checked container conversion of `Proxy`.
-internal protocol BuiltInProxyConversion: BuiltInContainerConversion, ProxyPersistentKeyValueRepresentationProtocol {
+/// checked container conversion of `Proxy`, and whose ordinary container writes omit a value whose proxy `Proxy`
+/// omits.
+internal protocol BuiltInProxyConversion:
+    BuiltInContainerConversion,
+    BuiltInValueOmission,
+    ProxyPersistentKeyValueRepresentationProtocol
+{
     /// Converts `value` into its proxy, throwing if it cannot be converted.
     func checkedProxy(for value: Value) throws -> Proxy
 
@@ -192,6 +197,10 @@ internal protocol BuiltInProxyConversion: BuiltInContainerConversion, ProxyPersi
 
 extension BuiltInProxyConversion {
     // MARK: Internal Instance Interface
+
+    var builtInOmitsValues: Bool {
+        Proxy.persistentKeyValueRepresentation.omitsValues
+    }
 
     /// Converts `value` with ``ProxyPersistentKeyValueRepresentationProtocol/to(_:)``, throwing
     /// ``PersistentKeyValueConversionError/encodingFailed`` when it returns `nil`.
@@ -235,5 +244,17 @@ extension BuiltInProxyConversion {
     func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
         try Proxy.persistentKeyValueRepresentation.checkedDictionary(decoding: propertyListDictionary)
             .mapValues(checkedValue(for:))
+    }
+
+    /// Converts `value` to its proxy only when `Proxy` omits some values, so that deciding that a proxy to a
+    /// non-optional value is not omitted invokes no conversion.
+    func builtInOmits(_ value: Value) -> Bool {
+        let proxyRepresentation = Proxy.persistentKeyValueRepresentation
+
+        guard proxyRepresentation.omitsValues, let proxy = to(value) else {
+            return false
+        }
+
+        return proxyRepresentation.omits(proxy)
     }
 }

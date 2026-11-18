@@ -313,6 +313,39 @@ extension UserDefaultsKeyChangeObservationTests {
         }
     }
 
+    func test_register_registrationsWithSameNumberShareOneComparison() throws {
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: 0)
+        let storage = try XCTUnwrap(StubbedUserDefaults(suiteName: suiteName))
+        let sharedValue = ComparisonCountingDecimalNumber(value: 1)
+        let joiningValue = ComparisonCountingDecimalNumber(value: 2)
+        let sharingObservers = (0 ..< 3).map { _ in
+            RecordingKeyObserver()
+        }
+        let joiningObserver = RecordingKeyObserver()
+
+        storage.stubbedObject = sharedValue.number
+
+        for observer in sharingObservers {
+            storage.register(observer: observer, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+        }
+
+        // The joining registration's first comparison value is a different number, so it is compared separately.
+        storage.stubbedObject = joiningValue.number
+        storage.register(observer: joiningObserver, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+
+        storage.stubbedObject = NSDecimalNumber(mantissa: 2, exponent: 0, isNegative: false)
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: storage)
+
+        XCTAssertEqual(sharedValue.comparisonCount, 1)
+        XCTAssertEqual(joiningValue.comparisonCount, 1)
+        XCTAssertTrue(sharingObservers.allSatisfy { $0.observations.count == 1 })
+        XCTAssertTrue(joiningObserver.observations.isEmpty)
+
+        for observer in sharingObservers + [joiningObserver] {
+            storage.deregister(observer, for: key, context: nil)
+        }
+    }
+
     func test_publisher_subscriptionJoiningObservedKeyComparesWithItsOwnValue() {
         let outerKey = PersistentKey("com.example.outer.\(#function)", defaultValue: 0)
         let innerKey = PersistentKey("com.example.inner.\(#function)", defaultValue: 0)
@@ -396,6 +429,101 @@ extension UserDefaultsKeyChangeObservationTests {
         outerSubscription.cancel()
         joiningSubscription?.cancel()
         existingSubscription.cancel()
+    }
+
+    func test_publisher_subscriptionJoiningObservedKeyReceivesChangeReportedDuringItsFirstRead() {
+        let outerKey = PersistentKey("com.example.outer.\(#function)", defaultValue: 0)
+        let innerKey = PersistentKey("com.example.inner.\(#function)", defaultValue: 0)
+        var existingValues: [Int] = []
+        var joiningSubscription: AnyCancellable?
+        var joiningValues: [Int] = []
+
+        storage.set(innerKey, to: 0)
+
+        let existingSubscription = storage.publisher(for: innerKey).sink { value in
+            existingValues.append(value)
+        }
+
+        // While the outer change is being reconciled, the inner key changes to `1`. Another write stores `2` after the
+        // joining subscription's first comparison read returns `1` and before its initial value is read, and the key
+        // then changes back to `1`.
+        let outerSubscription = storage.publisher(for: outerKey, emitsInitialValue: false).sink { [storage] _ in
+            guard joiningSubscription == nil, let storage else {
+                return
+            }
+
+            storage.set(innerKey, to: 1)
+
+            storage.instrument(innerKey.id)
+            storage.afterNextRead {
+                storage.set(2, forKey: innerKey.id)
+            }
+
+            joiningSubscription = storage.publisher(for: innerKey).sink { value in
+                joiningValues.append(value)
+            }
+
+            storage.set(innerKey, to: 1)
+        }
+
+        storage.set(outerKey, to: 1)
+
+        XCTAssertEqual(storage.get(innerKey), 1)
+        XCTAssertEqual(joiningValues, [2, 1])
+        XCTAssertEqual(existingValues, [0, 1])
+
+        storage.set(innerKey, to: 3)
+
+        XCTAssertEqual(joiningValues, [2, 1, 3])
+        XCTAssertEqual(existingValues, [0, 1, 3])
+
+        outerSubscription.cancel()
+        joiningSubscription?.cancel()
+        existingSubscription.cancel()
+    }
+
+    func test_values_iterationJoiningObservedKeyReceivesChangeReportedDuringItsFirstRead() async {
+        let outerKey = PersistentKey("com.example.outer.\(#function)", defaultValue: 0)
+        let innerKey = PersistentKey("com.example.inner.\(#function)", defaultValue: 0)
+        var joiningIterator: PersistentKeyValues<PersistentKey<Int>>.Iterator?
+
+        storage.set(innerKey, to: 0)
+
+        // The joining iterator reads its initial value after another write replaces the value its first comparison
+        // read returned, and the key then changes back to that value.
+        let outerSubscription = storage.publisher(for: outerKey, emitsInitialValue: false).sink { [storage] _ in
+            guard joiningIterator == nil, let storage else {
+                return
+            }
+
+            storage.set(innerKey, to: 1)
+
+            storage.instrument(innerKey.id)
+            storage.afterNextRead {
+                storage.set(2, forKey: innerKey.id)
+            }
+
+            joiningIterator = PersistentKeyValues(innerKey, store: storage, bufferingPolicy: .unbounded)
+                .makeAsyncIterator()
+
+            storage.set(innerKey, to: 1)
+        }
+
+        storage.set(outerKey, to: 1)
+
+        XCTAssertEqual(storage.get(innerKey), 1)
+
+        // A later change ends the wait for the restored value if that value is not delivered.
+        storage.set(innerKey, to: 3)
+
+        let initialValue = await joiningIterator?.next()
+        let restoredValue = await joiningIterator?.next()
+
+        XCTAssertEqual(initialValue, 2)
+        XCTAssertEqual(restoredValue, 1)
+
+        outerSubscription.cancel()
+        joiningIterator = nil
     }
 
     func test_changesPublisher_subscriptionDuringComparisonDoesNotReceiveComparedValue() throws {
@@ -643,6 +771,52 @@ extension UserDefaultsKeyChangeObservationTests {
 
         NotificationCenter.default.removeObserver(UserDefaultsKeyChangeMonitor.monitor(for: userDefaults))
         XCTFail("Timed out waiting for \(expectations.map(\.description)); the monitor deadlocked", file: file, line: line)
+    }
+}
+
+// MARK: - ComparisonCountingDecimalNumber Definition
+
+/// A decimal number that counts how many times it is compared with another number.
+///
+/// Swift cannot subclass `NSNumber`, so the number's class is replaced with a runtime subclass whose `compare(_:)`
+/// counts each call before calling the original implementation.
+private final class ComparisonCountingDecimalNumber {
+    let number: NSDecimalNumber
+
+    var comparisonCount: Int {
+        counter.count
+    }
+
+    private let counter = Counter()
+
+    // MARK: Internal Initialization
+
+    init(value: UInt64) {
+        let selector = #selector(NSDecimalNumber.compare(_:))
+        let number = NSDecimalNumber(mantissa: value, exponent: 0, isNegative: false)
+        let method = class_getInstanceMethod(NSDecimalNumber.self, selector)!
+        let originalCompare = unsafeBitCast(
+            method_getImplementation(method),
+            to: (@convention(c) (NSDecimalNumber, Selector, NSNumber) -> ComparisonResult).self
+        )
+        let subclass: AnyClass = objc_allocateClassPair(object_getClass(number), "ComparisonCountingDecimalNumber\(UUID())", 0)!
+        let compare: @convention(block) (NSDecimalNumber, NSNumber) -> ComparisonResult = { [counter] number, other in
+            counter.count += 1
+
+            return originalCompare(number, selector, other)
+        }
+
+        class_addMethod(subclass, selector, imp_implementationWithBlock(compare), method_getTypeEncoding(method))
+        objc_registerClassPair(subclass)
+        object_setClass(number, subclass)
+
+        self.number = number
+    }
+
+    // MARK: Counter Definition
+
+    private final class Counter {
+        var count = 0
     }
 }
 

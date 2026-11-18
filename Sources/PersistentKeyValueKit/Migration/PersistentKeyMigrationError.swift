@@ -28,7 +28,8 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// ``InMemoryPersistentKeyValueStore`` treats canonically equivalent identifiers as one key. A rewrite also
     /// requires that the source and destination are the same instance, because different instances for one backing
     /// store, such as `UserDefaults` instances for suite names that differ only by case, can hold different cached
-    /// values.
+    /// values. ``InMemoryPersistentKeyValueStore`` does not support rewrites, so any item that maps a key to itself
+    /// within an in-memory store throws this error.
     case sameStore
 
     /// The batch contains more than one item with the given source key identifier, or more than one item with the given
@@ -71,11 +72,6 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// destination representation does not encode the same value identically on each run (for example, `JSONEncoder`
     /// without `.sortedKeys` when the source representation can still decode the encoded result). Migrate the value to
     /// a new key instead; see ``PersistentKeyMigrationItem/key(_:to:transform:)``.
-    ///
-    /// Checking a rewrite runs the transform again on its own result, as a retry would. In an
-    /// ``InMemoryPersistentKeyValueStore``, which keeps references without copying them, the rewrite also fails with
-    /// this error when that run changes the result in place, or when the result is a reference other than a Foundation
-    /// property-list object, whose changes the store cannot detect.
     case nonIdempotentRewrite
 
     /// The source value changed between the initial snapshot and source removal during a move.

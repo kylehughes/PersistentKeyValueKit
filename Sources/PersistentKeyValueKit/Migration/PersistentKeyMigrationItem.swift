@@ -27,8 +27,9 @@ import Foundation
 /// ```
 ///
 /// Mapping to a different key identifier also lets a migration rename or reshape keys within one store, provided no
-/// item's destination is another item's source. Within one store, an item can map a key to its own identifier only
-/// when it was created with ``key(_:to:transform:)``; it then rewrites the value in place, as described there.
+/// item's destination is another item's source. Within one `UserDefaults` or `NSUbiquitousKeyValueStore` store, an item
+/// can map a key to its own identifier only when it was created with ``key(_:to:transform:)``; it then rewrites the
+/// value in place, as described there.
 public struct PersistentKeyMigrationItem: Sendable {
     let mapping: any PersistentKeyMigrationMappingProtocol
 
@@ -79,17 +80,17 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// policy keeps the existing destination value. It can run again if the migration is retried, and an in-place
     /// rewrite can run it again on its own result, as described below.
     ///
-    /// When the migration's source and destination are the same store and `source` and `destination` have the same
-    /// identifier, the item rewrites the stored value in place: it decodes the value with `source`'s representation,
-    /// converts it with `transform`, encodes the result with `destination`'s representation, and replaces the stored
-    /// value only if it has not changed since it was read. The existing value is the one being rewritten, so it is not
-    /// a destination conflict, and every conflict policy rewrites it. A move does not remove the key as a source, and
-    /// the item reports ``PersistentKeyMigrationReport/Status/rewritten``. As with any write, the key is removed only
-    /// when `destination`'s representation stores no object for the result, such as `nil` for an optional key in a
-    /// Foundation store. Pass `{ $0 }` as `transform` to change only the representation. Items created with
-    /// ``key(_:)`` or ``key(_:to:)`` never rewrite in place; mapping a key to its own identifier within one store with
-    /// them throws ``PersistentKeyMigrationError/sameStore``, as does a rewrite between two different instances for one
-    /// store.
+    /// When the migration's source and destination are the same `UserDefaults` or `NSUbiquitousKeyValueStore` store and
+    /// `source` and `destination` have the same identifier, the item rewrites the stored value in place: it decodes the
+    /// value with `source`'s representation, converts it with `transform`, encodes the result with `destination`'s
+    /// representation, and replaces the stored value only if it has not changed since it was read. The existing value
+    /// is the one being rewritten, so it is not a destination conflict, and every conflict policy rewrites it. A move
+    /// does not remove the key as a source, and the item reports ``PersistentKeyMigrationReport/Status/rewritten``. As
+    /// with any write, the key is removed only when `destination`'s representation stores no object for the result,
+    /// such as `nil` for an optional key. Pass `{ $0 }` as `transform` to change only the representation. Items created
+    /// with ``key(_:)`` or ``key(_:to:)`` never rewrite in place; mapping a key to its own identifier within one store
+    /// with them throws ``PersistentKeyMigrationError/sameStore``, as does a rewrite between two different instances
+    /// for one store or within an ``InMemoryPersistentKeyValueStore``, which does not support rewrites.
     ///
     /// A tracked migration runs its whole batch again after any item fails, so an in-place rewrite can find a value it
     /// already rewrote. A stored value that fails to decode with `source`'s representation but decodes with
@@ -98,21 +99,18 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// ``PersistentKeyMigrationError/destinationChanged`` if it changed), the item reports
     /// ``PersistentKeyMigrationReport/Status/rewritten`` without running `transform` or writing. A rewritten value that
     /// still decodes with `source`'s representation would be rewritten again, so before writing, the item decodes its
-    /// result that way and runs `transform` on it again. Unless that succeeds without changing the first prepared
-    /// result and produces the same stored value (requiring reproducible encoding, such as `JSONEncoder` with
-    /// `.sortedKeys`, when `source` can decode the encoded result), the item fails at
-    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyMigrationError/nonIdempotentRewrite``
-    /// and nothing is written.
+    /// result that way and runs `transform` on it again. Unless that succeeds and produces the same stored value
+    /// (requiring reproducible encoding, such as `JSONEncoder` with `.sortedKeys`, when `source` can decode the
+    /// encoded result), the item fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+    /// ``PersistentKeyMigrationError/nonIdempotentRewrite`` and nothing is written.
     ///
     /// A rewrite is therefore safe to retry only when every value `destination`'s representation stores fails to
     /// decode with `source`'s representation, such as an integer rewritten as a string, or when `transform` and
     /// `destination`'s encoding are idempotent on their own results. Storage formats overlap more than their Swift
     /// types suggest: Foundation stores bridge numbers, so a `Bool`, an `Int`, and an integral `Double` can decode as
-    /// one another, and an ``InMemoryPersistentKeyValueStore`` skips representations, so it decodes any value of the
-    /// source key's type (and rejects same-type rewrites of non-`Equatable` values, reference results other than
-    /// Foundation property-list objects, or results that verification mutates in place). To change a value in an
-    /// overlapping format, such as converting dollars to cents or seconds to milliseconds, migrate it to a new key
-    /// with ``key(_:to:transform:)`` instead, so a repeated run finds no source value.
+    /// one another. To change a value in an overlapping format, such as converting dollars to cents or seconds to
+    /// milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead, so a repeated run finds no source
+    /// value.
     ///
     /// - Parameter source: The key to read from the source store.
     /// - Parameter destination: The key to write in the destination store.

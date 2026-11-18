@@ -103,6 +103,32 @@ final class PrimitiveCollectionConversionFailureTests: XCTestCase {
         )
     }
 
+    func test_set_arrayOfProxiesToOptionals_omitsNilProxies() {
+        assertWrite(
+            PersistentKey("key:\(#function)", defaultValue: [OptionalProxyPayload]()),
+            value: [OptionalProxyPayload(20), OptionalProxyPayload(nil), OptionalProxyPayload(30)],
+            readsBack: [OptionalProxyPayload(20), OptionalProxyPayload(30)]
+        )
+        assertWrite(
+            PersistentKey("key:\(#function)", defaultValue: [OptionalProxyPayload(10)]),
+            value: [OptionalProxyPayload(nil), OptionalProxyPayload(nil)],
+            readsBack: [OptionalProxyPayload]()
+        )
+    }
+
+    func test_set_arrayOfProxiesToOptionals_conversionFails_leavesStoredArray() {
+        assertFailedWriteLeavesStoredValue(
+            PersistentKey("key:\(#function)", defaultValue: [OptionalProxyPayload]()),
+            stored: [OptionalProxyPayload(10)],
+            failing: [OptionalProxyPayload(nil), OptionalProxyPayload(-1)]
+        )
+        assertFailedWriteLeavesStoredValue(
+            PersistentKey("key:\(#function)", defaultValue: [OptionalProxyPayload]()),
+            stored: [OptionalProxyPayload(10)],
+            failing: [OptionalProxyPayload(20), OptionalProxyPayload(-1)]
+        )
+    }
+
     func test_set_optionalArray_elementFails_leavesStoredArray() {
         assertFailedWriteLeavesStoredValue(
             PersistentKey<[CodablePayload]?>("key:\(#function)", defaultValue: nil),
@@ -150,6 +176,22 @@ final class PrimitiveCollectionConversionFailureTests: XCTestCase {
             PersistentKey("key:\(#function)", defaultValue: [String: CodablePayload?]()),
             stored: ["old": CodablePayload(10)],
             failing: ["good": CodablePayload(20), "nil": nil, "bad": CodablePayload(.nan)]
+        )
+    }
+
+    func test_set_dictionaryOfProxiesToOptionals_omitsNilProxies() {
+        assertWrite(
+            PersistentKey("key:\(#function)", defaultValue: [String: OptionalProxyPayload]()),
+            value: ["a": OptionalProxyPayload(20), "b": OptionalProxyPayload(nil)],
+            readsBack: ["a": OptionalProxyPayload(20)]
+        )
+    }
+
+    func test_set_dictionaryOfProxiesToOptionals_conversionFails_leavesStoredDictionary() {
+        assertFailedWriteLeavesStoredValue(
+            PersistentKey("key:\(#function)", defaultValue: [String: OptionalProxyPayload]()),
+            stored: ["old": OptionalProxyPayload(10)],
+            failing: ["bad": OptionalProxyPayload(-1)]
         )
     }
 
@@ -340,6 +382,35 @@ private struct CodablePayload: Codable, Equatable, KeyValuePersistible {
 
     static var persistentKeyValueRepresentation: CodablePersistentKeyValueRepresentation<Self, JSONEncoder, JSONDecoder> {
         CodablePersistentKeyValueRepresentation()
+    }
+}
+
+/// A value stored through a proxy to an optional: a `nil` number converts to a `nil` proxy, which collections omit, and
+/// a negative number fails to convert.
+private struct OptionalProxyPayload: Equatable, KeyValuePersistible {
+    let number: Int?
+
+    init(_ number: Int?) {
+        self.number = number
+    }
+
+    static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, Int?> {
+        ProxyPersistentKeyValueRepresentation(
+            to: { value -> Int?? in
+                guard let number = value.number else {
+                    return .some(nil)
+                }
+
+                guard number >= 0 else {
+                    return .none
+                }
+
+                return number
+            },
+            from: { proxy in
+                OptionalProxyPayload(proxy)
+            }
+        )
     }
 }
 

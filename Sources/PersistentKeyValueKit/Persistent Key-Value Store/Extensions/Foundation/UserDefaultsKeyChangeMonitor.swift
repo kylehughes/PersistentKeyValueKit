@@ -18,7 +18,8 @@ import ObjectiveC
 ///
 /// - Important: This type is manually `Sendable` because its monitor delivers changes on the thread that reconciles
 ///   them. Its stored properties are immutable after initialization except `isInvalidated`, which is protected by the
-///   monitor's lock, and `lastObject`, which only the monitor accesses as it describes. `observer` is a weak reference.
+///   monitor's lock, and `lastObject` and `unsettledJoin`, which only the monitor accesses as they describe.
+///   `observer` is a weak reference.
 internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObservation, @unchecked Sendable {
     let context: UnsafeMutableRawPointer?
     let keyID: String
@@ -31,7 +32,13 @@ internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObserva
     ///
     /// The monitor sets it before the observation joins its key, and then only the reconciling caller reads and
     /// replaces it, without the lock held.
-    fileprivate var lastObject: Any?
+    fileprivate var lastObject: AnyObject?
+
+    /// The reconciliation in progress when the observation joined its key, and the number of changes reported before
+    /// its first read, or `nil` once a pass has compared it or when it joined outside a reconciliation.
+    ///
+    /// The monitor sets it with `lastObject`, and then only the reconciling caller reads and clears it.
+    fileprivate var unsettledJoin: (reconciliation: Int, changeCountBeforeRead: Int)?
 
     private let monitor: UserDefaultsKeyChangeMonitor
 
@@ -50,6 +57,7 @@ internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObserva
 
         isInvalidated = false
         lastObject = nil
+        unsettledJoin = nil
 
         super.init()
     }
@@ -87,14 +95,24 @@ internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObserva
 /// the reconciling caller finishes. A comparison value is replaced only by a later read, so a stale read can never
 /// suppress a later change.
 ///
+/// A subscriber reads its own first value after its registration returns. While a reconciliation is in progress, as
+/// when the subscriber registers from another key's observer, every change reported meanwhile waits for that
+/// reconciliation's next pass, so a later change that restores the first comparison value could hide an earlier one
+/// that the subscriber's first value reflects. A registration that joins during a reconciliation is therefore notified
+/// by that reconciliation's next pass if any change was reported after its first read began, even when that pass reads
+/// its comparison value.
+///
+/// Registrations whose comparison values are the same object share one comparison with each read, because the
+/// comparison's result depends only on the two objects.
+///
 /// The lock is never held while running code that can access the store or its observations. Reads, comparisons, and
 /// observer callbacks run after it is unlocked, and no reference whose release can deinitialize an observer is released
 /// while it is held.
 ///
 /// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Access to
-///   mutable state is protected by `lock`, except each registration's comparison value, which is set before the
-///   registration joins its key and then accessed only by the reconciling caller, and `userDefaults` is a weak
-///   reference.
+///   mutable state is protected by `lock`, except each registration's comparison value and unsettled join, which are
+///   set before the registration joins its key and then accessed only by the reconciling caller, and `userDefaults` is
+///   a weak reference.
 internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable {
     private let lock: NSLock
 
@@ -104,6 +122,9 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     private var isReconciling: Bool
     private var observedKeys: [ObservedKey]
     private var pendingReads: [PendingRead]
+
+    /// The number of reconciliations begun, which identifies the reconciliation a registration joined during.
+    private var reconciliationCount: Int
 
     // The instance retains its monitor, so a strong reference would form a cycle.
     private weak var userDefaults: UserDefaults?
@@ -119,6 +140,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
         lock = NSLock()
         observedKeys = []
         pendingReads = []
+        reconciliationCount = 0
 
         super.init()
 
@@ -163,7 +185,9 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     /// Starts delivering changes to `observation`, unless it has already been invalidated.
     ///
     /// The observation's first comparison value is read before this returns, unless this thread is already reading
-    /// the key for another registration, in which case the observation shares that read.
+    /// the key for another registration, in which case the observation shares that read. If a reconciliation is in
+    /// progress when the observation joins, its next pass notifies the observation if any change was reported after
+    /// the first read began.
     internal func add(_ observation: UserDefaultsKeyChangeObservation) {
         let thread = pthread_self()
 
@@ -190,7 +214,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
         }
 
         // Read without the lock held: an overridden getter can write the store, report a change, or register.
-        let object = userDefaults?.object(forKey: read.keyID)
+        let object = userDefaults?.object(forKey: read.keyID) as AnyObject?
 
         let isChangedDuringRead = withLock {
             pendingReads.removeAll {
@@ -206,9 +230,12 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
                 return false
             }
 
+            let unsettledJoin = isReconciling ? (reconciliationCount, read.changeCountBeforeRead) : nil
+
             // The observations have no comparison value yet, so assigning one releases nothing.
             for observation in observations {
                 observation.lastObject = object
+                observation.unsettledJoin = unsettledJoin
             }
 
             let index = observedKeys.firstIndex {
@@ -266,13 +293,18 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
         UnsafeRawPointer(Unmanaged.passUnretained(associationToken).toOpaque())
     }
 
+    /// Returns whether a read differs from a comparison value.
+    private static func isChanged(from lastObject: AnyObject?, to object: AnyObject?) -> Bool {
+        !isSameObject(lastObject, object) && !PropertyListMigrationStorage.equal(lastObject, object)
+    }
+
     /// Returns whether two reads returned the same object, which makes a recursive comparison unnecessary.
     ///
     /// `UserDefaults` returns immutable values and keeps returning its cached object until the value changes, so
     /// an unrelated change usually rereads the identical object. Numbers are always compared by value, because
     /// tagged-pointer numbers are not documented to keep their types distinct by identity.
-    private static func isSameObject(_ lhs: Any?, _ rhs: Any?) -> Bool {
-        guard let lhs = lhs as AnyObject?, let rhs = rhs as AnyObject?, !(lhs is NSNumber) else {
+    private static func isSameObject(_ lhs: AnyObject?, _ rhs: AnyObject?) -> Bool {
+        guard let lhs, let rhs, !(lhs is NSNumber) else {
             return false
         }
 
@@ -286,43 +318,56 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     /// Only one caller reconciles at a time. Another caller records its work and returns, and the reconciling caller
     /// performs it before finishing.
     private func reconcile() {
-        guard beginReconciling() else {
+        guard let reconciliation = beginReconciling() else {
             return
         }
 
-        while let pendingKeys = takePendingKeys() {
-            for observedKey in pendingKeys {
-                reconcile(observedKey)
+        while let pass = takePendingKeys() {
+            for observedKey in pass.observedKeys {
+                reconcile(observedKey, reconciliation: reconciliation, changeCount: pass.changeCount)
             }
         }
     }
 
-    /// Reads `observedKey` once and notifies each of its registrations whose comparison value differs from the read.
-    private func reconcile(_ observedKey: ObservedKey) {
+    /// Reads `observedKey` once and notifies each of its registrations whose comparison value differs from the read,
+    /// or that joined during `reconciliation` and has a change reported after its first read began.
+    ///
+    /// `changeCount` is the number of changes reported when the pass began.
+    private func reconcile(_ observedKey: ObservedKey, reconciliation: Int, changeCount: Int) {
         guard let userDefaults else {
             return
         }
 
         // Read, compare, and notify without the lock held: an overridden getter, `isEqual(_:)`, or an observer can
         // write the store, report a change synchronously, register, or deregister.
-        let object = userDefaults.object(forKey: observedKey.keyID)
+        let object = userDefaults.object(forKey: observedKey.keyID) as AnyObject?
 
-        // Registrations usually share a comparison value, so an identical one reuses the previous result.
-        var previousComparison: (lastObject: Any?, isChanged: Bool)?
+        // Registrations usually share a comparison value, so an identical one reuses the previous result. Every
+        // defaults change runs this loop for every registration, so it compares objects without casting them.
+        var previousComparison: (lastObject: AnyObject?, isChanged: Bool)?
 
         for observation in observedKey.observations {
             let lastObject = observation.lastObject
 
             // The latest read is kept even when it is equal, so the next read of an unchanged value is the same object.
-            observation.lastObject = object
+            if lastObject !== object {
+                observation.lastObject = object
+            }
 
             let isChanged: Bool
 
-            if let previousComparison, Self.isSameObject(previousComparison.lastObject, lastObject) {
+            if let unsettledJoin = observation.unsettledJoin {
+                observation.unsettledJoin = nil
+
+                isChanged = (
+                    unsettledJoin.reconciliation == reconciliation
+                        && unsettledJoin.changeCountBeforeRead != changeCount
+                ) || Self.isChanged(from: lastObject, to: object)
+            } else if let previousComparison, previousComparison.lastObject === lastObject {
+                // Comparing the same object with the same read repeats the previous result, for numbers too.
                 isChanged = previousComparison.isChanged
             } else {
-                isChanged = !Self.isSameObject(lastObject, object)
-                    && !PropertyListMigrationStorage.equal(lastObject, object)
+                isChanged = Self.isChanged(from: lastObject, to: object)
                 previousComparison = (lastObject, isChanged)
             }
 
@@ -340,25 +385,26 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
         }
     }
 
-    /// Returns whether the caller became responsible for reconciling.
-    private func beginReconciling() -> Bool {
+    /// Returns the reconciliation the caller became responsible for, or `nil` if another caller is reconciling.
+    private func beginReconciling() -> Int? {
         withLock {
             guard !isReconciling else {
-                return false
+                return nil
             }
 
             isReconciling = true
+            reconciliationCount &+= 1
 
-            return true
+            return reconciliationCount
         }
     }
 
-    /// Returns the observed keys, with the registrations each has when the pass begins, to read after a change, or
-    /// releases reconciliation and returns `nil` when no change is pending.
+    /// Returns the observed keys, with the registrations each has when the pass begins, to read after a change, and
+    /// the number of changes reported by then, or releases reconciliation and returns `nil` when no change is pending.
     ///
     /// A key is read even when its observers have been deallocated, so its comparison values stay current until its
     /// registrations are removed.
-    private func takePendingKeys() -> [ObservedKey]? {
+    private func takePendingKeys() -> (observedKeys: [ObservedKey], changeCount: Int)? {
         withLock {
             guard hasPendingChange else {
                 // Release reconciliation while holding the lock so a concurrent change cannot be recorded between the
@@ -370,7 +416,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
             hasPendingChange = false
 
-            return observedKeys
+            return (observedKeys, changeCount)
         }
     }
 

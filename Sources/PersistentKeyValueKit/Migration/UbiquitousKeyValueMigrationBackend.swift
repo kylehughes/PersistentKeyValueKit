@@ -109,28 +109,6 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
         return try decodeStorageValue(for: key, object: snapshot.object, format: .ubiquitousKeyValueStore)
     }
 
-    func migrationValue<Key>(
-        for key: Key,
-        writtenBy write: MigrationWrite
-    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
-        guard write.identity == migrationIdentity, write.keyID == key.id else {
-            throw PersistentKeyMigrationError.internalInconsistency
-        }
-
-        return try write.object.map {
-            try decodeStorageValue(for: key, object: $0, format: .ubiquitousKeyValueStore)
-        }
-    }
-
-    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
-        PropertyListMigrationStorage.equal(write.object, other.object)
-    }
-
-    /// A prepared write holds a frozen property list, whose objects are immutable.
-    func migrationWriteIsUnchanged(_ write: MigrationWrite) -> Bool {
-        true
-    }
-
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key
@@ -158,6 +136,31 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
         guard try migrationSnapshot(for: keyID) == nil else {
             throw PersistentKeyMigrationError.removalVerificationFailed
         }
+    }
+}
+
+// MARK: - PersistentKeyValueMigrationRewriteBackend Extension
+
+@available(watchOS 9.0, *)
+extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationRewriteBackend {
+    // MARK: Internal Instance Interface
+
+    /// A prepared write holds a frozen property list, so decoding it cannot change the write.
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
+        guard write.identity == migrationIdentity, write.keyID == key.id else {
+            throw PersistentKeyMigrationError.internalInconsistency
+        }
+
+        return try write.object.map {
+            try decodeStorageValue(for: key, object: $0, format: .ubiquitousKeyValueStore)
+        }
+    }
+
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
+        PropertyListMigrationStorage.equal(write.object, other.object)
     }
 }
 
