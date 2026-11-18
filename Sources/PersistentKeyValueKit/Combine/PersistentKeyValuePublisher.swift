@@ -29,10 +29,11 @@ import Foundation
 ///   thread that requests demand or that reports a store change, which can be a background thread. While one thread
 ///   is delivering values, changes reported on other threads are delivered by that thread, so a concurrent write can
 ///   return before its change is delivered. Likewise, while the subscriber is in `receive(subscription:)`, only the
-///   subscribing thread delivers values. Demand it requests there is met before `receive(subscription:)` returns,
-///   including with changes that other threads reported earlier. Values that demand requested or changes reported on
-///   other threads make deliverable in the meantime are delivered by the subscribing thread after it returns. Use
-///   `receive(on: DispatchQueue.main)` before updating UI.
+///   subscribing thread delivers values. Demand requested and changes reported on other threads during that call
+///   deliver nothing themselves. When the subscribing thread requests demand or reports a store change during that
+///   call, it delivers values until none is deliverable, including values that other threads made deliverable, before
+///   `receive(subscription:)` returns. When `receive(subscription:)` returns, the subscribing thread delivers any
+///   deliverable values still queued. Use `receive(on: DispatchQueue.main)` before updating UI.
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
 /// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit

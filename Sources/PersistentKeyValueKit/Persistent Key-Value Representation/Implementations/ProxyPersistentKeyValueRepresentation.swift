@@ -13,6 +13,9 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
     public let from: @Sendable (Proxy) -> Value?
 
     /// The closure used to serialize a value into its proxy.
+    ///
+    /// The returned proxy is handed over to the package. Do not change it, or any object it contains, after returning
+    /// it.
     public let to: @Sendable (Value) -> Proxy?
     
     // MARK: Public Initialization

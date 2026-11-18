@@ -39,6 +39,9 @@ public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: Per
     func from(_ proxy: Proxy) -> Value?
 
     /// Serializes a value into its proxy.
+    ///
+    /// The returned proxy is handed over to the package. Do not change it, or any object it contains, after returning
+    /// it.
     func to(_ value: Value) -> Proxy?
 }
 

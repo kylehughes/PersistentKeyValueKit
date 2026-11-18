@@ -12,6 +12,11 @@ import Foundation
 /// Conforming types implement ``decode(storageObject:format:)`` and ``encode(_:format:)``. The store-specific `get`
 /// and `set` methods have default implementations built on those conversions; implement them only to customize
 /// access to a particular store.
+///
+/// An object that ``encode(_:format:)`` returns or a `set` method writes is handed over to the caller: do not mutate it
+/// afterward, including a mutable string or data buffer, a mutable dictionary key, or a container. As a defense, the
+/// package keeps immutable copies of the mutable strings, data objects, arrays, and dictionaries that it accepts, but
+/// behavior is unspecified if a representation mutates an object after handing it over.
 public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     // MARK: Associated Types
     
@@ -33,7 +38,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
     /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
     /// the write; see ``set(_:to:in:)-91w4n`` and ``set(_:to:)``. Callers such as migration write validation may
-    /// invoke conversion more than once for the same value; do not rely on a specific invocation count.
+    /// invoke conversion more than once for the same value; do not rely on a specific invocation count. Do not mutate
+    /// the returned object, or any object it contains, after returning it.
     ///
     /// - Parameter value: The value to encode.
     /// - Parameter format: The target storage format.
@@ -56,14 +62,13 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Writes the encoded representations of `values` into `propertyListArray`.
     ///
     /// Array writes, registration, and migration call this method with an empty `propertyListArray`, and an
-    /// implementation may either assign the encoded array or append the encoded elements to it. The result is the
+    /// implementation may only assign the encoded array to it or append the encoded elements to it. The result is the
     /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
     /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
     /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
     /// `nil`. So does a result that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept,
-    /// such as one that contains the UIDs in a keyed archive's property list. Callers keep an immutable copy of each
-    /// mutable string, data object, array, or dictionary in the result when this method returns, so changing one
-    /// afterward, such as while encoding another collection in the same write, does not change what is stored.
+    /// such as one that contains the UIDs in a keyed archive's property list. Do not mutate the objects written to
+    /// `propertyListArray` after this method returns.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to write the encoded values into.
@@ -86,15 +91,13 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 
     /// Sets the value at `dictionaryKey` in `propertyListDictionary`.
     ///
-    /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
-    /// `dictionaryKey`. Dictionary writes, registration, and migration call this method for a `dictionaryKey` that
-    /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
-    /// values cannot be encoded, so an absent entry counts as a failure, even if the value encodes to `nil`. So does an
-    /// entry that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept, such as one that
-    /// contains the UIDs in a keyed archive's property list, including an entry that an earlier call wrote and this one
-    /// changed. Callers keep an immutable copy of each mutable string, data object, array, or dictionary in the entry
-    /// when this method returns, so changing one afterward, such as while encoding another value in the same write,
-    /// does not change what is stored.
+    /// Write only the entry for `dictionaryKey`; do not read, modify, add, or remove other entries. If `value` fails to
+    /// encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove `dictionaryKey`. Dictionary
+    /// writes, registration, and migration call this method for a `dictionaryKey` that `propertyListDictionary` does
+    /// not yet contain, and rely on this to keep the stored dictionary when one of its values cannot be encoded, so an
+    /// absent entry counts as a failure, even if the value encodes to `nil`. So does an entry that is not a property
+    /// list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept, such as one that contains the UIDs in a keyed
+    /// archive's property list. Do not mutate the object written to the entry after this method returns.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -113,6 +116,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     
     /// Sets the value at `userDefaultsKey` in `userDefaults`.
     ///
+    /// Do not mutate the object written to `userDefaults` after this method returns.
+    ///
     /// - Parameter userDefaultsKey: The key to update.
     /// - Parameter value: The value to encode.
     /// - Parameter userDefaults: The `UserDefaults` instance to update at `userDefaultsKey`.
@@ -130,6 +135,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value?
     
     /// Sets the value at `ubiquitousStoreKey` in `ubiquitousStore`.
+    ///
+    /// Do not mutate the object written to `ubiquitousStore` after this method returns.
     ///
     /// - Parameter ubiquitousStoreKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -150,9 +157,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 /// A property list contains only strings, numbers, dates, data, arrays, and dictionaries with string keys, which are
 /// the objects that `UserDefaults` and `NSUbiquitousKeyValueStore` store. Binary property-list serialization also
 /// accepts the UIDs in a keyed archive's property list, but these writes reject them; store such an archive as `Data`.
-/// Writes keep an immutable copy of each mutable string, data object, array, or dictionary in the object that `encode`
-/// returns, so changing one after `encode` returns, such as while a later element of the same collection is encoded,
-/// does not change what is stored.
+/// As a defense, writes keep an immutable copy of each mutable string, data object, array, or dictionary in the object
+/// that `encode` returns. A representation must still not mutate that object after `encode` returns.
 ///
 /// These defaults read the effective `UserDefaults` object without inspecting `UserDefaults.argumentDomain`, so they do
 /// not coerce string launch arguments into typed values. Built-in representations implement these methods themselves

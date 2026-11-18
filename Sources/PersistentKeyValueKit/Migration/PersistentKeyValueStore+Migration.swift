@@ -188,6 +188,13 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
                 return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .moved)
             }
 
+            // The source snapshot can hold the last reference to the copied value, whose `deinit` can change the
+            // destination, so it is released and the destination is verified again.
+            _ = consume sourceSnapshot
+            guard try Self.isCommitted(committedSnapshot, in: destinationStore, for: destinationID) else {
+                throw PersistentKeyMigrationError.writeVerificationFailed
+            }
+
             return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .copied)
         } catch {
             return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, failedAt: stage, error: error)

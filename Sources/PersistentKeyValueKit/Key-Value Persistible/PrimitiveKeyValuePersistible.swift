@@ -31,6 +31,11 @@ import Foundation
 /// container-specific `get` and `set` methods have default implementations built on those conversions, using
 /// ``PersistentKeyValueStorageFormat/propertyList`` for property-list arrays and dictionaries. Built-in primitive
 /// types implement these methods themselves.
+///
+/// An object that ``encode(format:)`` returns or a `set` method writes is handed over to the caller: do not mutate it
+/// afterward, including a mutable string or data buffer, a mutable dictionary key, or a container. As a defense, the
+/// package keeps immutable copies of the mutable strings, data objects, arrays, and dictionaries that it accepts, but
+/// behavior is unspecified if a conforming type mutates an object after handing it over.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Decodes a value from a stored object for the given storage format.
     ///
@@ -43,7 +48,8 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     ///
     /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
     /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
-    /// the write; see ``set(_:to:in:)-1ccdn`` and ``set(_:to:)``.
+    /// the write; see ``set(_:to:in:)-1ccdn`` and ``set(_:to:)``. Do not mutate the returned object, or any object it
+    /// contains, after returning it.
     ///
     /// - Parameter format: The target storage format.
     /// - Returns: The encoded storage object, or `nil` to remove the key.
@@ -65,11 +71,11 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Writes the encoded representations of `values` into `propertyListArray`.
     ///
     /// Array writes, registration, and migration call this method with an empty `propertyListArray`, and an
-    /// implementation may either assign the encoded array or append the encoded elements to it. The result is the
+    /// implementation may only assign the encoded array to it or append the encoded elements to it. The result is the
     /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
     /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
     /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
-    /// `nil`.
+    /// `nil`. Do not mutate the objects written to `propertyListArray` after this method returns.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to write the encoded values into.
@@ -92,10 +98,12 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     
     /// Sets the value at `dictionaryKey` in `propertyListDictionary`.
     ///
-    /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
-    /// `dictionaryKey`. Dictionary writes, registration, and migration call this method for a `dictionaryKey` that
-    /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
-    /// values cannot be encoded, so an absent entry counts as a failure, even if the value encodes to `nil`.
+    /// Write only the entry for `dictionaryKey`; do not read, modify, add, or remove other entries. If `value` fails to
+    /// encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove `dictionaryKey`. Dictionary
+    /// writes, registration, and migration call this method for a `dictionaryKey` that `propertyListDictionary` does
+    /// not yet contain, and rely on this to keep the stored dictionary when one of its values cannot be encoded, so an
+    /// absent entry counts as a failure, even if the value encodes to `nil`. Do not mutate the object written to the
+    /// entry after this method returns.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -114,6 +122,8 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     
     /// Sets the value at `userDefaultsKey` in `userDefaults`.
     ///
+    /// Do not mutate the object written to `userDefaults` after this method returns.
+    ///
     /// - Parameter userDefaultsKey: The key to update.
     /// - Parameter value: The value to encode.
     /// - Parameter userDefaults: The `UserDefaults` instance to update at `userDefaultsKey`.
@@ -131,6 +141,8 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self?
     
     /// Sets the value at `ubiquitousStoreKey` in `ubiquitousStore`.
+    ///
+    /// Do not mutate the object written to `ubiquitousStore` after this method returns.
     ///
     /// - Parameter ubiquitousStoreKey: The key to update.
     /// - Parameter value: The value to encode.

@@ -146,6 +146,9 @@ extension PersistentKeyValuePublisherTests {
             // Another thread requests demand after subscription ends but before the subscribing thread delivers the
             // change queued while it subscribed.
             handoff?.didFinishSubscribing = {
+                // The handoff runs once. Clearing it releases this closure, which retains the subscription.
+                handoff?.didFinishSubscribing = nil
+
                 let requested = DispatchSemaphore(value: 0)
 
                 Thread.detachNewThread {
@@ -172,7 +175,10 @@ extension PersistentKeyValuePublisherTests {
 
         key.changesPublisher(in: store).subscribe(subscriber)
 
+        let handoff = subscriptionBox.subscription as? any PersistentKeyValueSubscriptionHandoffObserving
+
         XCTAssertTrue(handoffWasObserved)
+        XCTAssertNil(handoff?.didFinishSubscribing)
         XCTAssertEqual(writeResult, .success)
         XCTAssertEqual(competingRequestResult, .success)
         XCTAssertEqual(valuesAfterCompetingRequest, [])
@@ -185,60 +191,72 @@ extension PersistentKeyValuePublisherTests {
     func test_publisher_changeQueuedDuringSubscriptionIsDeliveredBySubscribingThreadUnderContention() {
         let deadline = Date(timeIntervalSinceNow: 0.5)
         var otherThreadDeliveries = 0
+        var retainedSubscribers = 0
         var subscriptions = 0
         var timedOut = false
 
         // Each subscription queues a change from another thread while it subscribes, and that thread then requests
         // demand repeatedly until the change is delivered, racing the subscribing thread's delivery after it returns.
         while Date() < deadline, !timedOut {
-            let store = InMemoryPersistentKeyValueStore()
-            let key = PersistentKey("key:\(#function)", defaultValue: 0)
-            let subscriber = SubscriptionHookSubscriber<Int>()
-            let subscriptionBox = SubscriptionBox()
-            let finished = DispatchSemaphore(value: 0)
+            weak var releasedSubscriber: SubscriptionHookSubscriber<Int>?
 
-            subscriber.onReceiveSubscription = { subscription in
-                let written = DispatchSemaphore(value: 0)
+            do {
+                let store = InMemoryPersistentKeyValueStore()
+                let key = PersistentKey("key:\(#function)", defaultValue: 0)
+                let subscriber = SubscriptionHookSubscriber<Int>()
+                let subscriptionBox = SubscriptionBox()
+                let finished = DispatchSemaphore(value: 0)
 
-                subscriptionBox.subscription = subscription
-                subscription.request(.unlimited)
-                DispatchQueue.global().async {
-                    store.set(key, to: 1)
-                    written.signal()
+                releasedSubscriber = subscriber
+                subscriber.onReceiveSubscription = { [subscriber] subscription in
+                    let written = DispatchSemaphore(value: 0)
 
-                    let requestDeadline = Date(timeIntervalSinceNow: 5)
+                    subscriptionBox.subscription = subscription
+                    subscription.request(.unlimited)
+                    // GCD can release the worker after this iteration ends, so it does not keep the subscriber alive.
+                    DispatchQueue.global().async { [weak subscriber] in
+                        store.set(key, to: 1)
+                        written.signal()
 
-                    while subscriber.values.isEmpty, Date() < requestDeadline {
-                        subscriptionBox.subscription?.request(.max(1))
+                        let requestDeadline = Date(timeIntervalSinceNow: 5)
+
+                        while subscriber?.values.isEmpty == true, Date() < requestDeadline {
+                            subscriptionBox.subscription?.request(.max(1))
+                        }
+
+                        finished.signal()
                     }
 
-                    finished.signal()
+                    if written.wait(timeout: .now() + 5) == .timedOut {
+                        timedOut = true
+                    }
                 }
 
-                if written.wait(timeout: .now() + 5) == .timedOut {
+                key.changesPublisher(in: store).subscribe(subscriber)
+
+                if finished.wait(timeout: .now() + 5) == .timedOut {
                     timedOut = true
                 }
+
+                if !subscriber.receivedEveryValueOnSubscribingThread {
+                    otherThreadDeliveries += 1
+                }
+
+                XCTAssertEqual(subscriber.values, [1])
+
+                subscriber.cancel()
+                subscriptions += 1
             }
 
-            key.changesPublisher(in: store).subscribe(subscriber)
-
-            if finished.wait(timeout: .now() + 5) == .timedOut {
-                timedOut = true
+            if releasedSubscriber != nil {
+                retainedSubscribers += 1
             }
-
-            if !subscriber.receivedEveryValueOnSubscribingThread {
-                otherThreadDeliveries += 1
-            }
-
-            XCTAssertEqual(subscriber.values, [1])
-
-            subscriber.cancel()
-            subscriptions += 1
         }
 
         XCTAssertFalse(timedOut)
         XCTAssertGreaterThan(subscriptions, 0)
         XCTAssertEqual(otherThreadDeliveries, 0, "\(otherThreadDeliveries) of \(subscriptions) subscriptions")
+        XCTAssertEqual(retainedSubscribers, 0, "\(retainedSubscribers) of \(subscriptions) subscribers retained")
     }
 
     func test_publisher_coalescesChangesUntilDemandIsRequested() {
@@ -449,6 +467,48 @@ extension PersistentKeyValuePublisherTests {
 
         XCTAssertEqual(subscriber.values, ["defaultValue", "reentrantValue", "laterValue"])
         XCTAssertEqual(subscriber.maximumReceiveDepth, 1)
+
+        subscriber.cancel()
+    }
+
+    func test_publisher_storeChangeOnSubscribingThreadDuringSubscriptionDeliversDemandRequestedOnAnotherThread() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        let subscriptionBox = SubscriptionBox()
+        var requestResult: DispatchTimeoutResult?
+        var valuesAfterRequest: [Int]?
+        var valuesAfterWrite: [Int]?
+
+        subscriber.onReceiveSubscription = { subscription in
+            let requested = DispatchSemaphore(value: 0)
+
+            subscriptionBox.subscription = subscription
+            Thread.detachNewThread {
+                subscriptionBox.subscription?.request(.max(1))
+                requested.signal()
+            }
+
+            requestResult = requested.wait(timeout: .now() + 5)
+            valuesAfterRequest = subscriber.values
+            // A change reported on the subscribing thread delivers the initial value that the other thread's demand
+            // made deliverable, before `receive(subscription:)` returns. That demand is then exhausted, so the change
+            // stays queued.
+            store.set(key, to: 1)
+            valuesAfterWrite = subscriber.values
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(requestResult, .success)
+        XCTAssertEqual(valuesAfterRequest, [])
+        XCTAssertEqual(valuesAfterWrite, [0])
+        XCTAssertEqual(subscriber.values, [0])
+
+        subscriptionBox.subscription?.request(.max(1))
+
+        XCTAssertEqual(subscriber.values, [0, 1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
 
         subscriber.cancel()
     }
@@ -1231,8 +1291,8 @@ extension CallbackRetainingPersistentKeyValueStore: PersistentKeyValueStore {
 
 // MARK: - Subscription Hook Subscriber Definition
 
-/// A subscriber that runs ``onReceiveSubscription`` from `receive(subscription:)` and records the thread that delivers
-/// each value.
+/// A subscriber that runs ``onReceiveSubscription`` once from `receive(subscription:)` and records the thread that
+/// delivers each value.
 private final class SubscriptionHookSubscriber<Input>: @unchecked Sendable {
     var onReceiveSubscription: ((Subscription) -> Void)?
 
@@ -1298,9 +1358,16 @@ extension SubscriptionHookSubscriber: Subscriber {
     }
 
     func receive(subscription: Subscription) {
-        withLock {
+        // The hook runs once and is released afterward, so captures of this subscriber do not keep it alive.
+        let onReceiveSubscription = withLock {
             subscribingThread = pthread_self()
             self.subscription = subscription
+
+            defer {
+                self.onReceiveSubscription = nil
+            }
+
+            return self.onReceiveSubscription
         }
 
         onReceiveSubscription?(subscription)

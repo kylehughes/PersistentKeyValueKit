@@ -241,6 +241,66 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(marker))
     }
 
+    func testMemoryCopySourceDeinitRemovingDestinationFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let suiteName = stableSuiteName("MigrationObservation")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let sourceKey = DeinitHookEntry.key("source:\(#function)")
+        let destinationKey = PersistentKey<String>("destination:\(#function)", defaultValue: "absent")
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        var deinitRan = false
+        var subscriptions = Set<AnyCancellable>()
+
+        defer {
+            destination.removePersistentDomain(forName: suiteName)
+        }
+
+        source.set(
+            sourceKey,
+            to: DeinitHookEntry("saved") {
+                destination.remove(destinationKey)
+                deinitRan = true
+            }
+        )
+        // Another writer removes the source once the copy reaches the destination. The migration still holds the
+        // source's value, so its `deinit` runs only when the migration releases it.
+        destination.changesPublisher(for: destinationKey).sink { value in
+            guard value == "saved" else {
+                return
+            }
+
+            source.remove(sourceKey)
+        }.store(in: &subscriptions)
+
+        let item = PersistentKeyMigrationItem.key(sourceKey, to: destinationKey) {
+            $0.text
+        }
+        let report = try source.copy(
+            item,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertNil(source.object(forKey: sourceKey.id))
+        XCTAssertNil(destination.object(forKey: destinationKey.id))
+        XCTAssertFalse(destination.get(marker))
+
+        let retry = try source.copy(
+            item,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(retry.outcomes.map(\.status), [.sourceAbsent])
+        XCTAssertNil(destination.object(forKey: destinationKey.id))
+    }
+
     func testMemoryDestinationRemovedWhileVerifyingKeptValueKeepsSource() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
