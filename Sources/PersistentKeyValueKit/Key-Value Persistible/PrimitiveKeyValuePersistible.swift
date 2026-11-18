@@ -43,7 +43,7 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     ///
     /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
     /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
-    /// the write; see ``set(_:to:in:)`` and ``set(_:to:)``.
+    /// the write; see ``set(_:to:in:)-1ccdn`` and ``set(_:to:)``.
     ///
     /// - Parameter format: The target storage format.
     /// - Returns: The encoded storage object, or `nil` to remove the key.
@@ -79,10 +79,10 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     
     /// Decodes the value at `dictionaryKey` in `propertyListDictionary`, if present and representable as `Self`.
     ///
-    /// Dictionary reads decode a stored entry with this method, so it must accept the objects that ``set(_:to:in:)``
-    /// writes. Ordinary dictionary reads omit an entry for which this method returns `nil`. Checked conversion, which
-    /// migration and `UserDefaults.register(_:)` use, also calls this method for types defined outside this package
-    /// and fails instead.
+    /// Dictionary reads decode a stored entry with this method, so it must accept the objects that
+    /// ``set(_:to:in:)-1ccdn`` writes. Ordinary dictionary reads omit an entry for which this method returns `nil`.
+    /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for types
+    /// defined outside this package and fails instead.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.

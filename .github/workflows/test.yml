@@ -84,6 +84,10 @@ jobs:
         if: matrix.platform == 'macOS'
         run: ruby Scripts/check-documentation-samples.rb
 
+      - name: Check documentation build
+        if: matrix.platform == 'macOS'
+        run: bash Scripts/check-documentation-build.sh
+
       - name: Run tests (Swift)
         if: matrix.platform == 'macOS'
         run: |

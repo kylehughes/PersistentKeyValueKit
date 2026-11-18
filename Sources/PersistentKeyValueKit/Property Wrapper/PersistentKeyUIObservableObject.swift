@@ -59,18 +59,24 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     
     /// The store that the key is being observed in.
     ///
-    /// Setting the store observes the new store. If a subscriber to `objectWillChange` sets the store again while the
-    /// new store is being registered, the latest store is observed and the earlier registration is removed.
+    /// Setting a different store observes it and then sends `objectWillChange`, so subscribers, including SwiftUI views,
+    /// read ``value`` from the new store. Setting the same store instance, or `nil` when there is no store, sends
+    /// nothing; a value-type store has no identity, so setting one always sends. If a subscriber to `objectWillChange`
+    /// sets the store again, including while the new store is being registered, the latest store is observed and the
+    /// earlier registration is removed.
     public var store: (any PersistentKeyValueStore)? {
         get {
             _store
         }
         set {
-            observation = nil
-            
-            _store = newValue
-            
-            registerObserver(on: newValue)
+            let selectionChanged = !Self.isSameStore(_store, newValue)
+
+            select(newValue)
+
+            // Notifying after the selection lets a subscriber that selects another store have the last word.
+            if selectionChanged {
+                objectWillChange.send()
+            }
         }
     }
     
@@ -119,6 +125,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     /// replaced only when the key identifier or the store instance differs, so repeated view updates with the same
     /// inputs keep the existing registration. Key identifiers are compared literally, as Foundation stores compare
     /// keys, so a change between canonically equivalent spellings observes the new key.
+    ///
+    /// This does not send `objectWillChange`: SwiftUI calls it while updating the view, which then reads ``value``,
+    /// and publishing changes during a view update is not allowed.
     internal func update(key newKey: Key, store newStore: any PersistentKeyValueStore) {
         let keyIDChanged = !StoreKeyObservationRegistry.keyIDsMatch(newKey.id, key.id)
 
@@ -128,7 +137,7 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
             return
         }
 
-        store = newStore
+        select(newStore)
     }
 
     // MARK: Private Static Interface
@@ -137,19 +146,26 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         assert(store != nil, "Store should always be set on initialization or immediately after.")
     }
 
-    /// Returns whether two stores are the same instance.
+    /// Returns whether two stores are the same instance, or are both absent.
     ///
     /// Value-type stores have no identity, so they are never considered the same and are observed again on every
     /// update.
     private static func isSameStore(
         _ lhs: (any PersistentKeyValueStore)?,
-        _ rhs: any PersistentKeyValueStore
+        _ rhs: (any PersistentKeyValueStore)?
     ) -> Bool {
-        guard let lhs, type(of: lhs) is AnyClass, type(of: rhs) is AnyClass else {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return true
+        case let (lhs?, rhs?):
+            guard type(of: lhs) is AnyClass, type(of: rhs) is AnyClass else {
+                return false
+            }
+
+            return (lhs as AnyObject) === (rhs as AnyObject)
+        default:
             return false
         }
-
-        return (lhs as AnyObject) === (rhs as AnyObject)
     }
 
     // MARK: Private Instance Interface
@@ -181,6 +197,15 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         }
 
         self.observation = observation
+    }
+
+    /// Replaces the observed store with `store` without notifying subscribers.
+    private func select(_ store: (any PersistentKeyValueStore)?) {
+        observation = nil
+
+        _store = store
+
+        registerObserver(on: store)
     }
 }
 

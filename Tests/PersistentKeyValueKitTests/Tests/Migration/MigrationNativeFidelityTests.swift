@@ -81,6 +81,19 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(source.persistentDomain(forName: sourceName)?[key.id])
     }
 
+    func testDefaultsDestinationRejectsNumberThatStorageWouldChange() throws {
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.storedNumber")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
+
+        defer {
+            destination.removePersistentDomain(forName: destinationName)
+        }
+
+        try assertNumbersThatStorageWouldChangeFailBeforeWriting(to: destination) {
+            destination.persistentDomain(forName: destinationName)?[$0]
+        }
+    }
+
     func testDefaultsDictionaryWithKeysThatSwiftMergesFailsToDecode() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.mergedKeys")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
@@ -411,6 +424,15 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
+    func testUbiquitousDestinationRejectsNumberThatStorageWouldChange() throws {
+        let destination = StrictMigrationUbiquitousStore()
+
+        try assertNumbersThatStorageWouldChangeFailBeforeWriting(to: destination) {
+            destination.storedValue(for: $0)
+        }
+    }
+
+    @available(watchOS 9.0, *)
     func testUbiquitousSnapshotRejectsBooleanReplacedByEqualNumber() throws {
         try assertTypeChangeIsDetected(in: StrictMigrationUbiquitousStore())
     }
@@ -421,6 +443,64 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     // MARK: Private Instance Interface
+
+    /// Moves counts whose encoded decimal a binary property list would store as a double, then an exact unsigned count.
+    ///
+    /// The double rounds `9_007_199_254_740_993` and cannot hold `UInt64.max` as an integer. Even `42` would come back
+    /// as a double rather than a decimal, which a format-aware representation can tell apart.
+    private func assertNumbersThatStorageWouldChangeFailBeforeWriting<Store>(
+        to destination: Store,
+        storedObject: (String) -> Any?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws where Store: PersistentKeyValueStore {
+        let source = InMemoryPersistentKeyValueStore()
+        let legacy = PersistentKey("key:\(#function).legacy", defaultValue: "")
+        let decimal = PersistentKey<UInt64>("key:\(#function)", defaultValue: 0, representation: CounterCodec.decimal)
+        let unsigned = PersistentKey<UInt64>(
+            "key:\(#function).unsigned",
+            defaultValue: 0,
+            representation: CounterCodec.unsigned
+        )
+
+        for count: UInt64 in [42, 9_007_199_254_740_993, .max] {
+            source.set(legacy, to: String(count))
+
+            let report = try source.move(
+                .key(legacy, to: decimal, transform: CounterCodec.parse),
+                to: destination,
+                onConflict: .overwriteDestination,
+                tracking: .once(id: "\(#function).\(count)")
+            )
+
+            XCTAssertEqual(report.outcomes.map(\.status), [.failed(.prepare)], "\(count)", file: file, line: line)
+            XCTAssertEqual(
+                report.outcomes[0].error as? PersistentKeyValueConversionError,
+                .encodingFailed,
+                "\(count)",
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(report.completion, .notRecorded, "\(count)", file: file, line: line)
+            XCTAssertFalse(destination.get(.isMigrationCompleted(id: "\(#function).\(count)")), file: file, line: line)
+            XCTAssertEqual(source.get(legacy), String(count), file: file, line: line)
+            XCTAssertNil(storedObject(decimal.id), "\(count)", file: file, line: line)
+        }
+
+        source.set(legacy, to: String(UInt64.max))
+
+        let report = try source.move(
+            .key(legacy, to: unsigned, transform: CounterCodec.parse),
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved], file: file, line: line)
+        XCTAssertEqual(destination.get(unsigned), .max, file: file, line: line)
+        XCTAssertNil(source.object(forKey: legacy.id), file: file, line: line)
+        destination.remove(unsigned)
+    }
 
     /// Moves a value while the transform replaces it in the source with a value that Core Foundation considers equal.
     ///
@@ -537,6 +617,41 @@ private final class CallbackObserver: NSObject {
         context: UnsafeMutableRawPointer?
     ) {
         callback()
+    }
+}
+
+// MARK: - Counter Codec Definition
+
+/// Encodes a count as an exact decimal or as an unsigned integer, and decodes any number that holds it exactly.
+private struct CounterCodec: PersistentKeyValueRepresentation {
+    static let decimal = CounterCodec(encodesDecimal: true)
+    static let unsigned = CounterCodec(encodesDecimal: false)
+
+    let encodesDecimal: Bool
+
+    // MARK: Internal Static Interface
+
+    @Sendable
+    static func parse(_ text: String) throws -> UInt64 {
+        guard let count = UInt64(text) else {
+            throw PersistentKeyValueConversionError.invalidValue
+        }
+
+        return count
+    }
+
+    // MARK: Internal Instance Interface
+
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> UInt64 {
+        guard let number = storageObject as? NSNumber, let count = UInt64(exactly: number) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return count
+    }
+
+    func encode(_ value: UInt64, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        encodesDecimal ? NSDecimalNumber(string: String(value)) : NSNumber(value: value)
     }
 }
 

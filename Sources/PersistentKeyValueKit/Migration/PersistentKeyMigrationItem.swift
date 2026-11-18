@@ -112,8 +112,15 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// `destination`'s encoding are idempotent on their own results. Storage formats overlap more than their Swift
     /// types suggest: Foundation stores bridge numbers, so a `Bool`, an `Int`, and an integral `Double` can decode as
     /// one another. To change a value in an overlapping format, such as converting dollars to cents or seconds to
-    /// milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead. A repeated move then finds no
-    /// source value, and a repeated copy converts the original source value again rather than its own result.
+    /// milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead, so a retry never reads its own
+    /// result. Whether a retry runs `transform` again then depends on whether the source value remains and whether the
+    /// retry writes. A move that removed its source finds no source value. When the source value remains, a policy
+    /// that keeps an existing destination value, such as ``PersistentKeyCopyConflictPolicy/keepDestination`` or
+    /// ``PersistentKeyMoveConflictPolicy/keepBoth``, keeps it without running `transform`, including a value that an
+    /// earlier attempt wrote, and ``PersistentKeyMoveConflictPolicy/keepBoth`` leaves the source value in place too.
+    /// Under ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
+    /// ``PersistentKeyMoveConflictPolicy/overwriteDestination``, the retry converts the source value again and
+    /// replaces the earlier result.
     ///
     /// - Parameter source: The key to read from the source store.
     /// - Parameter destination: The key to write in the destination store.

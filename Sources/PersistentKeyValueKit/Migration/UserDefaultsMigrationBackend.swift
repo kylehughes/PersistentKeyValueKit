@@ -147,7 +147,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
             return MigrationWrite(
                 identity: migrationIdentity,
                 keyID: key.id,
-                object: try PropertyListMigrationStorage.freeze(object)
+                object: try PropertyListMigrationStorage.freezeExactly(object)
             )
         }
 

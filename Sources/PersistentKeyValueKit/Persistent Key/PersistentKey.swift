@@ -13,14 +13,14 @@ import Foundation
 /// stores, property wrappers, observation APIs, and migrations:
 ///
 /// ```swift
-/// extension PersistentKeyProtocol where Self == PersistentKey<Date> {
-///     static var mostRecentLaunchDate: Self {
-///         Self("MostRecentLaunchDate", defaultValue: .distantPast)
+/// extension PersistentKeyProtocol where Self == PersistentKey<Int> {
+///     static var launchCount: Self {
+///         Self("LaunchCount", defaultValue: 0)
 ///     }
 /// }
 ///
-/// userDefaults.set(.mostRecentLaunchDate, to: .now)
-/// let launchDate = userDefaults.get(.mostRecentLaunchDate)
+/// let launchCount = userDefaults.get(.launchCount)
+/// userDefaults.set(.launchCount, to: launchCount + 1)
 /// ```
 public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     /// The default value for the key.
@@ -140,9 +140,14 @@ extension PersistentKey: PersistentKeyProtocol {
 extension PersistentKey: Equatable where Value: Equatable {
     // MARK: Public Static Interface
     
+    /// Returns whether two keys have equal default values and literally identical identifiers.
+    ///
+    /// Identifiers are compared by their UTF-16 code units, as Foundation stores compare keys, so canonically
+    /// equivalent spellings, such as composed and decomposed "café", are different keys even though they are equal as
+    /// Swift strings. ``InMemoryPersistentKeyValueStore`` stores such spellings in one entry.
     @inlinable
     public static func == (lhs: PersistentKey<Value>, rhs: PersistentKey<Value>) -> Bool {
-        lhs.defaultValue == rhs.defaultValue && lhs.id == rhs.id
+        lhs.defaultValue == rhs.defaultValue && lhs.id.utf16.elementsEqual(rhs.id.utf16)
     }
 }
 
@@ -151,9 +156,13 @@ extension PersistentKey: Equatable where Value: Equatable {
 extension PersistentKey: Hashable where Value: Hashable {
     // MARK: Public Instance Interface
     
+    /// Hashes the default value and the UTF-16 code units of the identifier, so keys that are equal hash equally.
     @inlinable
     public func hash(into hasher: inout Hasher) {
         hasher.combine(defaultValue)
-        hasher.combine(id)
+
+        for codeUnit in id.utf16 {
+            hasher.combine(codeUnit)
+        }
     }
 }

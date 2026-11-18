@@ -73,6 +73,21 @@ internal enum PropertyListMigrationStorage {
         return try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
     }
 
+    /// Returns `object` frozen as ``freeze(_:allowingLegacyURL:)`` does, throwing
+    /// ``PersistentKeyValueConversionError/encodingFailed`` when freezing changes it as ``equal(_:_:)`` compares them.
+    ///
+    /// A representation validates the object it encodes, but a Foundation store persists the frozen object. Freezing
+    /// stores an `NSDecimalNumber` as a double-precision real, which can round an integer or change how a
+    /// representation decodes it, so a migration write of such an object fails before anything is written.
+    static func freezeExactly(_ object: Any) throws -> Any {
+        let frozen = try freeze(object)
+        guard equal(object, frozen) else {
+            throw PersistentKeyValueConversionError.encodingFailed
+        }
+
+        return frozen
+    }
+
     // MARK: Private Static Interface
 
     /// Copies the containers and mutable leaves of a valid property list. Numbers, including decimals, and dates are

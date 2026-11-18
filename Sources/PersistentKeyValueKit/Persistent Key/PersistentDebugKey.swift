@@ -359,9 +359,14 @@ extension PersistentDebugKey {
 extension PersistentDebugKey: Equatable where Value: Equatable {
     // MARK: Public Static Interface
     
+    /// Returns whether two keys have equal default values and literally identical identifiers.
+    ///
+    /// Identifiers are compared by their UTF-16 code units, as Foundation stores compare keys, so canonically
+    /// equivalent spellings, such as composed and decomposed "café", are different keys even though they are equal as
+    /// Swift strings. ``InMemoryPersistentKeyValueStore`` stores such spellings in one entry.
     @inlinable
     public static func == (lhs: PersistentDebugKey<Value>, rhs: PersistentDebugKey<Value>) -> Bool {
-        lhs.defaultValue == rhs.defaultValue && lhs.id == rhs.id
+        lhs.defaultValue == rhs.defaultValue && lhs.id.utf16.elementsEqual(rhs.id.utf16)
     }
 }
 
@@ -370,9 +375,13 @@ extension PersistentDebugKey: Equatable where Value: Equatable {
 extension PersistentDebugKey: Hashable where Value: Hashable {
     // MARK: Public Instance Interface
     
+    /// Hashes the default value and the UTF-16 code units of the identifier, so keys that are equal hash equally.
     @inlinable
     public func hash(into hasher: inout Hasher) {
         hasher.combine(defaultValue)
-        hasher.combine(id)
+
+        for codeUnit in id.utf16 {
+            hasher.combine(codeUnit)
+        }
     }
 }

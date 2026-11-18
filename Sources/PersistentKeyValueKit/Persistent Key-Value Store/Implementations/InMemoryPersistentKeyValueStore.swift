@@ -42,6 +42,8 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
 
     private let lock: NSLock
+    /// The revision of the most recently stored entry. Every stored entry takes a new revision, so migration
+    /// verification can rely on a revision never being reused for a replaced or removed entry.
     private var nextRevision: UInt64
     private var observations: [Observation]
     private var storage: [String: StoredValue]
@@ -280,16 +282,23 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
         }
     }
 
+    /// Whether the store still holds the snapshot's revision with the captured contents.
+    ///
+    /// Contents are compared before the revision is checked, because comparing a Foundation collection can run code
+    /// that writes or removes the entry. A store never reuses a revision, so a matching revision afterwards means the
+    /// compared value was the snapshot's entry and the entry was not replaced or removed during the comparison.
     func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
         guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
             throw PersistentKeyMigrationError.internalInconsistency
         }
 
-        let storedValue = withLock {
-            storage[keyID]
+        guard snapshot.hasContents(of: object(forKey: keyID)) else {
+            return false
         }
 
-        return storedValue?.revision == snapshot.revision && snapshot.hasContents(of: storedValue?.object)
+        return withLock {
+            storage[keyID]?.revision == snapshot.revision
+        }
     }
 
     /// Decodes a captured value for the requested typed key.

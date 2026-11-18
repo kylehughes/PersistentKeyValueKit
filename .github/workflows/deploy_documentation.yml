@@ -33,11 +33,7 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Build Documentation
         run: |
-          xcodebuild docbuild \
-            -scheme PersistentKeyValueKit \
-            OTHER_DOCC_FLAGS="--warnings-as-errors" \
-            -derivedDataPath /tmp/DerivedData \
-            -destination 'generic/platform=iOS';
+          bash Scripts/check-documentation-build.sh /tmp/DerivedData;
           mkdir _site;
           $(xcrun --find docc) process-archive \
             transform-for-static-hosting /tmp/DerivedData/Build/Products/Debug-iphoneos/PersistentKeyValueKit.doccarchive \

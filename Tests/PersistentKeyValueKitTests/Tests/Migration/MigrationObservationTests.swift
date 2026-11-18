@@ -208,6 +208,86 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(values, [9])
     }
 
+    func testMemoryDestinationRemovedWhileVerifyingKeptValueKeepsSource() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = PublishedRowsKey(id: "key:\(#function)")
+        let rows = PublishedRows()
+        var reads = 0
+
+        source.set(key, to: NSArray(array: [[7]]))
+        destination.set(key, to: rows)
+        rows.onRead = {
+            reads += 1
+        }
+        _ = try destination.migrationSnapshot(for: key.id)
+
+        // The move reads the destination this many times to capture its snapshot, and its next read compares the kept
+        // value before the source is removed.
+        let snapshotReads = reads
+
+        XCTAssertGreaterThan(snapshotReads, 0)
+        reads = 0
+        rows.onRead = {
+            reads += 1
+            if reads == snapshotReads + 1 {
+                destination.remove(key)
+            }
+        }
+
+        let report = try source.move(
+            key,
+            to: destination,
+            onConflict: .keepDestinationAndRemoveSource,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.object(forKey: key.id) as? NSArray, NSArray(array: [[7]]))
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
+    func testMemoryDestinationRemovedWhileVerifyingMoveFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
+        let destinationKey = PublishedRowsKey(id: "destination:\(#function)")
+
+        source.set(sourceKey, to: 42)
+
+        let report = try source.move(
+            .key(sourceKey, to: destinationKey) { _ in
+                let rows = PublishedRows()
+                // Once cleanup removes the source, the only remaining read compares the destination after cleanup.
+                // Another writer removes the destination during that comparison, which still finds the expected rows.
+                rows.onRead = {
+                    guard source.object(forKey: sourceKey.id) == nil,
+                        destination.object(forKey: destinationKey.id) != nil
+                    else {
+                        return
+                    }
+
+                    destination.remove(destinationKey)
+                }
+
+                return rows
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertNil(source.object(forKey: sourceKey.id))
+        XCTAssertNil(destination.object(forKey: destinationKey.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
     func testMemoryMovePublishesSourceRemovalAndDestinationTransfer() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()

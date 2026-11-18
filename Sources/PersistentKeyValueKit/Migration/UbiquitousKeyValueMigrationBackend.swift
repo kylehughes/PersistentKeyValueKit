@@ -115,7 +115,7 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
     ) throws -> MigrationWrite where Key: PersistentKeyProtocol {
         let object = try encodeStorageValue(value, for: key, format: .ubiquitousKeyValueStore)
         if let object {
-            let frozen = try PropertyListMigrationStorage.freeze(object)
+            let frozen = try PropertyListMigrationStorage.freezeExactly(object)
             if try PropertyListMigrationStorage.byteCount(frozen) > 1_048_576 {
                 throw PersistentKeyValueConversionError.invalidStorageValue
             }

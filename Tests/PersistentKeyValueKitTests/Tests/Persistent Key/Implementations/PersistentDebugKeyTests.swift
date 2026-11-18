@@ -136,6 +136,16 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
         
         XCTAssertEqual(target, other)
     }
+
+    func test_persistentKey_equatable_comparesIdentifiersLiterally() {
+        let composed = PersistentDebugKey("caf\u{E9}", defaultValue: 0)
+        let decomposed = PersistentDebugKey("cafe\u{301}", defaultValue: 0)
+
+        XCTAssertEqual(composed.id, decomposed.id)
+        XCTAssertNotEqual(composed, decomposed)
+        XCTAssertEqual(composed, PersistentDebugKey("caf\u{E9}", defaultValue: 0))
+        XCTAssertNotEqual(composed, PersistentDebugKey("caf\u{E9}", defaultValue: 1))
+    }
     
     // MARK: Hashable Tests
     
@@ -144,5 +154,13 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
         let other = target
         
         XCTAssertEqual(target.hashValue, other.hashValue)
+    }
+
+    func test_persistentKey_hashable_keepsLiterallyDifferentIdentifiersSeparate() {
+        let composed = PersistentDebugKey("caf\u{E9}", defaultValue: 0)
+        let decomposed = PersistentDebugKey("cafe\u{301}", defaultValue: 0)
+
+        XCTAssertEqual(Set([composed, decomposed, PersistentDebugKey("caf\u{E9}", defaultValue: 0)]).count, 2)
+        XCTAssertEqual(composed.hashValue, PersistentDebugKey("caf\u{E9}", defaultValue: 0).hashValue)
     }
 }

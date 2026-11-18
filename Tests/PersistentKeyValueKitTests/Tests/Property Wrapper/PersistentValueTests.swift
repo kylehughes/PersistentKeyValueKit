@@ -862,6 +862,28 @@ extension PersistentValueTests {
         XCTAssertEqual(firstStore.get(key), 3)
     }
 
+    @MainActor
+    func test_inputChange_observedObjectStore_rendersNewStore() async {
+        let viewController = ViewController()
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: firstStore, key: key)
+        let recorder = SwitchingRecorder()
+
+        firstStore.set(key, to: 1)
+        secondStore.set(key, to: 2)
+
+        host(ObservedObjectRow(observer: observer, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        observer.store = secondStore
+        await waitForRenderedValue(2, in: recorder)
+
+        secondStore.set(key, to: 3)
+        await waitForRenderedValue(3, in: recorder)
+    }
+
     // MARK: Private Instance Interface
 
     /// Waits until `isReleased` returns `true`, giving up after a bounded timeout.
@@ -934,6 +956,21 @@ private struct ForwardingStore: PersistentKeyValueStore {
 
     func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
         base.set(key, to: value)
+    }
+}
+
+// MARK: - ObservedObjectRow Definition
+
+/// A row that observes a `PersistentKeyUIObservableObject` directly, as a view outside `PersistentValue` would.
+private struct ObservedObjectRow: View {
+    @ObservedObject var observer: PersistentKeyUIObservableObject<PersistentKey<Int>>
+
+    let recorder: SwitchingRecorder
+
+    var body: some View {
+        recorder.record(observer.value, binding: $observer.value)
+
+        return Text(String(observer.value))
     }
 }
 

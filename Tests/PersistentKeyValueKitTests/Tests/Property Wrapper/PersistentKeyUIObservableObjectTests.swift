@@ -203,6 +203,57 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
     }
 
     @MainActor
+    func test_store_set_notifiesAfterSelectingDifferentStore() {
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: firstStore, key: key)
+        var notifiedValues: [Int] = []
+        let cancellable = observer.objectWillChange.sink {
+            notifiedValues.append(observer.value)
+        }
+
+        firstStore.set(key, to: 1)
+        secondStore.set(key, to: 2)
+        notifiedValues = []
+
+        observer.store = secondStore
+
+        XCTAssertEqual(notifiedValues, [2])
+
+        observer.store = firstStore
+
+        XCTAssertEqual(notifiedValues, [2, 1])
+
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func test_store_set_doesNotNotifyForSameSelection() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: store, key: key)
+        let storelessObserver = PersistentKeyUIObservableObject(store: nil, key: key)
+        var changeCount = 0
+        let cancellables = [observer.objectWillChange, storelessObserver.objectWillChange].map {
+            $0.sink { changeCount += 1 }
+        }
+
+        observer.store = store
+        storelessObserver.store = nil
+
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(store.registrationCount, 2)
+        XCTAssertEqual(store.deregistrationCount, 1)
+
+        store.notifyObservers(keyPath: key.id)
+
+        XCTAssertEqual(changeCount, 1)
+
+        cancellables.forEach { $0.cancel() }
+    }
+
+    @MainActor
     func test_store_set_observesStoreSelectedDuringRegistration() throws {
         let suiteName = stableSuiteName("PersistentKeyUIObservableObjectTests", function: #function)
         let deselectedStore = try XCTUnwrap(InstrumentedUserDefaults(suiteName: suiteName))

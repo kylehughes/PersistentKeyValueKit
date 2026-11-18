@@ -32,8 +32,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     ///
     /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
     /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
-    /// the write; see ``set(_:to:in:)`` and ``set(_:to:)``. Callers such as migration write validation may invoke
-    /// conversion more than once for the same value; do not rely on a specific invocation count.
+    /// the write; see ``set(_:to:in:)-91w4n`` and ``set(_:to:)``. Callers such as migration write validation may
+    /// invoke conversion more than once for the same value; do not rely on a specific invocation count.
     ///
     /// - Parameter value: The value to encode.
     /// - Parameter format: The target storage format.
@@ -70,10 +70,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 
     /// Decodes the value at `dictionaryKey` in `propertyListDictionary`, if present and representable as ``Value``.
     ///
-    /// Dictionary reads decode a stored entry with this method, so it must accept the objects that ``set(_:to:in:)``
-    /// writes. Ordinary dictionary reads omit an entry for which this method returns `nil`. Checked conversion, which
-    /// migration and `UserDefaults.register(_:)` use, also calls this method for representations defined outside this
-    /// package and fails instead.
+    /// Dictionary reads decode a stored entry with this method, so it must accept the objects that
+    /// ``set(_:to:in:)-91w4n`` writes. Ordinary dictionary reads omit an entry for which this method returns `nil`.
+    /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for
+    /// representations defined outside this package and fails instead.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.
@@ -348,7 +348,8 @@ extension PersistentKeyValueRepresentation {
     ///
     /// A built-in representation that can omit values, such as `nil` optionals, converts each value once and tells an
     /// omitted value from a failed one as it converts it. Any other representation encodes each entry with
-    /// ``set(_:to:in:)``, which reports a failure by leaving the entry absent, so an absent entry is a failure.
+    /// ``set(_:to:in:)``, which reports a failure by leaving the entry absent, so an absent entry is a failure. Either
+    /// way, the write stops at the first value that fails to encode.
     @usableFromInline
     internal func propertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
         if let omitting = self as? any BuiltInValueOmission {
@@ -383,6 +384,46 @@ extension PersistentKeyValueRepresentation {
         }
 
         return objects
+    }
+
+    /// Writes each entry of `values` with `write`, stopping at the first value that fails to encode.
+    internal func propertyListDictionary(
+        encoding values: [String: Value],
+        with write: OrdinaryDictionaryEntryWriter<Value>
+    ) -> [String: Any]? {
+        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+
+        for (key, value) in values {
+            guard write(key, value, &objects) else {
+                return nil
+            }
+        }
+
+        return objects
+    }
+
+    /// Returns a function that writes the entry an ordinary dictionary write stores for a value, reporting whether the
+    /// value encoded.
+    ///
+    /// The function receives a key that the dictionary does not yet contain. It returns `false` if the value fails to
+    /// encode, and `true` if it wrote the entry or omitted the value, leaving the key absent. A built-in representation
+    /// that can omit values, such as `nil` optionals, converts the value once and passes the result inward through
+    /// each representation it wraps, so a failure at any layer stops the write before the next value is converted.
+    /// Any other representation writes the entry with ``set(_:to:in:)``, which reports a failure by leaving the entry
+    /// absent.
+    ///
+    /// Calling the function costs more than writing the entry directly, so a built-in representation writes through
+    /// it only when the representation it wraps can omit values.
+    internal func ordinaryDictionaryEntryWriter() -> OrdinaryDictionaryEntryWriter<Value> {
+        if let omitting = self as? any BuiltInValueOmission {
+            return builtInOrdinaryDictionaryEntryWriter(with: omitting)
+        }
+
+        return { key, value, objects in
+            set(key, to: value, in: &objects)
+
+            return objects[key] != nil
+        }
     }
 
     /// Returns the property-list dictionary that stores `values`, throwing if it cannot be encoded.
@@ -577,6 +618,18 @@ extension PersistentKeyValueRepresentation {
         )
     }
 
+    private func builtInOrdinaryDictionaryEntryWriter<BuiltIn: BuiltInValueOmission>(
+        with builtIn: BuiltIn
+    ) -> OrdinaryDictionaryEntryWriter<Value> {
+        precondition(BuiltIn.Value.self == Value.self)
+
+        let write = builtIn.builtInOrdinaryDictionaryEntryWriter()
+
+        return { key, value, objects in
+            write(key, unsafeBitCast(value, to: BuiltIn.Value.self), &objects)
+        }
+    }
+
     private func builtInDictionary<BuiltIn: BuiltInContainerConversion>(
         decoding propertyListDictionary: [String: Any],
         with builtIn: BuiltIn
@@ -644,16 +697,31 @@ internal protocol BuiltInScalarConversion: PersistentKeyValueRepresentation {}
 /// a dictionary entry absent, which is also what omitting every value produces. Ordinary container writes therefore
 /// encode through this protocol, whose methods convert each value once and decide whether it was omitted from that
 /// conversion. Converting a value again to decide would convert a recursive value's whole subtree again at every
-/// level, which takes time exponential in its depth.
+/// level, which takes time exponential in its depth. A dictionary write also converts each value through every layer
+/// before converting the next, so the first value that fails to encode stops the write.
 internal protocol BuiltInValueOmission: PersistentKeyValueRepresentation {
     /// Returns the property-list array that an ordinary write stores for `values`, or `nil` if any value fails to
     /// encode.
     func builtInOrdinaryPropertyListArray(encoding values: [Value]) -> [Any]?
 
     /// Returns the property-list dictionary that an ordinary write stores for `values`, or `nil` if any value fails
-    /// to encode.
+    /// to encode, stopping at the first such value.
     func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]?
+
+    /// Returns a function that writes the entry an ordinary dictionary write stores for a value, as
+    /// ``PersistentKeyValueRepresentation/ordinaryDictionaryEntryWriter()`` describes.
+    func builtInOrdinaryDictionaryEntryWriter() -> OrdinaryDictionaryEntryWriter<Value>
 }
+
+/// A function that writes the entry an ordinary dictionary write stores for `value` at `key`, which `objects` does not
+/// yet contain, and returns whether `value` encoded.
+///
+/// See ``PersistentKeyValueRepresentation/ordinaryDictionaryEntryWriter()``.
+internal typealias OrdinaryDictionaryEntryWriter<Value> = (
+    _ key: String,
+    _ value: Value,
+    _ objects: inout [String: Any]
+) -> Bool
 
 /// The storage format used to encode or decode a persistent value.
 public enum PersistentKeyValueStorageFormat: Sendable {

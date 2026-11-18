@@ -16,8 +16,10 @@ import Foundation
 /// ``ProxyPersistentKeyValueRepresentation`` for closure-based proxy conversions without defining a new representation
 /// type.
 ///
-/// This protocol provides default implementations of ``decode(storageObject:format:)``, ``encode(_:format:)``, and the
-/// store- and container-specific `get` and `set` methods that delegate to `Proxy.persistentKeyValueRepresentation`.
+/// This protocol provides default implementations of
+/// ``PersistentKeyValueRepresentation/decode(storageObject:format:)``,
+/// ``PersistentKeyValueRepresentation/encode(_:format:)``, and the store- and container-specific `get` and `set`
+/// methods that delegate to `Proxy.persistentKeyValueRepresentation`.
 /// Proxy representations defined by this package convert property-list containers through `Proxy`'s checked conversion
 /// during migration and `UserDefaults.register(_:)`, whereas types defined outside this package use their
 /// `get(from:)`, `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)` implementations as written (so a custom type whose
@@ -259,25 +261,16 @@ extension BuiltInProxyConversion {
         return Proxy.persistentKeyValueRepresentation.propertyListArray(encoding: proxies)
     }
 
-    /// Converts each value to its proxy once, then encodes the proxies as an ordinary write of `Proxy` does.
+    /// Converts each value to its proxy, then writes the proxy as an ordinary dictionary write of `Proxy` does.
     ///
     /// A `Proxy` representation that cannot omit values reports a failure by leaving an entry absent, so its entries
-    /// are written directly, which is several times faster than collecting the proxies first.
+    /// are written directly. Otherwise each value is written with ``builtInOrdinaryDictionaryEntryWriter()``, which
+    /// converts it through every layer of `Proxy` before converting the next value.
     func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
         let proxyRepresentation = Proxy.persistentKeyValueRepresentation
 
         guard !(proxyRepresentation is any BuiltInValueOmission) else {
-            var proxies: [String: Proxy] = Dictionary(minimumCapacity: values.count)
-
-            for (key, value) in values {
-                guard let proxy = to(value) else {
-                    return nil
-                }
-
-                proxies[key] = proxy
-            }
-
-            return proxyRepresentation.propertyListDictionary(encoding: proxies)
+            return propertyListDictionary(encoding: values, with: builtInOrdinaryDictionaryEntryWriter())
         }
 
         var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
@@ -295,5 +288,18 @@ extension BuiltInProxyConversion {
         }
 
         return objects
+    }
+
+    /// Converts the value to its proxy, then writes the proxy as an ordinary dictionary write of `Proxy` does.
+    func builtInOrdinaryDictionaryEntryWriter() -> OrdinaryDictionaryEntryWriter<Value> {
+        let write = Proxy.persistentKeyValueRepresentation.ordinaryDictionaryEntryWriter()
+
+        return { key, value, objects in
+            guard let proxy = to(value) else {
+                return false
+            }
+
+            return write(key, proxy, &objects)
+        }
     }
 }

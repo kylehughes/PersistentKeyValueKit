@@ -49,7 +49,7 @@ where
     /// ordinary reads, which omit entries that fail to decode, so a migration reports the failure instead of dropping
     /// data. Built-in value representations decode each entry with their own checked conversion and rethrow the first
     /// error. Other value representations decode each entry with their
-    /// ``PersistentKeyValueRepresentation/get(_:from:)`` exactly as it is implemented and throw
+    /// ``PersistentKeyValueRepresentation/get(_:from:)-teh7`` exactly as it is implemented and throw
     /// ``PersistentKeyValueConversionError/invalidStorageValue`` when it returns `nil`.
     public static func decode(
         storageObject: Any,
@@ -71,8 +71,8 @@ where
     ///
     /// Throws if any value fails to encode. Built-in value representations encode each value with their own checked
     /// conversion, omit values that encode to `nil`, and rethrow the first error. Other value representations encode
-    /// each entry with their ``PersistentKeyValueRepresentation/set(_:to:in:)`` exactly as it is implemented and throw
-    /// ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the entry absent.
+    /// each entry with their ``PersistentKeyValueRepresentation/set(_:to:in:)-91w4n`` exactly as it is implemented and
+    /// throw ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the entry absent.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         try Value.persistentKeyValueRepresentation.checkedPropertyListDictionary(encoding: self)
     }

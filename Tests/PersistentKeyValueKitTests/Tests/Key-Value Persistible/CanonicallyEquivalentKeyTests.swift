@@ -191,6 +191,78 @@ extension CanonicallyEquivalentKeyTests {
     }
 }
 
+// MARK: - Key Identity Tests
+
+extension CanonicallyEquivalentKeyTests {
+    func test_copy_trackedKeySetWithEquivalentIdentifiers_copiesEachKey() throws {
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let destinationSuiteName = stableSuiteName(
+            "PersistentKeyValueKitTests.CanonicallyEquivalentKey.destination",
+            function: name
+        )
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationSuiteName))
+        let composedKey = PersistentKey(composed, defaultValue: 0)
+        let decomposedKey = PersistentKey(decomposed, defaultValue: 0)
+
+        defer {
+            destination.removePersistentDomain(forName: destinationSuiteName)
+        }
+
+        source.set(composedKey, to: 11)
+        source.set(decomposedKey, to: 22)
+
+        let keys = Set([composedKey, decomposedKey])
+        let report = try source.copy(
+            Array(keys),
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: "migration:\(#function)")
+        )
+
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertEqual(report.outcomes.map(\.status), [.copied, .copied])
+        XCTAssertEqual(report.completion, .recorded)
+        XCTAssertEqual(destination.get(composedKey), 11)
+        XCTAssertEqual(destination.get(decomposedKey), 22)
+    }
+
+    func test_copy_trackedDebugKeySetWithEquivalentIdentifiers_copiesEachKey() throws {
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let destinationSuiteName = stableSuiteName(
+            "PersistentKeyValueKitTests.CanonicallyEquivalentKey.destination",
+            function: name
+        )
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationSuiteName))
+        let composedKey = PersistentDebugKey(composed, defaultValue: 0)
+        let decomposedKey = PersistentDebugKey(decomposed, defaultValue: 0)
+
+        defer {
+            destination.removePersistentDomain(forName: destinationSuiteName)
+        }
+
+        source.set(11, forKey: composed)
+        source.set(22, forKey: decomposed)
+
+        let keys = Set([composedKey, decomposedKey])
+        let report = try source.copy(
+            Array(keys),
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: "migration:\(#function)")
+        )
+
+        XCTAssertEqual(keys.count, 2)
+        #if DEBUG
+        XCTAssertEqual(report.outcomes.map(\.status), [.copied, .copied])
+        XCTAssertEqual(report.completion, .recorded)
+        XCTAssertEqual(destination.object(forKey: composed) as? Int, 11)
+        XCTAssertEqual(destination.object(forKey: decomposed) as? Int, 22)
+        #else
+        XCTAssertEqual(report.outcomes.map(\.status), [.keyDisabled, .keyDisabled])
+        #endif
+    }
+}
+
 // MARK: - Integer Table Definition
 
 /// A value persisted through a proxy dictionary, so arrays of it reach dictionary conversion through the proxy.
