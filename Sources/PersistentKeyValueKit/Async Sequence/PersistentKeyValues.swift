@@ -44,9 +44,10 @@ import Foundation
 ///   iterator deregisters from the store. Always iterate within a cancellable context.
 /// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the
 ///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` to keep every observed value.
-/// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
-///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
-///   delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
+/// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) or NUL
+///   character, or are `valueForKey:` or `ValueForKey:`, only changes made in the current process are observed.
+///   Changes made by another process, such as an app extension that shares an app group, might not be delivered, and
+///   neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 /// - SeeAlso: ``PersistentKeyProtocol/changes(in:bufferingPolicy:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentValue`` for observation relying on SwiftUI `View` and environment.
 public struct PersistentKeyValues<Key> where Key: PersistentKeyProtocol {

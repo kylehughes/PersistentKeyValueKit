@@ -150,6 +150,47 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(source.get(key), NSMutableArray(array: [1, 2, 3]))
     }
 
+    func testMemoryPreparedCollectionChangedAfterPublishingFailsVerification() throws {
+        let suiteName = stableSuiteName("MigrationObservation")
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let destination = InMemoryPersistentKeyValueStore()
+        let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
+        let destinationKey = PublishedRowsKey(id: "destination:\(#function)")
+
+        defer {
+            source.removePersistentDomain(forName: suiteName)
+        }
+
+        source.set(sourceKey, to: 42)
+
+        let report = try source.move(
+            .key(sourceKey, to: destinationKey) { _ in
+                let rows = PublishedRows()
+                // Another writer reads the published destination and edits its nested collection the first time the
+                // store reads the prepared value after publishing it.
+                rows.onRead = { [unowned rows] in
+                    guard destination.object(forKey: destinationKey.id) is PublishedRows, rows.row[0] as? Int == 42
+                    else {
+                        return
+                    }
+
+                    rows.row.replaceObject(at: 0, with: 99)
+                }
+
+                return rows
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.get(sourceKey), 42)
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
     func testMemoryCopyPublishesExactlyOneDestinationChange() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -302,5 +343,77 @@ final class MigrationObservationTests: XCTestCase {
 
         XCTAssertEqual(values, ["migrated"])
         XCTAssertEqual(source.get(key), "")
+    }
+}
+
+// MARK: - Published Rows Definition
+
+/// An array whose one element is a mutable row of `42`, which runs `onRead` whenever its contents are read.
+private final class PublishedRows: NSArray {
+    var onRead: (() -> Void)?
+    let row = NSMutableArray(array: [42])
+
+    override var count: Int {
+        onRead?()
+
+        return 1
+    }
+
+    override func object(at index: Int) -> Any {
+        onRead?()
+
+        return row
+    }
+}
+
+// MARK: - Published Rows Key Definition
+
+private struct PublishedRowsKey {
+    let id: String
+}
+
+// MARK: - PersistentKeyProtocol Extension
+
+extension PublishedRowsKey: PersistentKeyProtocol {
+    var defaultValue: NSArray {
+        NSArray()
+    }
+
+    var representation: any PersistentKeyValueRepresentation<NSArray> {
+        ProxyPersistentKeyValueRepresentation<NSArray, [[Int]]>(
+            to: {
+                $0 as? [[Int]]
+            },
+            from: {
+                NSArray(array: $0)
+            }
+        )
+    }
+
+    func get(from defaults: UserDefaults) -> NSArray {
+        representation.get(id, from: defaults) ?? defaultValue
+    }
+
+    @available(watchOS 9.0, *)
+    func get(from store: NSUbiquitousKeyValueStore) -> NSArray {
+        representation.get(id, from: store) ?? defaultValue
+    }
+
+    func remove(from defaults: UserDefaults) {
+        defaults.removeObject(forKey: id)
+    }
+
+    @available(watchOS 9.0, *)
+    func remove(from store: NSUbiquitousKeyValueStore) {
+        store.removeObject(forKey: id)
+    }
+
+    func set(to value: NSArray, in defaults: UserDefaults) {
+        representation.set(id, to: value, in: defaults)
+    }
+
+    @available(watchOS 9.0, *)
+    func set(to value: NSArray, in store: NSUbiquitousKeyValueStore) {
+        representation.set(id, to: value, in: store)
     }
 }

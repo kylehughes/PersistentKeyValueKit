@@ -179,16 +179,58 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInContainerConversion {
 extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
     // MARK: Internal Instance Interface
 
-    var builtInOmitsValues: Bool {
-        true
-    }
+    /// Encodes the non-`nil` values as an ordinary write of `base` does.
+    func builtInOrdinaryPropertyListArray(encoding values: [Value]) -> [Any]? {
+        // Ordinary writes are a hot path, and this loop runs several times faster than an unspecialized `compactMap`.
+        var nonOptionalValues: [Base.Value] = []
 
-    func builtInOmits(_ value: Value) -> Bool {
-        guard let value else {
-            return true
+        nonOptionalValues.reserveCapacity(values.count)
+
+        for value in values {
+            guard let value else {
+                continue
+            }
+
+            nonOptionalValues.append(value)
         }
 
-        return base.omits(value)
+        return base.propertyListArray(encoding: nonOptionalValues)
+    }
+
+    /// Encodes the non-`nil` values as an ordinary write of `base` does.
+    ///
+    /// A `base` that cannot omit values reports a failure by leaving an entry absent, so its entries are written
+    /// directly, which is several times faster than collecting the non-`nil` values first.
+    func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
+        guard !(base is any BuiltInValueOmission) else {
+            var nonOptionalValues: [String: Base.Value] = Dictionary(minimumCapacity: values.count)
+
+            for (key, value) in values {
+                guard let value else {
+                    continue
+                }
+
+                nonOptionalValues[key] = value
+            }
+
+            return base.propertyListDictionary(encoding: nonOptionalValues)
+        }
+
+        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+
+        for (key, value) in values {
+            guard let value else {
+                continue
+            }
+
+            base.set(key, to: value, in: &objects)
+
+            guard objects[key] != nil else {
+                return nil
+            }
+        }
+
+        return objects
     }
 }
 

@@ -50,6 +50,30 @@ final class RecursiveContainerWriteTests: XCTestCase {
         return node
     }
 
+    /// Returns a chain of `depth` branches, each nesting its child with `nesting`, that ends in a leaf that encodes,
+    /// fails, or is omitted as `outcome` selects.
+    private func optionalProxyTree(
+        nesting: OptionalProxyNode.Nesting,
+        outcome: OptionalProxyNode.Outcome,
+        counter: HookCallCounter
+    ) -> OptionalProxyNode {
+        let leaf: OptionalProxyNode.Content = switch outcome {
+        case .encoded:
+            .leaf(7)
+        case .failed:
+            .invalid
+        case .omitted:
+            .omitted
+        }
+        var node = OptionalProxyNode(leaf, counter: counter)
+
+        for _ in 0 ..< depth {
+            node = OptionalProxyNode(.branch(node, nesting), counter: counter)
+        }
+
+        return node
+    }
+
     /// The number of hook calls that encoding the tree once takes: one `encode` per node, plus one conversion per
     /// proxy layer around each nested child.
     private func expectedHookCalls(for nesting: RecursiveNode.Nesting) -> Int {
@@ -108,6 +132,63 @@ extension RecursiveContainerWriteTests {
 
             XCTAssertEqual(counter.count, expectedHookCalls(for: nesting), "\(nesting)")
             XCTAssertEqual(userDefaults.dictionary(forKey: key.id) as? [String: Int], ["root": 99], "\(nesting)")
+        }
+    }
+}
+
+// MARK: - Optional Proxy Write Tests
+
+extension RecursiveContainerWriteTests {
+    func test_set_recursiveOptionalProxyArray_convertsEachValueOnce() {
+        for nesting in OptionalProxyNode.Nesting.allCases {
+            for (outcome, expectedRows) in [
+                (OptionalProxyNode.Outcome.encoded, [[7] + Array(repeating: 0, count: depth)]),
+                (.failed, [[99]]),
+                (.omitted, []),
+            ] {
+                let counter = HookCallCounter()
+                let key = PersistentKey("key:\(#function):\(nesting):\(outcome)", defaultValue: [OptionalProxyNode]())
+
+                userDefaults.set(key, to: [OptionalProxyNode(.leaf(99), counter: counter)])
+                counter.reset()
+
+                let tree = optionalProxyTree(nesting: nesting, outcome: outcome, counter: counter)
+
+                userDefaults.set(key, to: [tree])
+
+                XCTAssertEqual(counter.count, depth + 1, "\(nesting) \(outcome)")
+                XCTAssertEqual(userDefaults.array(forKey: key.id) as? [[Int]], expectedRows, "\(nesting) \(outcome)")
+            }
+        }
+    }
+
+    func test_set_recursiveOptionalProxyDictionary_convertsEachValueOnce() {
+        for nesting in OptionalProxyNode.Nesting.allCases {
+            for (outcome, expectedRows) in [
+                (OptionalProxyNode.Outcome.encoded, ["root": [7] + Array(repeating: 0, count: depth)]),
+                (.failed, ["root": [99]]),
+                (.omitted, [:]),
+            ] {
+                let counter = HookCallCounter()
+                let key = PersistentKey(
+                    "key:\(#function):\(nesting):\(outcome)",
+                    defaultValue: [String: OptionalProxyNode]()
+                )
+
+                userDefaults.set(key, to: ["root": OptionalProxyNode(.leaf(99), counter: counter)])
+                counter.reset()
+
+                let tree = optionalProxyTree(nesting: nesting, outcome: outcome, counter: counter)
+
+                userDefaults.set(key, to: ["root": tree])
+
+                XCTAssertEqual(counter.count, depth + 1, "\(nesting) \(outcome)")
+                XCTAssertEqual(
+                    userDefaults.dictionary(forKey: key.id) as? [String: [Int]],
+                    expectedRows,
+                    "\(nesting) \(outcome)"
+                )
+            }
         }
     }
 }
@@ -307,5 +388,85 @@ private struct DoublyProxiedRecursiveNode: KeyValuePersistible, Sendable {
                 DoublyProxiedRecursiveNode($0)
             }
         )
+    }
+}
+
+// MARK: - Optional Proxy Node Definition
+
+/// A tree node stored through a built-in proxy to an optional, which counts its proxy conversions.
+///
+/// A `nil` proxy omits the node, and a failed conversion rejects the write. A branch encodes its child through a
+/// package container and appends a `0` to the child's row, so a container write that converts a child again to decide
+/// whether it was omitted converts that child's whole subtree again.
+private struct OptionalProxyNode: KeyValuePersistible, Sendable {
+    /// The container that a branch stores its child in.
+    enum Nesting: CaseIterable, Sendable {
+        case array
+        case dictionary
+    }
+
+    /// What converting a tree's leaf produces.
+    enum Outcome: Sendable {
+        case encoded
+        case failed
+        case omitted
+    }
+
+    indirect enum Content: Sendable {
+        case branch(OptionalProxyNode, Nesting)
+        case invalid
+        case leaf(Int)
+        case omitted
+    }
+
+    let content: Content
+    let counter: HookCallCounter
+
+    init(_ content: Content, counter: HookCallCounter) {
+        self.content = content
+        self.counter = counter
+    }
+
+    static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, [Int]?> {
+        ProxyPersistentKeyValueRepresentation(
+            to: {
+                $0.proxy()
+            },
+            from: { _ in
+                nil
+            }
+        )
+    }
+
+    /// Returns the node's row, `.some(nil)` to omit the node, or `nil` when the node cannot be converted.
+    private func proxy() -> [Int]?? {
+        counter.record()
+
+        switch content {
+        case let .branch(child, .array):
+            var fields: [String: Any] = [:]
+            [OptionalProxyNode].set("children", to: [child], in: &fields)
+
+            guard let rows = fields["children"] as? [[Int]] else {
+                return .none
+            }
+
+            return .some(rows.first.map { $0 + [0] })
+        case let .branch(child, .dictionary):
+            var fields: [String: Any] = [:]
+            [String: OptionalProxyNode].set("children", to: ["child": child], in: &fields)
+
+            guard let rows = fields["children"] as? [String: [Int]] else {
+                return .none
+            }
+
+            return .some(rows["child"].map { $0 + [0] })
+        case .invalid:
+            return .none
+        case let .leaf(number):
+            return .some([number])
+        case .omitted:
+            return .some(nil)
+        }
     }
 }

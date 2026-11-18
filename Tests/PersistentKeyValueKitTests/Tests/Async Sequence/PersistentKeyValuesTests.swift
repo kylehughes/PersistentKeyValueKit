@@ -351,6 +351,24 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(values, [false, true, false])
     }
 
+    func test_values_userDefaultsObservesKeyPathIncompatibleKeys() async throws {
+        let (userDefaults, suiteName) = try makeUserDefaults()
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        for keyID in keyPathIncompatibleKeyIDs() {
+            let key = PersistentKey(keyID, defaultValue: false)
+
+            let values = await receivedValues(3, from: key.values(in: userDefaults, bufferingPolicy: .unbounded)) {
+                userDefaults.set(key, to: true)
+                userDefaults.remove(key)
+            }
+
+            XCTAssertEqual(values, [false, true, false], "\(keyID.unicodeScalars.map(\.value))")
+        }
+    }
+
     func test_values_userDefaultsDecoderWritingObservedKeyEmitsInReadOrder() async throws {
         let (userDefaults, suiteName) = try makeUserDefaults()
         let keyID = "key:\(#function)"

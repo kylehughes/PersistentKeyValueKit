@@ -295,6 +295,30 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
+    func test_incompleteErrorWithCompleteReportTraps() throws {
+        if ChildProcessTrap.isRunningInTrapChildProcess {
+            _ = PersistentKeyMigrationIncompleteError(
+                report: PersistentKeyMigrationReport(outcomes: [], completion: .alreadyRecorded)
+            )
+            return
+        }
+
+        let incomplete = PersistentKeyMigrationReport(
+            outcomes: [
+                .init(sourceKeyID: "a", failedAt: .write, error: PersistentKeyMigrationError.destinationChanged)
+            ],
+            completion: .untracked
+        )
+
+        XCTAssertFalse(PersistentKeyMigrationIncompleteError(report: incomplete).report.isComplete)
+
+        try ChildProcessTrap.assertTraps(
+            test: #function,
+            in: self,
+            message: "A migration incomplete error requires a report that is not complete."
+        )
+    }
+
     func test_notRecordedCompletionWithoutFailedOutcomeTraps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(

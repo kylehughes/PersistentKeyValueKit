@@ -75,10 +75,13 @@ public struct PersistentKeyMigrationItem: Sendable {
     ///
     /// `transform` runs synchronously during the migration, after the source value is decoded and before anything is
     /// written. If its initial call throws, the item fails at ``PersistentKeyMigrationReport/FailureStage/transform``
-    /// with the thrown error, and neither store is modified for this item, including the source during a move.
-    /// `transform` does not run when the source value is absent, when either key is disabled, or when the conflict
-    /// policy keeps the existing destination value. It can run again if the migration is retried, and an in-place
-    /// rewrite can run it again on its own result, as described below.
+    /// with the thrown error, and the migration writes to neither store for this item, so a move keeps the source. An
+    /// ``InMemoryPersistentKeyValueStore`` source passes `transform` the stored value itself rather than a decoded
+    /// copy, so mutating a reference that `transform` receives, such as an `NSMutableArray`, changes the stored source
+    /// even if `transform` then throws. Copy a mutable input before changing it. `transform` does not run when the
+    /// source value is absent, when either key is disabled, or when the conflict policy keeps the existing destination
+    /// value. It can run again if the migration is retried, and an in-place rewrite can run it again on its own
+    /// result, as described below.
     ///
     /// When the migration's source and destination are the same `UserDefaults` or `NSUbiquitousKeyValueStore` store and
     /// `source` and `destination` have the same identifier, the item rewrites the stored value in place: it decodes the
@@ -109,8 +112,8 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// `destination`'s encoding are idempotent on their own results. Storage formats overlap more than their Swift
     /// types suggest: Foundation stores bridge numbers, so a `Bool`, an `Int`, and an integral `Double` can decode as
     /// one another. To change a value in an overlapping format, such as converting dollars to cents or seconds to
-    /// milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead, so a repeated run finds no source
-    /// value.
+    /// milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead. A repeated move then finds no
+    /// source value, and a repeated copy converts the original source value again rather than its own result.
     ///
     /// - Parameter source: The key to read from the source store.
     /// - Parameter destination: The key to write in the destination store.

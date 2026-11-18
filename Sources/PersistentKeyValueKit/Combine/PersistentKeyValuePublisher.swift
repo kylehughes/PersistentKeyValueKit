@@ -31,9 +31,10 @@ import Foundation
 ///   return before its change is delivered. Use `receive(on: DispatchQueue.main)` before updating UI.
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
-/// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
-///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
-///   delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
+/// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) or NUL
+///   character, or are `valueForKey:` or `ValueForKey:`, only changes made in the current process are observed.
+///   Changes made by another process, such as an app extension that shares an app group, might not be delivered, and
+///   neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 /// - SeeAlso: ``PersistentKeyProtocol/changesPublisher(in:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentKeyValues`` for observing changes from async code.
 public struct PersistentKeyValuePublisher<Key> where Key: PersistentKeyProtocol {

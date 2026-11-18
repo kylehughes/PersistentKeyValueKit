@@ -339,6 +339,25 @@ extension PersistentValueTests {
     }
 
     @MainActor
+    func test_explicit_userDefaults_observesKeyPathIncompatibleKeys() async {
+        for keyID in keyPathIncompatibleKeyIDs() {
+            let viewController = ViewController()
+            let key = PersistentKey(keyID, defaultValue: 0)
+            let model = SwitchingModel(keyID: keyID, store: userDefaults, environmentStore: userDefaults)
+            let recorder = SwitchingRecorder()
+
+            host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+            await waitForRenderedValue(0, in: recorder)
+
+            userDefaults.set(key, to: 1)
+            await waitForRenderedValue(1, in: recorder)
+
+            userDefaults.remove(key)
+            await waitForRenderedValue(0, in: recorder)
+        }
+    }
+
+    @MainActor
     func test_explicit_ubiquitousKeyValueStore() async {
         let viewController = ViewController()
         let defaultValue = "defaultValue"

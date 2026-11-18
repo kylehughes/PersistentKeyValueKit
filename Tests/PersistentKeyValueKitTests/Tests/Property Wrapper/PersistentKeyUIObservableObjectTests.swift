@@ -179,6 +179,79 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
     }
 
     @MainActor
+    func test_store_set_deregistersStoreDeselectedDuringRegistration() {
+        let deselectedStore = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: InMemoryPersistentKeyValueStore(), key: key)
+
+        // A synchronous subscriber clears the store while the registration is still being made.
+        let cancellable = observer.objectWillChange.sink {
+            observer.store = nil
+        }
+
+        deselectedStore.onNextRegistration {
+            deselectedStore.notifyObservers(keyPath: key.id)
+        }
+
+        observer.store = deselectedStore
+
+        XCTAssertNil(observer.store)
+        XCTAssertEqual(deselectedStore.registrationCount, 1)
+        XCTAssertEqual(deselectedStore.deregistrationCount, 1)
+
+        cancellable.cancel()
+    }
+
+    @MainActor
+    func test_store_set_observesStoreSelectedDuringRegistration() throws {
+        let suiteName = stableSuiteName("PersistentKeyUIObservableObjectTests", function: #function)
+        let deselectedStore = try XCTUnwrap(InstrumentedUserDefaults(suiteName: suiteName))
+        let selectedStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: InMemoryPersistentKeyValueStore(), key: key)
+        var changeCount = 0
+        var hasSwitchedStore = false
+        defer {
+            deselectedStore.removePersistentDomain(forName: suiteName)
+        }
+
+        // A synchronous subscriber selects another store while the first registration is still being made.
+        let cancellable = observer.objectWillChange.sink {
+            changeCount += 1
+
+            guard !hasSwitchedStore else {
+                return
+            }
+
+            hasSwitchedStore = true
+            observer.store = selectedStore
+        }
+
+        // A write made during the registration's first read notifies the observer before registration returns.
+        deselectedStore.instrument(key.id)
+        deselectedStore.afterNextRead {
+            deselectedStore.set(1, forKey: key.id)
+        }
+
+        observer.store = deselectedStore
+
+        XCTAssertTrue(hasSwitchedStore)
+        XCTAssertTrue(observer.store as AnyObject === selectedStore)
+
+        changeCount = 0
+        selectedStore.set(key, to: 42)
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(observer.value, 42)
+
+        deselectedStore.set(key, to: 9)
+
+        XCTAssertEqual(changeCount, 1)
+
+        cancellable.cancel()
+    }
+
+    @MainActor
     func test_value_set_writesStoreObservedBeforeChangeNotification() {
         let firstStore = InMemoryPersistentKeyValueStore()
         let secondStore = InMemoryPersistentKeyValueStore()

@@ -15,7 +15,9 @@ extension Array: KeyValuePersistible where Element: KeyValuePersistible {
     /// The representation of an array in a ``PersistentKeyValueStore``.
     ///
     /// Writes are all or nothing: if any element fails to encode, the store or container is left unchanged, so a
-    /// failed write never partially overwrites a stored array. Elements that encode to `nil` are omitted. Reads are
+    /// failed write never partially overwrites a stored array. Elements that encode to `nil`, such as `nil` optionals,
+    /// are omitted. An element representation defined outside this package reports a failure by leaving the array
+    /// empty, so a write fails if that representation encodes every element of a nonempty array to `nil`. Reads are
     /// also all or nothing: if any element fails to decode, the read returns `nil` and a key falls back to its default
     /// value, because an element's position can carry meaning.
     @inlinable
@@ -91,16 +93,8 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         let representation = Element.persistentKeyValueRepresentation
 
-        var childPropertyListArrays: [Any] = []
-
-        childPropertyListArrays.reserveCapacity(values.count)
-
-        for value in values {
-            guard let childPropertyListArray = representation.propertyListArray(encoding: value) else {
-                return
-            }
-
-            childPropertyListArrays.append(childPropertyListArray)
+        guard let childPropertyListArrays = representation.propertyListArrays(encoding: values) else {
+            return
         }
 
         propertyListArray = childPropertyListArrays

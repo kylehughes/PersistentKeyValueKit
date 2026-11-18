@@ -15,7 +15,9 @@ extension Dictionary: KeyValuePersistible where Key == String, Value: KeyValuePe
     /// The representation of a `String`-keyed dictionary in a ``PersistentKeyValueStore``.
     ///
     /// Writes are all or nothing: if any value fails to encode, the store or container is left unchanged, so a failed
-    /// write never partially overwrites a stored dictionary. Values that encode to `nil` are omitted. Ordinary reads
+    /// write never partially overwrites a stored dictionary. Values that encode to `nil`, such as `nil` optionals, are
+    /// omitted. A value representation defined outside this package reports a failure by leaving the entry absent, so
+    /// a value that it encodes to `nil` fails the write. Ordinary reads
     /// keep every entry that decodes and omit entries that fail to decode, because entries are independent. Checked
     /// conversion through ``decode(storageObject:format:)``, which migration uses, fails if any entry fails to decode
     /// (unless a custom value representation's container hook omits nested entries).
@@ -104,18 +106,12 @@ where
     /// Leaves `propertyListArray` unchanged if any entry of any dictionary fails to encode.
     @inlinable
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
-        let representation = Value.persistentKeyValueRepresentation
-
-        var propertyListDictionaries: [Any] = []
-
-        propertyListDictionaries.reserveCapacity(values.count)
-
-        for value in values {
-            guard let propertyListDictionary = representation.propertyListDictionary(encoding: value) else {
-                return
-            }
-
-            propertyListDictionaries.append(propertyListDictionary)
+        guard
+            let propertyListDictionaries = Value.persistentKeyValueRepresentation.propertyListDictionaries(
+                encoding: values
+            )
+        else {
+            return
         }
 
         propertyListArray = propertyListDictionaries
@@ -137,7 +133,8 @@ where
 
     /// Sets the encoded dictionary at `dictionaryKey`, omitting entries whose value encodes to `nil`.
     ///
-    /// Leaves `propertyListDictionary` unchanged if any entry fails to encode.
+    /// Leaves `propertyListDictionary` unchanged if any entry fails to encode, including an entry whose value a
+    /// representation defined outside this package encodes to `nil`.
     @inlinable
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
         guard let encodedDictionary = Value.persistentKeyValueRepresentation.propertyListDictionary(encoding: value)
@@ -164,7 +161,8 @@ where
 
     /// Writes the encoded dictionary, omitting entries whose value encodes to `nil`.
     ///
-    /// Leaves `userDefaults` unchanged if any entry fails to encode.
+    /// Leaves `userDefaults` unchanged if any entry fails to encode, including an entry whose value a representation
+    /// defined outside this package encodes to `nil`.
     @inlinable
     public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
         let representation = Value.persistentKeyValueRepresentation
@@ -193,7 +191,8 @@ where
 
     /// Writes the encoded dictionary, omitting entries whose value encodes to `nil`.
     ///
-    /// Leaves `ubiquitousStore` unchanged if any entry fails to encode.
+    /// Leaves `ubiquitousStore` unchanged if any entry fails to encode, including an entry whose value a
+    /// representation defined outside this package encodes to `nil`.
     @available(watchOS 9.0, *)
     @inlinable
     public static func set(

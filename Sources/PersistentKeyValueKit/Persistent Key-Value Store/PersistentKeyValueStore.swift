@@ -83,9 +83,9 @@ public protocol PersistentKeyValueStore {
     ///
     /// If `Self` is `UserDefaults` then `target` is notified directly through
     /// `observeValue(forKeyPath:of:change:context:)` with the key's identifier as the key path. Key-value observation
-    /// is used for identifiers without a period (`.`). Key-value observation treats a period as a key-path separator,
-    /// so a key whose identifier contains one is observed through `UserDefaults.didChangeNotification` instead. After
-    /// each such notification, the key is read from this instance, and `target` is notified when the property-list
+    /// parses an identifier as a key path, so it is used only for identifiers that it reads as one key. An identifier
+    /// that is empty, begins with `@`, contains a period (`.`) or NUL character, or is `valueForKey:` or
+    /// `ValueForKey:` is observed through `UserDefaults.didChangeNotification` instead. After each such notification, the key is read from this instance, and `target` is notified when the property-list
     /// value read differs from the previous read (or once on the next reconciliation pass if the registration joined
     /// while a reconciliation was in progress and any change was reported since it joined, even when the value read
     /// equals its comparison value). Changes are sampled rather than queued, so rapid writes between reads can

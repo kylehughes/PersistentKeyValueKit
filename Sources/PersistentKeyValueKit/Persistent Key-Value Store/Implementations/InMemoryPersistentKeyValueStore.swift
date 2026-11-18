@@ -23,10 +23,10 @@ import Foundation
 /// Because the store keeps the Swift value itself rather than an encoded copy, a class-typed value is shared, not
 /// copied: every read returns the same instance that was written, and mutating it changes the stored value. Use
 /// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
-/// A migration captures an exact copy of a Foundation property-list object stored as a key's value, such as an
-/// `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents so in-place edits fail the
-/// migration instead of removing or overwriting the value. It detects other references only when they are replaced, so
-/// do not mutate them while a migration runs.
+/// A migration captures an exact copy of a Foundation property-list object that it reads or prepares as a key's value,
+/// such as an `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents so in-place edits
+/// fail the migration instead of removing or overwriting the value. It detects other references only when they are
+/// replaced, so do not mutate them while a migration runs.
 ///
 /// An in-memory store does not support in-place rewrites: a migration within one in-memory store that maps a key to
 /// its own identifier, even with ``PersistentKeyMigrationItem/key(_:to:transform:)``, throws
@@ -216,7 +216,8 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     /// Commits a prepared write only when the replacement snapshot is still current.
     ///
     /// Contents are compared before taking the lock, because comparing a Foundation collection can run code outside
-    /// this store.
+    /// this store. The committed snapshot carries the contents captured when the write was prepared, because once the
+    /// value is stored, another thread can read and change it before a copy taken now.
     func commitMigrationWrite(
         _ write: MigrationWrite,
         replacing snapshot: MigrationSnapshot?
@@ -250,12 +251,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             return (nextRevision, registeredObservations(for: write.keyID), replacedValue)
         }
 
-        let committed = MigrationSnapshot(
-            identity: migrationIdentity,
-            keyID: write.keyID,
-            revision: result.0,
-            object: write.object
-        )
+        let committed = MigrationSnapshot(committing: write, revision: result.0)
         notify(result.1, keyPath: write.keyID)
         guard try migrationSnapshotIsCurrent(committed, for: write.keyID) else {
             throw PersistentKeyMigrationError.writeVerificationFailed
@@ -451,6 +447,15 @@ extension InMemoryPersistentKeyValueStore {
             contents = Self.frozenContents(of: object)
         }
 
+        /// Creates the snapshot of `write` committed at `revision`, with the contents captured when it was prepared.
+        init(committing write: MigrationWrite, revision: UInt64) {
+            identity = write.identity
+            keyID = write.keyID
+            self.revision = revision
+            object = write.object
+            contents = write.contents
+        }
+
         // MARK: Internal Instance Interface
 
         /// Whether `object`, the entry's current value, still has the captured contents.
@@ -462,14 +467,14 @@ extension InMemoryPersistentKeyValueStore {
             return PropertyListMigrationStorage.equal(contents, object)
         }
 
-        // MARK: Private Static Interface
+        // MARK: Internal Static Interface
 
         /// Returns an exact immutable copy of `object` when it, or the value an optional wraps, is a Foundation
         /// property-list object, whose contents can change without a store write.
         ///
         /// The copy keeps values that a serialized property list cannot, such as an `NSDecimalNumber`, so an edit to
         /// one is still detected.
-        private static func frozenContents(of object: Any) -> Any? {
+        static func frozenContents(of object: Any) -> Any? {
             var value = object
             while let optional = value as? any OptionalElement {
                 guard let wrapped = optional.wrappedObject else {
@@ -497,6 +502,18 @@ extension InMemoryPersistentKeyValueStore {
         let keyID: String
         /// The normalized value that will be committed.
         let object: Any
+        /// An exact immutable copy of `object` when it is a Foundation property-list object, or `nil` otherwise,
+        /// captured before `object` is stored so that verification compares against the prepared contents.
+        let contents: Any?
+
+        // MARK: Internal Initialization
+
+        init(identity: PersistentKeyValueMigrationStoreIdentity, keyID: String, object: Any) {
+            self.identity = identity
+            self.keyID = keyID
+            self.object = object
+            contents = MigrationSnapshot.frozenContents(of: object)
+        }
     }
 }
 

@@ -198,10 +198,6 @@ internal protocol BuiltInProxyConversion:
 extension BuiltInProxyConversion {
     // MARK: Internal Instance Interface
 
-    var builtInOmitsValues: Bool {
-        Proxy.persistentKeyValueRepresentation.omitsValues
-    }
-
     /// Converts `value` with ``ProxyPersistentKeyValueRepresentationProtocol/to(_:)``, throwing
     /// ``PersistentKeyValueConversionError/encodingFailed`` when it returns `nil`.
     func checkedProxy(for value: Value) throws -> Proxy {
@@ -246,15 +242,58 @@ extension BuiltInProxyConversion {
             .mapValues(checkedValue(for:))
     }
 
-    /// Converts `value` to its proxy only when `Proxy` omits some values, so that deciding that a proxy to a
-    /// non-optional value is not omitted invokes no conversion.
-    func builtInOmits(_ value: Value) -> Bool {
-        let proxyRepresentation = Proxy.persistentKeyValueRepresentation
+    /// Converts each value to its proxy once, then encodes the proxies as an ordinary write of `Proxy` does.
+    func builtInOrdinaryPropertyListArray(encoding values: [Value]) -> [Any]? {
+        var proxies: [Proxy] = []
 
-        guard proxyRepresentation.omitsValues, let proxy = to(value) else {
-            return false
+        proxies.reserveCapacity(values.count)
+
+        for value in values {
+            guard let proxy = to(value) else {
+                return nil
+            }
+
+            proxies.append(proxy)
         }
 
-        return proxyRepresentation.omits(proxy)
+        return Proxy.persistentKeyValueRepresentation.propertyListArray(encoding: proxies)
+    }
+
+    /// Converts each value to its proxy once, then encodes the proxies as an ordinary write of `Proxy` does.
+    ///
+    /// A `Proxy` representation that cannot omit values reports a failure by leaving an entry absent, so its entries
+    /// are written directly, which is several times faster than collecting the proxies first.
+    func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
+        let proxyRepresentation = Proxy.persistentKeyValueRepresentation
+
+        guard !(proxyRepresentation is any BuiltInValueOmission) else {
+            var proxies: [String: Proxy] = Dictionary(minimumCapacity: values.count)
+
+            for (key, value) in values {
+                guard let proxy = to(value) else {
+                    return nil
+                }
+
+                proxies[key] = proxy
+            }
+
+            return proxyRepresentation.propertyListDictionary(encoding: proxies)
+        }
+
+        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+
+        for (key, value) in values {
+            guard let proxy = to(value) else {
+                return nil
+            }
+
+            proxyRepresentation.set(key, to: proxy, in: &objects)
+
+            guard objects[key] != nil else {
+                return nil
+            }
+        }
+
+        return objects
     }
 }

@@ -11,8 +11,8 @@ import XCTest
 
 @testable import PersistentKeyValueKit
 
-/// Tests observation of `UserDefaults` keys whose identifiers contain a period, which key-value observation cannot
-/// observe.
+/// Tests observation of `UserDefaults` keys that key-value observation cannot observe, such as keys whose identifiers
+/// contain a period.
 final class UserDefaultsKeyChangeObservationTests: XCTestCase {
     private var storage: InstrumentedUserDefaults!
     private var suiteName: String!
@@ -600,6 +600,46 @@ extension UserDefaultsKeyChangeObservationTests {
         XCTAssertTrue(observer.observations.first?.keyPath?.utf16.elementsEqual(decomposedKey.id.utf16) ?? false)
 
         storage.deregister(observer, for: decomposedKey, context: nil)
+    }
+
+    func test_register_keyPathIncompatibleKeys_notifiesObserver() {
+        defer {
+            storage.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        }
+
+        for keyID in keyPathIncompatibleKeyIDs() {
+            let message = "\(keyID.unicodeScalars.map(\.value))"
+            let observer = RecordingKeyObserver()
+            let key = PersistentKey(keyID, defaultValue: 5)
+
+            storage.register(key)
+
+            XCTAssertEqual(storage.get(key), 5, message)
+
+            storage.register(observer: observer, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+            storage.set(key, to: 1)
+            storage.remove(key)
+
+            XCTAssertEqual(storage.get(key), 5, message)
+            XCTAssertEqual(observer.observations.map(\.keyPath), [keyID, keyID], message)
+
+            storage.deregister(observer, for: key, context: nil)
+            observer.reset()
+            storage.set(key, to: 2)
+
+            XCTAssertTrue(observer.observations.isEmpty, message)
+        }
+    }
+
+    func test_supportsKeyValueObservation_acceptsOnlyLiteralKeyPaths() {
+        for keyID in keyPathIncompatibleKeyIDs() + ["com.example.key", "a.\u{301}"] {
+            XCTAssertFalse(UserDefaults.supportsKeyValueObservation(of: keyID), "\(keyID.unicodeScalars.map(\.value))")
+        }
+
+        // Key-value observation reports changes to these keys, including those made by other processes.
+        for keyID in ["key", " ", "a@count", "key:value", "valueForKey", "\u{FF0E}", "\u{2024}", " @key"] {
+            XCTAssertTrue(UserDefaults.supportsKeyValueObservation(of: keyID), "\(keyID.unicodeScalars.map(\.value))")
+        }
     }
 }
 

@@ -443,6 +443,24 @@ extension PersistentKeyValuePublisherTests {
 
         XCTAssertEqual(values, [false, true, false])
     }
+
+    func test_publisher_userDefaultsObservesKeyPathIncompatibleKeys() throws {
+        let (userDefaults, suiteName) = try makeUserDefaults()
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        for keyID in keyPathIncompatibleKeyIDs() {
+            let key = PersistentKey(keyID, defaultValue: false)
+
+            let values = receivedValues(from: key.publisher(in: userDefaults), expectedCount: 3) {
+                userDefaults.set(key, to: true)
+                userDefaults.remove(key)
+            }
+
+            XCTAssertEqual(values, [false, true, false], "\(keyID.unicodeScalars.map(\.value))")
+        }
+    }
 }
 
 // MARK: - Lifecycle Tests

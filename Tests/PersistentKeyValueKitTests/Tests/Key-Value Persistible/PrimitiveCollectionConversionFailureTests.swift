@@ -179,6 +179,14 @@ final class PrimitiveCollectionConversionFailureTests: XCTestCase {
         )
     }
 
+    func test_set_dictionaryOfProxies_proxyFailsToEncode_leavesStoredDictionary() {
+        assertFailedWriteLeavesStoredValue(
+            PersistentKey("key:\(#function)", defaultValue: [String: ProxiedThrowingPayload]()),
+            stored: ["old": ProxiedThrowingPayload(10)],
+            failing: ["good": ProxiedThrowingPayload(20), "bad": ProxiedThrowingPayload(-1)]
+        )
+    }
+
     func test_set_dictionaryOfProxiesToOptionals_omitsNilProxies() {
         assertWrite(
             PersistentKey("key:\(#function)", defaultValue: [String: OptionalProxyPayload]()),
@@ -192,6 +200,53 @@ final class PrimitiveCollectionConversionFailureTests: XCTestCase {
             PersistentKey("key:\(#function)", defaultValue: [String: OptionalProxyPayload]()),
             stored: ["old": OptionalProxyPayload(10)],
             failing: ["bad": OptionalProxyPayload(-1)]
+        )
+    }
+
+    func test_set_dictionaryOfOptionalProxiesToOptionals_omitsNilValuesAndNilProxies() {
+        assertWrite(
+            PersistentKey("key:\(#function)", defaultValue: [String: OptionalProxyPayload?]()),
+            value: ["a": OptionalProxyPayload(20), "b": nil, "c": OptionalProxyPayload(nil)],
+            readsBack: ["a": OptionalProxyPayload(20)]
+        )
+        assertWrite(
+            PersistentKey("key:\(#function)", defaultValue: ["old": Optional(OptionalProxyPayload(10))]),
+            value: ["b": nil, "c": OptionalProxyPayload(nil)],
+            readsBack: [String: OptionalProxyPayload]()
+        )
+    }
+
+    func test_set_dictionaryOfOptionalProxiesToOptionals_conversionFails_leavesStoredDictionary() {
+        assertFailedWriteLeavesStoredValue(
+            PersistentKey("key:\(#function)", defaultValue: [String: OptionalProxyPayload?]()),
+            stored: ["old": OptionalProxyPayload(10)],
+            failing: ["good": OptionalProxyPayload(20), "nil": nil, "bad": OptionalProxyPayload(-1)]
+        )
+    }
+
+    func test_set_arrayOfArraysOfOptionals_omitsNilElementsAndLeavesStoredArrayOnFailure() {
+        assertWrite(
+            PersistentKey("key:\(#function)", defaultValue: [[CodablePayload?]]()),
+            value: [[CodablePayload(20), nil], [nil]],
+            readsBack: [[CodablePayload(20)], []]
+        )
+        assertFailedWriteLeavesStoredValue(
+            PersistentKey("key:\(#function)", defaultValue: [[CodablePayload?]]()),
+            stored: [[CodablePayload(10)]],
+            failing: [[nil], [CodablePayload(.nan)]]
+        )
+    }
+
+    func test_set_arrayOfDictionariesOfOptionals_omitsNilValuesAndLeavesStoredArrayOnFailure() {
+        assertWrite(
+            PersistentKey("key:\(#function)", defaultValue: [[String: CodablePayload?]]()),
+            value: [["a": CodablePayload(20), "b": nil], ["c": nil]],
+            readsBack: [["a": CodablePayload(20)], [:]]
+        )
+        assertFailedWriteLeavesStoredValue(
+            PersistentKey("key:\(#function)", defaultValue: [[String: CodablePayload?]]()),
+            stored: [["old": CodablePayload(10)]],
+            failing: [["a": nil], ["b": CodablePayload(.nan)]]
         )
     }
 
@@ -409,6 +464,27 @@ private struct OptionalProxyPayload: Equatable, KeyValuePersistible {
             },
             from: { proxy in
                 OptionalProxyPayload(proxy)
+            }
+        )
+    }
+}
+
+/// A value stored through a built-in proxy whose conversion always succeeds, to a representation that fails to encode a
+/// negative number.
+private struct ProxiedThrowingPayload: Equatable, KeyValuePersistible {
+    let number: Int
+
+    init(_ number: Int) {
+        self.number = number
+    }
+
+    static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, ThrowingPayload> {
+        ProxyPersistentKeyValueRepresentation(
+            to: {
+                ThrowingPayload($0.number)
+            },
+            from: {
+                ProxiedThrowingPayload($0.number)
             }
         )
     }

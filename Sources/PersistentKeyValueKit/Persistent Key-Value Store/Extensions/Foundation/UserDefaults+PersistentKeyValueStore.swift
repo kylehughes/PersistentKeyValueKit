@@ -135,10 +135,23 @@ extension UserDefaults {
 
     /// Returns whether key-value observation can observe the defaults key with the given identifier.
     ///
-    /// Key-value observation treats a period as a key-path separator, so it never reports changes to a literal key
-    /// that contains one.
+    /// Key-value observation parses the identifier as a key path, so it cannot observe every literal defaults key. It
+    /// raises an exception for the empty identifier and for one containing a NUL character, and it treats a period as
+    /// a component separator, raising an exception or never reporting changes. It treats a leading `@` as a collection
+    /// operator and never reports changes. For `valueForKey:`, with its first letter in either case, it calls
+    /// `NSObject`'s `keyPathsForValuesAffectingValueForKey:` without an argument and crashes.
     internal static func supportsKeyValueObservation(of keyID: String) -> Bool {
-        !keyID.contains(".")
+        // Key-value observation reads code units, so a period or `@` that combines with the following scalar into one
+        // `Character` still separates components or names an operator.
+        let utf8 = keyID.utf8
+
+        guard let first = utf8.first, first != UInt8(ascii: "@") else {
+            return false
+        }
+
+        return !utf8.contains { $0 == UInt8(ascii: ".") || $0 == 0 }
+            && !utf8.elementsEqual("valueForKey:".utf8)
+            && !utf8.elementsEqual("ValueForKey:".utf8)
     }
 
     // MARK: Internal Instance Interface

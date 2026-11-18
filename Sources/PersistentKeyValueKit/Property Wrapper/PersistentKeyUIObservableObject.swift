@@ -20,9 +20,10 @@ import Foundation
 ///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so
 ///   `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for local writes and
 ///   removals.
-/// - Note: For `UserDefaults` keys whose identifiers contain a period (`.`), only changes made in the current process
-///   are observed. Changes made by another process, such as an app extension that shares an app group, might not be
-///   delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
+/// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) or NUL
+///   character, or are `valueForKey:` or `ValueForKey:`, only changes made in the current process are observed.
+///   Changes made by another process, such as an app extension that shares an app group, might not be delivered, and
+///   neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 @MainActor
 public final class PersistentKeyUIObservableObject<Key>: ObservableObject where Key: PersistentKeyProtocol {
     /// The key being observed.
@@ -35,6 +36,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
 
     /// The registration lifetime for the current store.
     private var observation: StoreObservation<Key>?
+
+    /// The number of registrations started, which tells a registration whether it is still current when it returns.
+    private var registrationCount: Int
     
     // MARK: Public Initialization
     
@@ -46,6 +50,7 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         self.key = key
         
         _store = store
+        registrationCount = 0
 
         registerObserver(on: store)
     }
@@ -53,6 +58,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     // MARK: Public Instance Interface
     
     /// The store that the key is being observed in.
+    ///
+    /// Setting the store observes the new store. If a subscriber to `objectWillChange` sets the store again while the
+    /// new store is being registered, the latest store is observed and the earlier registration is removed.
     public var store: (any PersistentKeyValueStore)? {
         get {
             _store
@@ -147,20 +155,32 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     // MARK: Private Instance Interface
 
     private func registerObserver(on store: (any PersistentKeyValueStore)?) {
+        registrationCount &+= 1
+
         guard let store else {
             return
         }
+
+        let registration = registrationCount
 
         // The observer filters callbacks by key identifier, so each registration creates one for the current key.
         let observer = Observer<Key>(keyID: key.id) { [weak self] in
             self?.objectWillChange.send()
         }
 
-        observation = StoreObservation(
+        let observation = StoreObservation(
             store: store,
             key: key,
             observer: observer
         )
+
+        // A store can notify the observer before registration returns, and a subscriber can then select another key
+        // or store, which starts a later registration. Releasing this one deregisters it.
+        guard registration == registrationCount else {
+            return
+        }
+
+        self.observation = observation
     }
 }
 
