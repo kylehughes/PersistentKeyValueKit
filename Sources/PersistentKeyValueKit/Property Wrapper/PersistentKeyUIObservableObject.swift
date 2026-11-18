@@ -20,10 +20,10 @@ import Foundation
 ///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so
 ///   `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for local writes and
 ///   removals.
-/// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) or NUL
-///   character, or are `valueForKey:` or `ValueForKey:`, only changes made in the current process are observed.
-///   Changes made by another process, such as an app extension that shares an app group, might not be delivered, and
-///   neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
+/// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit
+///   (even inside a combined character) or NUL, or are `valueForKey:` or `ValueForKey:`, only changes made in the
+///   current process are observed. Changes made by another process, such as an app extension that shares an app group,
+///   might not be delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 @MainActor
 public final class PersistentKeyUIObservableObject<Key>: ObservableObject where Key: PersistentKeyProtocol {
     /// The key being observed.

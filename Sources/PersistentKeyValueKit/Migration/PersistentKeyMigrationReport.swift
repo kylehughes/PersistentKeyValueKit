@@ -163,7 +163,7 @@ extension PersistentKeyMigrationReport {
         /// Decoding the source snapshot with the source key's representation failed.
         case decode
 
-        /// The initial call to the item's transform threw. Neither store was modified.
+        /// The initial call to the item's transform threw. The migration wrote to neither store.
         case transform
 
         /// Encoding or validating the value with the destination key's representation failed before mutating the

@@ -39,10 +39,10 @@ import SwiftUI
 ///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so
 ///   `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for local writes and
 ///   removals.
-/// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) or NUL
-///   character, or are `valueForKey:` or `ValueForKey:`, only changes made in the current process are observed.
-///   Changes made by another process, such as an app extension that shares an app group, might not be delivered, and
-///   neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
+/// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit
+///   (even inside a combined character) or NUL, or are `valueForKey:` or `ValueForKey:`, only changes made in the
+///   current process are observed. Changes made by another process, such as an app extension that shares an app group,
+///   might not be delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 /// - Attention: We use `@preconcurrency` to conform to `DynamicProperty` because otherwise `update()` is forced to
 ///   be nonisolated in order to meet the conformance. Apple uses `@preconcurrency` for their `@MainActor`-isolated
 ///   property wrappers as of 2024-10-22.

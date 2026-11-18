@@ -289,9 +289,9 @@ let cancellable = UserDefaults.standard.changesPublisher(for: .username)
     }
 ```
 
-Values are delivered synchronously on the thread that requests demand or reports a store change (or on the thread already delivering when a concurrent update arrives, so a setter returning does not mean its update has been delivered yet); use `.receive(on: DispatchQueue.main)` before updating UI. Exhausted demand coalesces intermediate updates, and subscriptions deregister when cancelled or released.
+Values are delivered synchronously on the thread requesting demand or reporting a change (or on the thread already delivering when a concurrent update arrives, so a setter returning does not mean its update has been delivered); use `.receive(on: DispatchQueue.main)` before updating UI. Exhausted demand coalesces intermediate updates, and subscriptions deregister when cancelled or released.
 
-For `UserDefaults` keys containing `.`, observation uses `UserDefaults.didChangeNotification` instead of key-value observation and delivers only in-process property-list changes (not cross-process writes or `addSuite(named:)` / `removeSuite(named:)`).
+For `UserDefaults` keys that key-value observation cannot observe (empty keys, keys starting with `@`, keys containing a `.` code unit even inside a combined character, keys containing NUL, and the literal keys `valueForKey:` / `ValueForKey:`), observation uses `UserDefaults.didChangeNotification` instead (same-process property-list changes only, not cross-process writes or `addSuite(named:)` / `removeSuite(named:)`); all other keys use KVO and also see other processes' changes.
 
 ### Make a Type Persistible
 
@@ -320,7 +320,7 @@ The following standard library and Foundation types conform to `KeyValuePersisti
 - `String`
 - `URL`
 
-`Array` and `Dictionary` writes are all-or-nothing (omitting `Optional` `nil` values). Ordinary `Array` reads are all-or-nothing, whereas ordinary `Dictionary` reads omit undecodable entries; checked conversion (migration and `UserDefaults.register(_:)`) fails if any element or entry cannot be decoded (unless a custom representation's container hook omits it). `URL` supports absolute and relative URLs; checked `.userDefaults` encoding rejects file URLs whose stored path cannot reproduce the URL (such as a file URL host or nonexistent directory trailing slash, including through `Optional` and proxies), while ordinary `set` keeps Foundation's path storage and `[URL]` stores `absoluteString` values.
+`Array` and `Dictionary` writes are all-or-nothing (omitting `Optional` `nil` values; external representations that encode a dictionary entry or all elements of a non-empty array to `nil` fail the write). Ordinary `Array` reads are all-or-nothing, whereas ordinary `Dictionary` reads omit undecodable entries; checked conversion (migration and `UserDefaults.register(_:)`) fails if any element or entry cannot be decoded (unless a custom representation's container hook omits it). `URL` supports absolute and relative URLs; checked `.userDefaults` encoding rejects file URLs whose stored path cannot reproduce the URL (such as a file URL host or nonexistent directory trailing slash, including through `Optional` and proxies), while ordinary `set` keeps Foundation's path storage and `[URL]` stores `absoluteString` values.
 
 #### `RawRepresentablePersistentKeyValueRepresentation`
 
@@ -413,7 +413,7 @@ func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws 
 func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any?
 ```
 
-Returning `nil` from `encode(_:format:)` removes the key from a store; ordinary `get` and `set` remain non-throwing. Proxy representations (`ProxyPersistentKeyValueRepresentation` and `ProxyPersistentKeyValueRepresentationProtocol`) implement `decode` and `encode` from `from(_:)` and `to(_:)`, and direct `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible` conformers inherit default store and container `get` and `set` methods (for external representations, checked conversion calls their container methods as written, and a dictionary entry or non-empty array that encodes entirely to `nil` fails the write; see the [2.0.0 Release Notes](docs/release-notes/2.0.0.md)).
+Returning `nil` from `encode(_:format:)` removes the key from a store; ordinary `get` and `set` remain non-throwing. Proxy representations (`ProxyPersistentKeyValueRepresentation` and `ProxyPersistentKeyValueRepresentationProtocol`) implement `decode` and `encode` from `from(_:)` and `to(_:)`, and direct `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible` conformers inherit default store and container `get` and `set` methods (for external representations, checked conversion calls their container methods as written; see the [2.0.0 Release Notes](docs/release-notes/2.0.0.md)).
 
 ### Migrate Values Between Stores
 
@@ -460,7 +460,7 @@ let report = try UserDefaults.standard.move(
 try report.throwIfIncomplete()
 ```
 
-Same-store migrations are allowed when every item maps its source key to a different destination key (with no duplicate or overlapping source/destination keys) or, in `UserDefaults` or `NSUbiquitousKeyValueStore`, rewrites a key in place with `.key(_:to:transform:)` (`InMemoryPersistentKeyValueStore` does not support in-place rewrites and throws `.sameStore` during setup). Within a single `UserDefaults` or `NSUbiquitousKeyValueStore` instance, `.key(source, to: destination, transform:)` with the same key identifier rewrites the stored value in place and reports `.rewritten` under any conflict policy (pass `transform: { $0 }` to upgrade only a key's representation). Before writing, a rewrite decodes its prepared result with the source key and, if that decodes, runs `transform` and encodes once more, failing at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` unless the result either fails the source key's decoder (such as `Int` to `String`) or reproduces the same encoded value (requiring reproducible encoding, such as `JSONEncoder` with `.sortedKeys`, when the source key can still decode the result). For overlapping formats such as `Int` to `Double` (seconds to milliseconds) or dollars to cents, move the value to a new key identifier instead.
+Same-store migrations are allowed when every item maps its source key to a different destination key (with no duplicate or overlapping source/destination keys) or, in `UserDefaults` or `NSUbiquitousKeyValueStore`, rewrites a key in place with `.key(_:to:transform:)` (`InMemoryPersistentKeyValueStore` does not support in-place rewrites and throws `.sameStore` during setup). Within a single `UserDefaults` or `NSUbiquitousKeyValueStore` instance, `.key(source, to: destination, transform:)` with the same key identifier rewrites the stored value in place and reports `.rewritten` under any conflict policy (pass `transform: { $0 }` for a representation-only upgrade). Before writing, a rewrite decodes its prepared result with the source key and, if that decodes, runs `transform` and encodes again, failing at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` unless the result fails the source key's decoder (`Int` to `String`) or reproduces the same encoded value (requiring reproducible encoding such as `JSONEncoder` with `.sortedKeys` when the source key still decodes the result). For overlapping formats such as `Int` to `Double` (seconds to milliseconds) or dollars to cents, migrate to a new key identifier instead (a repeated `move` finds no source value; a repeated `copy` converts the original source again).
 
 ```swift
 let legacyColorSchemeKey = PersistentKey<Int>("RuntimeColorScheme", defaultValue: 0)
@@ -480,21 +480,21 @@ let report = try userDefaults.move(
 try report.throwIfIncomplete()
 ```
 
-`transform` runs when both keys are enabled (`isMigrationEnabled == true`) and the item will write to the destination; if its initial call throws, the item fails at `.transform` without modifying either store (whereas a failure during rewrite verification fails at `.prepare` with `.nonIdempotentRewrite`). Migrations between `InMemoryPersistentKeyValueStore` instances transfer Swift values directly without running representation codecs.
+`transform` runs when both keys are enabled (`isMigrationEnabled == true`) and the item will write to the destination; if its initial call throws, the item fails at `.transform` and the migration writes to neither store (whereas a failure during rewrite verification fails at `.prepare` with `.nonIdempotentRewrite`). An `InMemoryPersistentKeyValueStore` source passes stored Swift values directly without running representation codecs, so copy a mutable reference input in `transform` before changing it.
 
 #### Conflict Policies and Partial Changes
 
 | Operation | Conflict policy | Existing destination value |
 | --- | --- | --- |
-| Copy | `.keepDestination` | Preserve the destination value and leave the source value in place (`.keptDestination`). |
-| Copy | `.overwriteDestination` | Replace the destination value and leave the source value in place (`.copied`). |
-| Move | `.keepBoth` | Preserve both the destination value and the source value (`.keptDestination`). |
-| Move | `.overwriteDestination` | Replace the destination value, then remove the source value (`.moved`). |
-| Move | `.keepDestinationAndRemoveSource` | Preserve the destination value and remove the source value (`.discardedSource`). |
+| Copy | `.keepDestination` | Keep destination and source values (`.keptDestination`). |
+| Copy | `.overwriteDestination` | Replace destination and keep source (`.copied`). |
+| Move | `.keepBoth` | Keep destination and source values (`.keptDestination`). |
+| Move | `.overwriteDestination` | Replace destination, then remove source (`.moved`). |
+| Move | `.keepDestinationAndRemoveSource` | Keep destination and remove source (`.discardedSource`). |
 
-`.keepBoth` on a `move` leaves conflicting source values in place; use `.keepDestinationAndRemoveSource` or `.overwriteDestination` when conflicting source entries must be removed. Only values persisted in each store's own domain participate (registered defaults, launch arguments, added suites, and `defaultValue` are ignored).
+`.keepBoth` on a `move` leaves conflicting source values in place; use `.keepDestinationAndRemoveSource` or `.overwriteDestination` to remove conflicting source entries. Only values persisted in each store's own domain participate (registered defaults, launch arguments, added suites, and `defaultValue` are ignored).
 
-Setup errors (`PersistentKeyMigrationError`) are thrown before any key is accessed. Once the batch begins, per-item failures are recorded in `report.outcomes` (`.failed(FailureStage)` at `.snapshot`, `.decode`, `.transform`, `.prepare`, `.write`, or `.cleanup`, with `outcome.error`) while remaining items continue. Migrations do not roll back completed work, and a `move` that fails at `.cleanup` does not roll back its destination write (`.sourceChanged` at `.cleanup` means the source no longer matched its snapshot before removal, so the move did not remove it; `.destinationChanged` at `.cleanup` means the move removed the source and the destination then no longer matched its expected snapshot; other writers or observers may have modified or removed either store's value). Coordinate other writers and processes before migrating; local completion does not guarantee disk durability or iCloud delivery, and removing a key from `NSUbiquitousKeyValueStore` removes it across the user's devices.
+Setup errors (`PersistentKeyMigrationError`) are thrown before any key is accessed. Once the batch begins, per-item failures are recorded in `report.outcomes` (`.failed(FailureStage)` at `.snapshot`, `.decode`, `.transform`, `.prepare`, `.write`, or `.cleanup`, with `outcome.error`) while remaining items continue. Migrations do not roll back completed work, and a `move` failing at `.cleanup` keeps its destination write (`.sourceChanged` at `.cleanup` means the source changed before removal and was not removed; `.destinationChanged` at `.cleanup` means the source was removed and the destination then differed from its expected snapshot; other writers or observers may have changed or removed either store's value). Coordinate other writers and processes before migrating; local completion does not guarantee disk durability or iCloud delivery, and removing a key from `NSUbiquitousKeyValueStore` removes it across the user's devices.
 
 ```swift
 let report = try UserDefaults.standard.copy(
@@ -511,7 +511,7 @@ if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.e
 
 #### Completion Tracking
 
-`PersistentKeyMigrationTracking` offers `.untracked` (`report.completion` is always `.untracked`), `.once(id:)` (recording `.isMigrationCompleted(id:)` in the destination store), and `.once(id:recordedIn:)`. With `.once`, completion is recorded when every item resolves without failure (`.recorded`), and later calls skip the batch and return `.alreadyRecorded`; if any item fails, `report.completion` is `.notRecorded`, and if writing or verifying the marker fails after all items succeed, `report.completion` is `.failed` with `report.completionError`. In all tracking modes, any item or marker failure leaves `report.isComplete == false`, and `try report.throwIfIncomplete()` throws `PersistentKeyMigrationIncompleteError`. Until a `.once` marker is recorded, retrying runs the batch again (including items that already completed) under its conflict policy. Remove `.isMigrationCompleted(id:)` (or set it to `false`) to reset tracking, or choose a new `id` when changing a migration.
+`PersistentKeyMigrationTracking` offers `.untracked` (`report.completion` is always `.untracked`), `.once(id:)` (recording `.isMigrationCompleted(id:)` in the destination store), and `.once(id:recordedIn:)`. With `.once`, completion is recorded when every item resolves without failure (`.recorded`), and later calls skip the batch (`.alreadyRecorded`); if any item fails, `report.completion` is `.notRecorded`, and if writing or verifying the marker fails after all items succeed, `report.completion` is `.failed` with `report.completionError`. In all tracking modes, any item or marker failure leaves `report.isComplete == false`, and `try report.throwIfIncomplete()` throws `PersistentKeyMigrationIncompleteError`. Until a `.once` marker is recorded, retrying re-runs the batch (including completed items) under its conflict policy. Remove `.isMigrationCompleted(id:)` (or set it to `false`) to reset tracking, or choose a new `id` when changing a migration.
 
 A marker recorded in `NSUbiquitousKeyValueStore` syncs across devices; pass `.once(id:recordedIn: UserDefaults.standard)` to run a local-to-iCloud migration once per device instead. When migrating *from* `NSUbiquitousKeyValueStore`, a `.once` migration that runs before initial sync sees missing keys as `.sourceAbsent` and permanently records completion; use `.untracked` until initial sync has completed or record completion under your app's own control.
 

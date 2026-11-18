@@ -134,12 +134,14 @@ another item's source throw `overlappingKeys(_:)`.
 `Outcome.error` carry any thrown error alongside the status.
 `report.throwIfIncomplete()` throws `PersistentKeyMigrationIncompleteError`
 carrying the report when any item or completion marker fails or goes
-unrecorded. Public initializers on `PersistentKeyMigrationReport` and `Outcome`
-remain available for test fixtures and enforce with preconditions that an error
-is present if and only if the status is `.failed`, `outcomes` is empty for
-`.alreadyRecorded`, `outcomes` contains at least one failed outcome for
-`.notRecorded`, and `outcomes` contains no failed outcomes for `.recorded` or
-`.failed`. Migration errors do not conform to `LocalizedError`.
+unrecorded. Public initializers on `PersistentKeyMigrationReport`, `Outcome`, and
+`PersistentKeyMigrationIncompleteError` remain available for test fixtures and
+enforce with preconditions that an error is present if and only if the status is
+`.failed`, `outcomes` is empty for `.alreadyRecorded`, `outcomes` contains at
+least one failed outcome for `.notRecorded`, `outcomes` contains no failed
+outcomes for `.recorded` or `.failed`, and
+`PersistentKeyMigrationIncompleteError(report:)` receives a report with
+`!report.isComplete`. Migration errors do not conform to `LocalizedError`.
 
 `PersistentKeyValueRepresentation` and `PrimitiveKeyValuePersistible` require
 checked `decode(storageObject:format:)` and `encode(_:format:)` /
@@ -220,14 +222,15 @@ principles:
   conform to `Hashable` without embedding `any Error`, while `completionError`
   and `Outcome.error` carry the error alongside the status, following the
   precedent of `URLSessionTask.state` and `URLSessionTask.error`. Public
-  initializers on `PersistentKeyMigrationReport` and `Outcome` are kept so
-  callers can construct test fixtures, with preconditions that enforce every
-  cross-field invariant the engine can produce: `error` and `completionError`
-  are non-`nil` if and only if the status is `.failed`, `outcomes` is empty for
-  `.alreadyRecorded`, `outcomes` contains at least one failed outcome for
-  `.notRecorded`, and `outcomes` contains no failed outcomes for `.recorded` or
-  `.failed`. `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16 code
-  units.
+  initializers on `PersistentKeyMigrationReport`, `Outcome`, and
+  `PersistentKeyMigrationIncompleteError` are kept so callers can construct test
+  fixtures, with preconditions that enforce every cross-field invariant the
+  engine can produce: `error` and `completionError` are non-`nil` if and only if
+  the status is `.failed`, `outcomes` is empty for `.alreadyRecorded`,
+  `outcomes` contains at least one failed outcome for `.notRecorded`, `outcomes`
+  contains no failed outcomes for `.recorded` or `.failed`, and
+  `PersistentKeyMigrationIncompleteError(report:)` requires `!report.isComplete`.
+  `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16 code units.
 - **Same-store key mapping and `overlappingKeys`**: Migrating within a single
   store is allowed when every item maps its source key to a different
   destination key in that store, enabling in-place key renames and value
@@ -243,17 +246,19 @@ principles:
   `encode(format:)`), while built-in representations and primitive types keep
   their specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
   launch-argument string coercion and direct property-list container casting
-  remain intact. Ordinary collection writes (`propertyListArray(encoding:)` and
-  `propertyListDictionary(encoding:)`) call the element or value
-  representation's `set(_:to:)` or `set(_:to:in:)` directly as a fast path and,
-  when an array result is empty for non-empty input or a dictionary entry is
-  left absent, decide from the representation's type structure (`omits(_:)` via
-  `BuiltInValueOmission`: package `OptionalPersistentKeyValueRepresentation`
-  omits `nil` and values omitted by `base`, and package proxy representations
-  via `BuiltInProxyConversion` omit when their inner `Proxy` representation
-  omits, converting to the proxy only when `Proxy` can omit values) whether the
-  value was intentionally omitted instead of encoding again, keeping failed
-  writes linear while keeping writes all-or-nothing. For `Array` and `Dictionary` checked
+  remain intact. Ordinary collection writes (`propertyListArray(encoding:)`,
+  `propertyListArrays(encoding:)`, `propertyListDictionary(encoding:)`, and
+  `propertyListDictionaries(encoding:)`) route built-in `Optional` and proxy
+  representations through `BuiltInValueOmission`
+  (`builtInOrdinaryPropertyListArray(encoding:)` and
+  `builtInOrdinaryPropertyListDictionary(encoding:)` on
+  `OptionalPersistentKeyValueRepresentation` and `BuiltInProxyConversion`),
+  which unwraps optionals or converts each value to its proxy once and decides
+  omission from that conversion before delegating to the inner representation,
+  while encoding any other representation directly with `set(_:to:)` or
+  `set(_:to:in:)`. Converting each value once keeps both failed and all-omitted
+  writes linear even for recursive proxy-over-optional types while keeping
+  writes all-or-nothing. For `Array` and `Dictionary` checked
   conversion (`Array.decode`/`encode` and `Dictionary.decode`/`encode`, used by
   migration and `UserDefaults.register(_:)`), representations defined by the
   package (`PrimitivePersistentKeyValueRepresentation` for `Array` and
@@ -291,14 +296,15 @@ principles:
   every element encoded to `nil` causes exponential work on recursive types,
   checked conversion throws the generic
   `PersistentKeyValueConversionError.invalidStorageValue` or `.encodingFailed`
-  directly and ordinary collection writes check `omits(_:)` (`BuiltInValueOmission`)
-  without invoking encoding hooks. Consequently, for representations defined
-  outside the package, an entry left out by a container write hook counts as a
-  failure: writing a dictionary in which a value's `encode` returns `nil` fails
-  and leaves the store unchanged, and a non-empty array whose every element
-  encodes to `nil` fails and leaves the store unchanged (whereas package
+  directly and ordinary collection writes distinguish omission from failure only
+  through `BuiltInValueOmission` during the single conversion pass.
+  Consequently, for representations defined outside the package, an entry left
+  out by a container write hook counts as a failure: writing a dictionary in
+  which a value's `encode` returns `nil` fails and leaves the store unchanged,
+  and a non-empty array whose every element encodes to `nil` fails and leaves
+  the store unchanged (whereas package
   `OptionalPersistentKeyValueRepresentation` and package proxies over omitting
-  representations are recognized by `BuiltInValueOmission`).
+  representations conform to `BuiltInValueOmission`).
 - **Storage-location contract (`PersistentKeyProtocol.id`)**: A key's value
   lives under its `id` in every store. Store-specific `PersistentKeyProtocol`
   methods (`get`, `set`, and `remove` on `UserDefaults`,
@@ -377,15 +383,16 @@ principles:
   `nil` when no other value is visible), while ordinary `UserDefaults` `set`
   keeps Foundation's lossy path behavior and `[URL]` stores `absoluteString`
   values in `.propertyList` format. In `InMemoryPersistentKeyValueStore`,
-  snapshots capture an exact immutable copy for Foundation property-list
-  objects (such as `NSMutableArray`, including nested `NSDecimalNumber` values,
-  including when wrapped in `Optional`) using
+  snapshots and prepared writes capture an exact immutable copy for Foundation
+  property-list objects (such as `NSMutableArray`, including nested
+  `NSDecimalNumber` values, including when wrapped in `Optional`) using
   `PropertyListMigrationStorage.exactCopy` (an immutable deep copy that
   preserves exact decimals rather than binary property-list serialization, which
-  converts `NSDecimalNumber` to `Double`), and `commitMigrationWrite` snapshots
-  (and copies) the committed entry before notifying observers to verify it
-  afterward; other reference types (including references inside Swift values)
-  cannot be copied, so snapshots verify them by revision only.
+  converts `NSDecimalNumber` to `Double`), and the verification snapshot for a
+  committed write carries the copy captured when the write was prepared, before
+  the value was stored and visible to other readers or observers; other
+  reference types (including references inside Swift values) cannot be copied,
+  so snapshots verify them by revision only.
 - **Post-cleanup destination recheck on `move`**: Removing a move's source key
   notifies synchronous observers, which can modify or delete the destination
   key before `move` returns. Both `.overwriteDestination` and
@@ -447,15 +454,22 @@ principles:
   mutating the store. Where `NSNumber` bridges booleans, integers, and floats in
   Foundation stores, overlapping numeric rewrites such as `Int` seconds to
   `Double` milliseconds or dollars to cents are therefore rejected at `.prepare`
-  (use a rename via `move` instead), whereas `Int` to `String` and identity
-  representation-only rewrites with reproducible encoding succeed. The rule is
-  based on the transform overload and literal key identity rather than comparing
-  value types or representations because `PersistentKeyValueRepresentation`
-  instances cannot be compared for equality.
-- **Dotted-key `UserDefaults` monitor and observation scope**: Because
-  key-value observation treats `.` as a key-path separator, dotted
-  `UserDefaults` keys are observed through one `UserDefaultsKeyChangeMonitor`
-  associated with each `UserDefaults` instance. The monitor installs its
+  (migrate to a new key identifier instead, so a repeated `move` finds no source
+  value and a repeated `copy` converts the original source again), whereas `Int`
+  to `String` and identity representation-only rewrites with reproducible
+  encoding succeed. The rule is based on the transform overload and literal key
+  identity rather than comparing value types or representations because
+  `PersistentKeyValueRepresentation` instances cannot be compared for equality.
+- **Notification-monitored `UserDefaults` keys and observation scope**: Because
+  key-value observation parses an identifier by code units as a key path (it
+  raises an exception for the empty key and keys containing NUL, treats `.` as
+  a key-path component separator even inside a combined character, treats a
+  leading `@` as a collection-operator prefix, and calls `NSObject`'s
+  `keyPathsForValuesAffectingValueForKey:` without an argument and crashes for
+  `valueForKey:` and `ValueForKey:`), `UserDefaults` keys in that set are
+  observed through one `UserDefaultsKeyChangeMonitor` associated with each
+  `UserDefaults` instance, while all other keys use key-value observation and
+  also see other processes' changes. The monitor installs its
   `UserDefaults.didChangeNotification` observer before the first read, reads and
   stores each registration's own initial comparison value outside the lock
   before registration returns (joining an in-progress same-thread first read for
@@ -481,9 +495,10 @@ principles:
   undone before it is sampled (`A` to `B` to `A`) can produce no notification
   for any subscriber, and consecutive emitted values can be equal. Because
   Foundation posts `didChangeNotification` only for in-process defaults writes
-  and not for `addSuite(named:)` or `removeSuite(named:)`, dotted-key
-  observation is scoped to in-process changes to `object(forKey:)`, and
-  callbacks under concurrent writes can arrive on the reconciling thread.
+  and not for `addSuite(named:)` or `removeSuite(named:)`, notification-monitored
+  `UserDefaults` observation is scoped to in-process changes to
+  `object(forKey:)`, and callbacks under concurrent writes can arrive on the
+  reconciling thread.
 - **NFC normalization of migration IDs and dotless completion markers**:
   `PersistentKey.isMigrationCompleted(id:)` normalizes `id` with
   `precomposedStringWithCanonicalMapping` (NFC) before SHA-256 hashing so
@@ -553,8 +568,9 @@ The regression tests preserve these guarantees:
   across registration, launch arguments, and dictionaries.
 - [`UserDefaultsKeyChangeObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/UserDefaults/UserDefaultsKeyChangeObservationTests.swift)
   and [`NSUbiquitousKeyValueStoreObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/NSUbiquitousKeyValueStore/NSUbiquitousKeyValueStoreObservationTests.swift)
-  cover the per-instance dotted-key monitor, deduplicated reads, registration
-  deregistration races, and literal key matching in observation.
+  cover the per-instance `UserDefaults` notification monitor for
+  key-path-incompatible keys, deduplicated reads, registration deregistration
+  races, and literal key matching in observation.
 - [`PublicAPIClientTests`](../../Tests/PersistentKeyValueKitPublicAPITests/PublicAPIClientTests.swift)
   checks consumer composition and the `id` storage-location contract without
   `@testable import`; compile-fail fixtures keep the endpoint opaque and enforce
