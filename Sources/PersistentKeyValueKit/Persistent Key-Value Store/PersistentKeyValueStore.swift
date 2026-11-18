@@ -83,9 +83,11 @@ public protocol PersistentKeyValueStore {
     ///
     /// If `Self` is `UserDefaults` then `target` is notified directly through
     /// `observeValue(forKeyPath:of:change:context:)` with the key's identifier as the key path. Key-value observation
-    /// parses an identifier as a key path, so it is used only for identifiers that it reads as one key. An identifier
-    /// that is empty, begins with `@`, contains a period (`.`) code unit (even inside a combined character) or NUL, or
-    /// is `valueForKey:` or `ValueForKey:` is observed through `UserDefaults.didChangeNotification` instead. After
+    /// parses an identifier as a key path, so it is used only for identifiers that it reads as one key. It does not
+    /// report a write of a value that Foundation considers equal to the stored value, such as an `Int64` over an equal
+    /// `Int32` or `-0.0` over `0.0`, so `target` is not notified of such a write. An identifier that is empty, begins
+    /// with `@`, contains a period (`.`) code unit (even inside a combined character) or NUL, or is `valueForKey:` or
+    /// `ValueForKey:` is observed through `UserDefaults.didChangeNotification` instead. After
     /// each such notification, the key is read from this instance, and `target` is notified when the property-list
     /// value read differs from the previous read (or once on the next reconciliation pass if the registration joined
     /// while a reconciliation was in progress and any change was reported since it joined, even when the value read

@@ -48,6 +48,9 @@ import Foundation
 ///   (even inside a combined character) or NUL, or are `valueForKey:` or `ValueForKey:`, only changes made in the
 ///   current process are observed. Changes made by another process, such as an app extension that shares an app group,
 ///   might not be delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
+///   For other `UserDefaults` keys, key-value observation does not report a write of a value that Foundation considers
+///   equal to the stored value, such as an `Int64` over an equal `Int32` or `-0.0` over `0.0`, so the observed value
+///   can remain the previous, numerically equal value until the key next changes.
 /// - SeeAlso: ``PersistentKeyProtocol/changes(in:bufferingPolicy:)`` for observing only subsequent changes.
 /// - SeeAlso: ``PersistentValue`` for observation relying on SwiftUI `View` and environment.
 public struct PersistentKeyValues<Key> where Key: PersistentKeyProtocol {

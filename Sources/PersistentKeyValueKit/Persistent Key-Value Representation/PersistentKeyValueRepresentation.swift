@@ -139,6 +139,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 /// returns `nil` and leave the store or container unchanged when `encode` throws or returns an object that is not a
 /// property list. Property-list containers use ``PersistentKeyValueStorageFormat/propertyList``.
 ///
+/// A property list contains only strings, numbers, dates, data, arrays, and dictionaries with string keys, which are
+/// the objects that `UserDefaults` and `NSUbiquitousKeyValueStore` store. Binary property-list serialization also
+/// accepts the UIDs in a keyed archive's property list, but these writes reject them; store such an archive as `Data`.
+///
 /// These defaults read the effective `UserDefaults` object without inspecting `UserDefaults.argumentDomain`, so they do
 /// not coerce string launch arguments into typed values. Built-in representations implement these methods themselves
 /// and keep that coercion.
@@ -757,11 +761,38 @@ internal func storableEncoding(_ object: Any?) -> Any?? {
         return .some(nil)
     }
 
-    guard PropertyListSerialization.propertyList(object, isValidFor: .binary) else {
+    guard isStorablePropertyList(object) else {
         return nil
     }
 
     return .some(object)
+}
+
+/// Returns whether `object` is a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept: a string,
+/// number (including a Boolean), date, or data object, or an array or string-keyed dictionary of such objects.
+///
+/// Binary property-list validation also accepts other objects, such as the UIDs in a keyed archive's property list.
+/// `UserDefaults` removes the key's previous value before rejecting such an object, so a write must not pass one to a
+/// store. Validation runs first because it also rejects non-string dictionary keys and a container that contains
+/// itself, which would otherwise recurse forever.
+internal func isStorablePropertyList(_ object: Any) -> Bool {
+    PropertyListSerialization.propertyList(object, isValidFor: .binary) && containsOnlyStorableObjects(object)
+}
+
+/// Returns whether every leaf of `object`, a valid property list, is a string, number, date, or data object.
+private func containsOnlyStorableObjects(_ object: Any) -> Bool {
+    switch object {
+    case is NSString, is NSNumber, is NSDate, is NSData:
+        return true
+    case let array as NSArray:
+        return array.allSatisfy(containsOnlyStorableObjects)
+    case let dictionary as NSDictionary:
+        return dictionary.allSatisfy {
+            containsOnlyStorableObjects($0.value)
+        }
+    default:
+        return false
+    }
 }
 
 internal func checkedStorageValue<Value>(from object: Any, as type: Value.Type = Value.self) throws -> Value {
@@ -784,8 +815,8 @@ internal func decodeStorageValue<Key: PersistentKeyProtocol>(
 ///
 /// The decoder validates the returned copy itself. The copy holds no mutable container or leaf, so a decoder that
 /// consumes writable input cannot change the object a caller stores. Throws
-/// ``PersistentKeyValueConversionError/encodingFailed`` when the encoded object is not a property list, which is
-/// checked before copying because such an object can contain itself.
+/// ``PersistentKeyValueConversionError/encodingFailed`` when the encoded object is not a property list that a store
+/// accepts, which ``isStorablePropertyList(_:)`` checks before copying because such an object can contain itself.
 internal func encodeStorageRepresentation<Value, Representation: PersistentKeyValueRepresentation>(
     _ representation: Representation,
     value: Value,
@@ -796,7 +827,7 @@ where Representation.Value == Value {
         return nil
     }
 
-    guard let object = try? PropertyListMigrationStorage.exactCopy(encoded) else {
+    guard isStorablePropertyList(encoded), let object = try? PropertyListMigrationStorage.exactCopy(encoded) else {
         throw PersistentKeyValueConversionError.encodingFailed
     }
 

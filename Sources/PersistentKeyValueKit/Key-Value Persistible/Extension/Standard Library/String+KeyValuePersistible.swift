@@ -27,8 +27,16 @@ extension String: BuiltInScalarPrimitive {}
 extension String: PrimitiveKeyValuePersistible {
     // MARK: Checked Conversion
 
+    /// Decodes a stored string.
+    ///
+    /// In ``PersistentKeyValueStorageFormat/userDefaults`` format, a stored number also decodes as its `stringValue`,
+    /// as `UserDefaults.string(forKey:)` and an ordinary read return it. A Boolean decodes as `"1"` or `"0"`.
     public static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> String {
-        try checkedStorageValue(from: storageObject)
+        if format == .userDefaults, let number = storageObject as? NSNumber {
+            return number.stringValue
+        }
+
+        return try checkedStorageValue(from: storageObject)
     }
 
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
