@@ -116,9 +116,9 @@ to a different destination key in that store or, in `UserDefaults` or
 `.key(_:to:transform:)` on a single store instance with byte-identical source
 and destination key identifiers (reporting `.rewritten` under any conflict
 policy without removing the key as a source, verifying before writing that
-decoding the prepared result with the source key and running `transform` again
-reproduces the same stored value or else failing at `.prepare` with
-`nonIdempotentRewrite`, and recognizing an already-rewritten value on retry when
+decoding each reading of the prepared result with the source key and running
+`transform` again reproduces the same stored value or else failing at `.prepare`
+with `nonIdempotentRewrite`, and recognizing an already-rewritten value on retry when
 it fails to decode with the source key's representation, decodes with the
 destination key's representation, and its snapshot remains current); any
 same-store, same-ID item on `InMemoryPersistentKeyValueStore` throws `sameStore`
@@ -341,8 +341,12 @@ principles:
   The package uses literal UTF-16 key identity across Foundation stores:
   `PersistentKey` and `PersistentDebugKey` `Equatable` and `Hashable`
   conformances compare and hash `id.utf16` so NFC and NFD spellings remain
-  distinct set members (and SwiftUI callers can pass `ForEach(keys, id: \.self)`
-  instead of relying on `Identifiable`, whose `id: String` merges them),
+  distinct set members (whereas SwiftUI callers should pass
+  `ForEach(keys, id: \.id.utf8CString)` rather than relying on `Identifiable`,
+  whose `id: String` merges them, or `\.self`, because synthesized key equality
+  compares identifiers as strings and `PersistentKey` and `PersistentDebugKey`
+  equality also compares default values so changing only a default recreates the
+  row),
   `UserDefaultsMigrationBackend` sends
   `persistentDomain(forName:)` through Objective-C to keep the unbridged
   `NSDictionary` and looks up keys as `NSString`,
@@ -379,17 +383,23 @@ principles:
   regardless of width because `UserDefaults` does not preserve integer width
   across processes or launches, returning an `Int32` as written in the writing
   process and as `Int64` elsewhere), `CFNumberGetByteSize` (`Float` versus
-  `Double`), `NaN`, and floating-point bit patterns (`0.0` versus `-0.0`)
+  `Double`), and `NaN` and floating-point bit patterns (`0.0` versus `-0.0`) for
+  both floating-point numbers and `Date` time intervals
+  (`timeIntervalSinceReferenceDate`, so an unchanged `NaN` date verifies)
   recursively across arrays and dictionaries. Checked encoding through
   `encodeStorageRepresentation` (used by
   `ProxyPersistentKeyValueRepresentationProtocol.encode(_:format:)`,
   `CodablePersistentKeyValueRepresentation.encode(_:format:)`, and migration
-  write preparation) converts the encoded object with
-  `PropertyListMigrationStorage.immutableCopy(of:)` (an immutable
-  Foundation-bridged deep copy) before validating it with
-  `decode(storageObject:format:)` and returns that copy, so a decoder that
-  consumes or mutates writable input during validation cannot alter what is
-  returned or written. When preparing a write to `UserDefaults` or
+  write preparation) validates and copies the encoded object with the throwing
+  `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (which checks
+  `PropertyListSerialization.propertyList(_:isValidFor: .binary)` before
+  recursively building an immutable Foundation-bridged deep copy, throwing
+  `PersistentKeyValueConversionError.encodingFailed` when the encoded object is
+  not a property list so invalid or self-referential containers fail at
+  `.prepare` without recursing) before validating that copy with
+  `decode(storageObject:format:)` and returning it, so a decoder that consumes
+  or mutates writable input during validation cannot alter what is returned or
+  written. When preparing a write to `UserDefaults` or
   `NSUbiquitousKeyValueStore`, `PropertyListMigrationStorage.storableCopy(of:)`
   captures `exactCopy(object)`, verifies that
   `PropertyListMigrationStorage.equal(copy, try freeze(copy))` holds against a
@@ -480,17 +490,21 @@ principles:
   (failing with `.destinationChanged` if it changed while decoding), and reports
   `.rewritten` without running `transform` or writing again. If the initial
   `transform` call throws, the item fails at `.transform`. Before writing a
-  newly transformed value, the rewrite decodes the prepared write (an exact
-  immutable property-list copy that decoding cannot mutate) with the `source`
-  key and, if it
-  decodes to a non-`nil` value, runs `transform` and prepares the write a second
-  time, verifying that the resulting write matches the first
-  (`migrationWrite(_:matches:)`); if the replay `transform` throws, if the
-  destination encoding is not reproducible (such as `JSONEncoder` without
-  `.sortedKeys` when the encoded result still decodes with `source`'s
-  representation), or if the repeated write does not match, the item fails at
-  `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` before
-  mutating the store. Where `NSNumber` bridges booleans, integers, and floats in
+  newly transformed value, the rewrite checks every reading from
+  `migrationReadings(of:)` (both the prepared write's exact immutable
+  property-list copy, as the writing process reads it back, and its
+  binary-property-list-serialized readback via `PropertyListMigrationStorage.freeze`,
+  as other processes and later launches read it back, where an encoded `Int32`
+  is read as a 64-bit integer that `source`'s decoder may accept even when it
+  rejects `Int32`): for each reading that decodes with the `source` key to a
+  non-`nil` value, it runs `transform` and prepares the write again (so
+  `transform` can run up to three times), verifying that each resulting write
+  matches the first (`migrationWrite(_:matches:)`); if any replay `transform` or
+  encoding throws, if the destination encoding is not reproducible (such as
+  `JSONEncoder` without `.sortedKeys` when a reading still decodes with
+  `source`'s representation), or if a repeated write does not match, the item
+  fails at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite`
+  before mutating the store. Where `NSNumber` bridges booleans, integers, and floats in
   Foundation stores, overlapping numeric rewrites such as `Int` seconds to
   `Double` milliseconds or dollars to cents are therefore rejected at `.prepare`
   (migrate to a new key identifier instead so a retry never reads its own

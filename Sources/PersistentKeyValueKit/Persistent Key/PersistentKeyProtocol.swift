@@ -47,7 +47,7 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// To give each stored key its own row, identify it by its identifier's UTF-8 code units:
     /// `ForEach(keys, id: \.id.utf8CString)`. Key equality is not a substitute: synthesized equality compares
     /// identifiers as strings, and ``PersistentKey`` and ``PersistentDebugKey`` equality also compares default values,
-    /// so with `id: \.self`, changing only a key's default value recreates its row.
+    /// so with `\.self`, changing only a key's default value recreates its row.
     ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     var id: ID { get }
