@@ -19,8 +19,9 @@ internal enum PropertyListMigrationStorage {
     /// `NSDecimalNumber`, which only an exact copy preserves, from other reals, and compares decimals exactly. Integers
     /// compare by value regardless of width: a property list stores an integer by its value, so `UserDefaults` returns
     /// an `Int32` as written only to the process that wrote it, and a 64-bit integer to other processes and launches.
-    /// Strings and dictionary keys compare by their literal UTF-16 contents, as Foundation stores them, rather
-    /// than by Swift's canonical equivalence.
+    /// Reals and date intervals compare exactly, as a binary property list keeps them, so `NaN` equals `NaN` and a real
+    /// `0.0` differs from `-0.0`. Strings and dictionary keys compare by their literal UTF-16 contents, as Foundation
+    /// stores them, rather than by Swift's canonical equivalence.
     static func equal(_ lhs: Any?, _ rhs: Any?) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil):
@@ -32,7 +33,7 @@ internal enum PropertyListMigrationStorage {
         case (let lhs as NSData, let rhs as NSData):
             return lhs.isEqual(rhs)
         case (let lhs as Date, let rhs as Date):
-            return lhs == rhs
+            return realsEqual(lhs.timeIntervalSinceReferenceDate, rhs.timeIntervalSinceReferenceDate)
         case (let lhs as NSArray, let rhs as NSArray):
             return lhs.count == rhs.count && zip(lhs, rhs).allSatisfy {
                 equal($0, $1)
@@ -78,12 +79,36 @@ internal enum PropertyListMigrationStorage {
         return try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
     }
 
+    /// Returns ``exactCopy(_:allowingLegacyURL:)`` of an encoded object, throwing
+    /// ``PersistentKeyValueConversionError/encodingFailed`` when the property list a Foundation store persists would
+    /// differ from it as ``equal(_:_:)`` compares them.
+    ///
+    /// A migration write commits the copy, as an ordinary `set` writes the encoded object, so a read in the same
+    /// process returns what the representation encoded. A serialized property list stores an `NSDecimalNumber` as a
+    /// double-precision real, which can round an integer or change how a representation decodes it, so a migration
+    /// write of such an object fails before anything is written. An integer's width is not part of its stored value,
+    /// so a write of an `Int32` does not fail even though other processes read it as a 64-bit integer.
+    static func storableCopy(of object: Any) throws -> Any {
+        let copy = try exactCopy(object)
+        guard equal(copy, try freeze(copy)) else {
+            throw PersistentKeyValueConversionError.encodingFailed
+        }
+
+        return copy
+    }
+
+    // MARK: Private Static Interface
+
     /// Returns an immutable deep copy of a property-list object that holds no mutable container or leaf, so no
     /// reader, including a representation's decoder, can change it.
     ///
     /// The copy holds the Foundation objects that a store returns, so a Swift value such as a `Double` is bridged to
     /// its `NSNumber`. Numbers, including decimals, and dates are immutable, so the copy shares them.
-    static func immutableCopy(of object: Any) -> Any {
+    ///
+    /// `object` must be a valid property list, as ``exactCopy(_:allowingLegacyURL:)`` checks before calling this. A
+    /// property list cannot contain itself, so the recursion ends; a container that does contain itself would recurse
+    /// forever.
+    private static func immutableCopy(of object: Any) -> Any {
         switch object {
         case let array as NSArray:
             return NSArray(
@@ -106,26 +131,6 @@ internal enum PropertyListMigrationStorage {
             return object as AnyObject
         }
     }
-
-    /// Returns ``exactCopy(_:allowingLegacyURL:)`` of an encoded object, throwing
-    /// ``PersistentKeyValueConversionError/encodingFailed`` when the property list a Foundation store persists would
-    /// differ from it as ``equal(_:_:)`` compares them.
-    ///
-    /// A migration write commits the copy, as an ordinary `set` writes the encoded object, so a read in the same
-    /// process returns what the representation encoded. A serialized property list stores an `NSDecimalNumber` as a
-    /// double-precision real, which can round an integer or change how a representation decodes it, so a migration
-    /// write of such an object fails before anything is written. An integer's width is not part of its stored value,
-    /// so a write of an `Int32` does not fail even though other processes read it as a 64-bit integer.
-    static func storableCopy(of object: Any) throws -> Any {
-        let copy = try exactCopy(object)
-        guard equal(copy, try freeze(copy)) else {
-            throw PersistentKeyValueConversionError.encodingFailed
-        }
-
-        return copy
-    }
-
-    // MARK: Private Static Interface
 
     private static func numbersEqual(_ lhs: NSNumber, _ rhs: NSNumber) -> Bool {
         let lhsIsBoolean = CFGetTypeID(lhs) == CFBooleanGetTypeID()
@@ -160,13 +165,15 @@ internal enum PropertyListMigrationStorage {
             return false
         }
 
-        let lhsValue = lhs.doubleValue
-        let rhsValue = rhs.doubleValue
-        if lhsValue.isNaN || rhsValue.isNaN {
-            return lhsValue.isNaN && rhsValue.isNaN
+        return realsEqual(lhs.doubleValue, rhs.doubleValue)
+    }
+
+    private static func realsEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+        if lhs.isNaN || rhs.isNaN {
+            return lhs.isNaN && rhs.isNaN
         }
 
         // Bit patterns distinguish `0.0` from `-0.0`, which compare equal but are different stored values.
-        return lhsValue.bitPattern == rhsValue.bitPattern
+        return lhs.bitPattern == rhs.bitPattern
     }
 }

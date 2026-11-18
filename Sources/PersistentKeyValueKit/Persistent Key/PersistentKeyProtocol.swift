@@ -44,8 +44,10 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// `UserDefaults` and `NSUbiquitousKeyValueStore` compare identifiers literally, so canonically equivalent
     /// spellings, such as composed and decomposed "café", are different keys. `ID` is `String`, which treats those
     /// spellings as equal, so `Identifiable` identity merges them: SwiftUI's `ForEach(keys)` shows one row for both.
-    /// When their values are `Hashable`, ``PersistentKey`` and ``PersistentDebugKey`` are `Hashable` and compare
-    /// identifiers literally, so use the key itself as the identity: `ForEach(keys, id: \.self)`.
+    /// To give each stored key its own row, identify it by its identifier's UTF-8 code units:
+    /// `ForEach(keys, id: \.id.utf8CString)`. Key equality is not a substitute: synthesized equality compares
+    /// identifiers as strings, and ``PersistentKey`` and ``PersistentDebugKey`` equality also compares default values,
+    /// so with `id: \.self`, changing only a key's default value recreates its row.
     ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
     var id: ID { get }

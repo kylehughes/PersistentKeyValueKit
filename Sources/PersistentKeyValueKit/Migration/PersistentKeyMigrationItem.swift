@@ -102,20 +102,22 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// ``PersistentKeyMigrationError/destinationChanged`` if it changed), the item reports
     /// ``PersistentKeyMigrationReport/Status/rewritten`` without running `transform` or writing. A rewritten value that
     /// still decodes with `source`'s representation would be rewritten again, so before writing, the item decodes its
-    /// result that way and runs `transform` on it again. Unless that succeeds and produces the same stored value
-    /// (requiring reproducible encoding, such as `JSONEncoder` with `.sortedKeys`, when `source` can decode the
-    /// encoded result), the item fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+    /// result that way and runs `transform` on it again. It checks the result both as the writing process reads it back
+    /// and as other processes and later launches read it, which can differ in a way that a representation observes,
+    /// such as an integer's width. Unless each check succeeds and produces the same stored value (requiring
+    /// reproducible encoding, such as `JSONEncoder` with `.sortedKeys`, when `source` can decode the encoded result),
+    /// the item fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
     /// ``PersistentKeyMigrationError/nonIdempotentRewrite`` and nothing is written.
     ///
     /// A rewrite is therefore safe to retry only when every value `destination`'s representation stores fails to
-    /// decode with `source`'s representation, such as an integer rewritten as a string, or when `transform` and
-    /// `destination`'s encoding are idempotent on their own results. Storage formats overlap more than their Swift
-    /// types suggest: Foundation stores bridge numbers, so a `Bool`, an `Int`, and an integral `Double` can decode as
-    /// one another. To change a value in an overlapping format, such as converting dollars to cents or seconds to
-    /// milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead, so a retry never reads its own
-    /// result. Whether a retry runs `transform` again then depends on whether the source value remains and whether the
-    /// retry writes. A move that removed its source finds no source value. When the source value remains, a policy
-    /// that keeps an existing destination value, such as ``PersistentKeyCopyConflictPolicy/keepDestination`` or
+    /// decode with `source`'s representation in any process, such as an integer rewritten as a string, or when
+    /// `transform` and `destination`'s encoding are idempotent on their own results. Storage formats overlap more than
+    /// their Swift types suggest: Foundation stores bridge numbers, so a `Bool`, an `Int`, and an integral `Double` can
+    /// decode as one another. To change a value in an overlapping format, such as converting dollars to cents or
+    /// seconds to milliseconds, migrate it to a new key with ``key(_:to:transform:)`` instead, so a retry never reads
+    /// its own result. Whether a retry runs `transform` again then depends on whether the source value remains and
+    /// whether the retry writes. A move that removed its source finds no source value. When the source value remains, a
+    /// policy that keeps an existing destination value, such as ``PersistentKeyCopyConflictPolicy/keepDestination`` or
     /// ``PersistentKeyMoveConflictPolicy/keepBoth``, keeps it without running `transform`, including a value that an
     /// earlier attempt wrote, and ``PersistentKeyMoveConflictPolicy/keepBoth`` leaves the source value in place too.
     /// Under ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or

@@ -81,6 +81,43 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(source.persistentDomain(forName: sourceName)?[key.id])
     }
 
+    func testDefaultsDateWithUndefinedIntervalMigratesUnchanged() throws {
+        let sourceName = stableSuiteName("MigrationNativeFidelityTests.undefinedDate.source")
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.undefinedDate.destination")
+        let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
+        let stamp = PersistentKey("key:\(#function).stamp", defaultValue: Stamp.known(0), representation: StampCodec())
+        let label = PersistentKey("key:\(#function).label", defaultValue: "missing")
+
+        defer {
+            source.removePersistentDomain(forName: sourceName)
+            destination.removePersistentDomain(forName: destinationName)
+        }
+
+        source.set(stamp, to: .unknown)
+
+        let moved = try source.move(stamp, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(moved.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(destination.get(stamp), .unknown)
+        XCTAssertNil(source.persistentDomain(forName: sourceName)?[stamp.id])
+
+        source.set(stamp, to: .unknown)
+
+        let renamed = try source.move(
+            .key(stamp, to: label) { _ in
+                "unknown"
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(renamed.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(destination.get(label), "unknown")
+        XCTAssertNil(source.persistentDomain(forName: sourceName)?[stamp.id])
+    }
+
     func testDefaultsDestinationRejectsNumberThatStorageWouldChange() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.storedNumber")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
@@ -375,7 +412,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
             ]
         )
         let original = NSMutableArray(array: [nested, NSMutableArray(array: [1.5])])
-        let copy = try XCTUnwrap(PropertyListMigrationStorage.immutableCopy(of: original) as? NSArray)
+        let copy = try XCTUnwrap(PropertyListMigrationStorage.exactCopy(original) as? NSArray)
         let dictionary = try XCTUnwrap(copy[0] as? NSDictionary)
         let array = try XCTUnwrap(copy[1] as? NSArray)
 
@@ -385,7 +422,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(dictionary["data"] is NSMutableData)
         XCTAssertFalse(array is NSMutableArray)
         XCTAssertTrue(equal(copy, original))
-        XCTAssertTrue(type(of: PropertyListMigrationStorage.immutableCopy(of: 1.5)) is AnyClass)
+        XCTAssertTrue(type(of: try PropertyListMigrationStorage.exactCopy(1.5)) is AnyClass)
     }
 
     func testMemorySourceDecimalEditDuringMoveFailsCleanup() throws {
@@ -444,6 +481,9 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(equal(Data([1]), Data([2])))
         XCTAssertTrue(equal(date, date))
         XCTAssertFalse(equal(date, date.addingTimeInterval(1)))
+        XCTAssertTrue(equal(Date(timeIntervalSinceReferenceDate: .nan), Date(timeIntervalSinceReferenceDate: .nan)))
+        XCTAssertFalse(equal(Date(timeIntervalSinceReferenceDate: .nan), date))
+        XCTAssertFalse(equal(date, Date(timeIntervalSinceReferenceDate: .nan)))
         XCTAssertTrue(equal([1, true] as [Any], [1, true] as [Any]))
         XCTAssertFalse(equal([1, true] as [Any], [true, 1] as [Any]))
         XCTAssertFalse(equal([1], [1, 2]))
@@ -469,6 +509,51 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(PropertyListMigrationStorage.equal(NSNumber(value: 1.0), decimal))
         XCTAssertTrue(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, NSDecimalNumber.notANumber))
         XCTAssertFalse(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, decimal))
+    }
+
+    func testSelfReferentialEncodingFailsBeforeMutation() throws {
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.selfReferential")
+        let finished = DispatchSemaphore(value: 0)
+
+        defer {
+            UserDefaults(suiteName: destinationName)?.removePersistentDomain(forName: destinationName)
+        }
+
+        // A regression recurses into the array, so the migration runs where a timeout can report it.
+        DispatchQueue.global().async {
+            defer {
+                finished.signal()
+            }
+
+            let source = InMemoryPersistentKeyValueStore()
+            let legacy = PersistentKey("key:\(#function).legacy", defaultValue: "")
+            let looped = PersistentKey("key:\(#function)", defaultValue: "", representation: SelfReferentialCodec())
+
+            source.set(legacy, to: "preserved")
+
+            guard let destination = UserDefaults.migratable(suiteName: destinationName) else {
+                return XCTFail("The destination suite is unavailable.")
+            }
+
+            do {
+                let report = try source.move(
+                    .key(legacy, to: looped),
+                    to: destination,
+                    onConflict: .overwriteDestination,
+                    tracking: .once(id: #function)
+                )
+
+                XCTAssertEqual(report.outcomes.map(\.status), [.failed(.prepare)])
+                XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyValueConversionError, .encodingFailed)
+                XCTAssertEqual(report.completion, .notRecorded)
+                XCTAssertEqual(source.get(legacy), "preserved")
+                XCTAssertNil(destination.persistentDomain(forName: destinationName)?[looped.id])
+            } catch {
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        XCTAssertEqual(finished.wait(timeout: .now() + 10), .success)
     }
 
     @available(watchOS 9.0, *)
@@ -822,6 +907,21 @@ private struct PacketCodec: PersistentKeyValueRepresentation {
     }
 }
 
+// MARK: - Self-Referential Codec Definition
+
+/// Encodes every string as an array that contains itself, which is not a property list.
+private struct SelfReferentialCodec: PersistentKeyValueRepresentation {
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> String {
+        "decoded"
+    }
+
+    func encode(_ value: String, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        let array = NSMutableArray()
+        array.add(array)
+        return array
+    }
+}
+
 // MARK: - Setting Definition
 
 private enum Setting: Equatable, Sendable {
@@ -909,6 +1009,36 @@ private struct SignedFieldCodec: PersistentKeyValueRepresentation {
             NSNumber(value: value)
         case .int64(let value):
             NSNumber(value: value)
+        }
+    }
+}
+
+// MARK: - Stamp Definition
+
+private enum Stamp: Equatable, Sendable {
+    case known(TimeInterval)
+    case unknown
+}
+
+// MARK: - Stamp Codec Definition
+
+/// Stores an unknown time as a date whose interval is not a number.
+private struct StampCodec: PersistentKeyValueRepresentation {
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Stamp {
+        guard let date = storageObject as? Date else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        let interval = date.timeIntervalSinceReferenceDate
+        return interval.isNaN ? .unknown : .known(interval)
+    }
+
+    func encode(_ value: Stamp, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        switch value {
+        case .known(let interval):
+            Date(timeIntervalSinceReferenceDate: interval)
+        case .unknown:
+            Date(timeIntervalSinceReferenceDate: .nan)
         }
     }
 }

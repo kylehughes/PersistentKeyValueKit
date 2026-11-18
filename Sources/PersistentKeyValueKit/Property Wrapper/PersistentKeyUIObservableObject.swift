@@ -37,7 +37,8 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     /// The registration lifetime for the current store.
     private var observation: StoreObservation<Key>?
 
-    /// The number of registrations started, which tells a registration whether it is still current when it returns.
+    /// The number of registrations started, which tells a registration whether it is still current when it returns
+    /// and when its store reports a change.
     private var registrationCount: Int
     
     // MARK: Public Initialization
@@ -61,7 +62,8 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     ///
     /// Setting a different store observes it and then sends `objectWillChange`, so subscribers, including SwiftUI views,
     /// read ``value`` from the new store. Setting `nil` stops observing, and ``value`` then reads the key's default
-    /// value.
+    /// value. Changes to the previous store are no longer sent, including changes made on another thread that had not
+    /// yet reached the main actor.
     ///
     /// Setting the same store instance, or `nil` when there is no store, does nothing: the existing observation
     /// continues and nothing is sent. A value-type store has no identity, so setting one always observes it again and
@@ -189,9 +191,15 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
 
         let registration = registrationCount
 
-        // The observer filters callbacks by key identifier, so each registration creates one for the current key.
+        // The observer filters callbacks by key identifier, so each registration creates one for the current key. A
+        // callback from another thread reaches the main actor later, possibly after another key or store is selected,
+        // so it notifies only while its registration is still current.
         let observer = Observer<Key>(keyID: key.id) { [weak self] in
-            self?.objectWillChange.send()
+            guard let self, registration == registrationCount else {
+                return
+            }
+
+            objectWillChange.send()
         }
 
         let observation = StoreObservation(

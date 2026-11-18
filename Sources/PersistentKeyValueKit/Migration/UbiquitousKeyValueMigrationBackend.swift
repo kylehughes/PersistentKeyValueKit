@@ -148,6 +148,11 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
 extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationRewriteBackend {
     // MARK: Internal Instance Interface
 
+    func migrationReadings(of write: MigrationWrite) throws -> [MigrationWrite] {
+        let serialized = try write.object.map(PropertyListMigrationStorage.freeze)
+        return [write, MigrationWrite(identity: write.identity, keyID: write.keyID, object: serialized)]
+    }
+
     /// A prepared write holds an immutable copy of the encoded object, so decoding it cannot change the write.
     func migrationValue<Key>(
         for key: Key,

@@ -783,7 +783,9 @@ internal func decodeStorageValue<Key: PersistentKeyProtocol>(
 /// decodes.
 ///
 /// The decoder validates the returned copy itself. The copy holds no mutable container or leaf, so a decoder that
-/// consumes writable input cannot change the object a caller stores.
+/// consumes writable input cannot change the object a caller stores. Throws
+/// ``PersistentKeyValueConversionError/encodingFailed`` when the encoded object is not a property list, which is
+/// checked before copying because such an object can contain itself.
 internal func encodeStorageRepresentation<Value, Representation: PersistentKeyValueRepresentation>(
     _ representation: Representation,
     value: Value,
@@ -794,7 +796,10 @@ where Representation.Value == Value {
         return nil
     }
 
-    let object = PropertyListMigrationStorage.immutableCopy(of: encoded)
+    guard let object = try? PropertyListMigrationStorage.exactCopy(encoded) else {
+        throw PersistentKeyValueConversionError.encodingFailed
+    }
+
     _ = try representation.decode(storageObject: object, format: format)
     return object
 }

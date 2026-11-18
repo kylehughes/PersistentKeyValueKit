@@ -919,6 +919,51 @@ extension PersistentValueTests {
     }
 }
 
+// MARK: - Row Identity Tests
+
+extension PersistentValueTests {
+    // MARK: Tests
+
+    /// The identity that `PersistentKeyProtocol.id` documents for `ForEach` keeps one row, and its state, per stored
+    /// key.
+    @MainActor
+    func test_forEach_literalIdentifierIdentity_keepsOneRowPerStoredKey() async {
+        let viewController = ViewController()
+        let composedKey = PersistentKey("caf\u{E9}:\(#function)", defaultValue: 0)
+        let decomposedKey = PersistentKey("cafe\u{301}:\(#function)", defaultValue: 0)
+        let model = KeyRowModel(keys: [composedKey, decomposedKey], composedKeyID: composedKey.id)
+
+        userDefaults.set(composedKey, to: 1)
+        userDefaults.set(decomposedKey, to: 2)
+
+        host(KeyRowList(model: model, store: userDefaults), in: viewController)
+        await waitForRows(in: model) { $0 == ["composed": "1, default 0", "decomposed": "2, default 0"] }
+
+        XCTAssertEqual(model.renderedRows, ["composed": "1, default 0", "decomposed": "2, default 0"])
+        XCTAssertEqual(model.rowStateCount, 2)
+
+        // Changing only a default value keeps the same stored key, so the row and its state survive.
+        model.renderedRows = [:]
+        model.keys = [PersistentKey(composedKey.id, defaultValue: 5), decomposedKey]
+        await waitForRows(in: model) { $0["composed"] == "1, default 5" }
+
+        XCTAssertEqual(model.renderedRows["composed"], "1, default 5")
+        XCTAssertEqual(model.rowStateCount, 2)
+    }
+
+    // MARK: Private Instance Interface
+
+    /// Waits until the rendered rows satisfy `predicate`, giving up after a bounded timeout.
+    @MainActor
+    private func waitForRows(in model: KeyRowModel, until predicate: ([String: String]) -> Bool) async {
+        let deadline = Date(timeIntervalSinceNow: 5)
+
+        while !predicate(model.renderedRows), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+}
+
 // MARK: - ForwardingStore Definition
 
 /// A value-type store that forwards every operation to a backing store.
@@ -956,6 +1001,78 @@ private struct ForwardingStore: PersistentKeyValueStore {
 
     func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
         base.set(key, to: value)
+    }
+}
+
+// MARK: - KeyRow Definition
+
+/// A row that shows a key's value and default, and counts how many times SwiftUI creates its state.
+private struct KeyRow: View {
+    @PersistentValue<PersistentKey<Int>> var value: Int
+    @StateObject private var state: KeyRowState
+
+    let key: PersistentKey<Int>
+    let model: KeyRowModel
+
+    init(key: PersistentKey<Int>, store: any PersistentKeyValueStore, model: KeyRowModel) {
+        _value = PersistentValue(key, store: store)
+        _state = StateObject(wrappedValue: KeyRowState(model: model))
+        self.key = key
+        self.model = model
+    }
+
+    var body: some View {
+        let spelling = key.id.utf16.elementsEqual(model.composedKeyID.utf16) ? "composed" : "decomposed"
+        let row = "\(value), default \(key.defaultValue)"
+
+        model.renderedRows[spelling] = row
+
+        return Text(row)
+    }
+}
+
+// MARK: - KeyRowList Definition
+
+/// A list that identifies each key's row as `PersistentKeyProtocol.id` documents.
+private struct KeyRowList: View {
+    @ObservedObject var model: KeyRowModel
+
+    let store: any PersistentKeyValueStore
+
+    var body: some View {
+        VStack {
+            ForEach(model.keys, id: \.id.utf8CString) { key in
+                KeyRow(key: key, store: store, model: model)
+            }
+        }
+    }
+}
+
+// MARK: - KeyRowModel Definition
+
+/// The keys a list shows, and what its rows record.
+@MainActor
+private final class KeyRowModel: ObservableObject {
+    @Published var keys: [PersistentKey<Int>]
+
+    let composedKeyID: String
+
+    var renderedRows: [String: String] = [:]
+    var rowStateCount = 0
+
+    init(keys: [PersistentKey<Int>], composedKeyID: String) {
+        self.keys = keys
+        self.composedKeyID = composedKeyID
+    }
+}
+
+// MARK: - KeyRowState Definition
+
+/// Row state whose creation SwiftUI performs once per row identity.
+@MainActor
+private final class KeyRowState: ObservableObject {
+    init(model: KeyRowModel) {
+        model.rowStateCount += 1
     }
 }
 

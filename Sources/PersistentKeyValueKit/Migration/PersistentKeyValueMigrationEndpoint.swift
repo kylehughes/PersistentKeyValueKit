@@ -77,16 +77,24 @@ protocol PersistentKeyValueMigrationBackend {
 
 /// A migration backend that supports in-place rewrites, which replace a key's value under its own identifier.
 ///
-/// Before writing, a rewrite decodes its prepared write with the source key and prepares the rewrite again, so that a
-/// retry cannot convert the value twice. That check is sound only when the code that receives the decoded value
-/// cannot change the prepared write, as with the exact immutable property-list copies that the Foundation stores
-/// prepare.
+/// Before writing, a rewrite decodes each reading of its prepared write with the source key and prepares the rewrite
+/// again, so that a retry cannot convert the value twice. That check is sound only when the code that receives the
+/// decoded value cannot change the prepared write, as with the exact immutable property-list copies that the
+/// Foundation stores prepare.
 /// ``InMemoryPersistentKeyValueStore`` keeps Swift values, including the references inside them, without copying
 /// them, so it does not conform, and migration setup rejects a rewrite in it with
 /// ``PersistentKeyMigrationError/sameStore``.
 protocol PersistentKeyValueMigrationRewriteBackend: PersistentKeyValueMigrationBackend {
-    /// Decodes the value that committing `write` would store, as `key` reads it, or returns `nil` when `write` removes
-    /// the key.
+    /// Returns the writes whose objects a later read can find after `write` is committed: `write` itself, as the
+    /// writing process reads it, and its binary property-list round trip, as other processes and later launches read
+    /// it.
+    ///
+    /// The round trip matches `write` as ``migrationWrite(_:matches:)`` compares them, but it can differ in a way that
+    /// a representation observes, such as an integer's width, so a retry can decode one reading and not the other.
+    func migrationReadings(of write: MigrationWrite) throws -> [MigrationWrite]
+
+    /// Decodes the object of `write`, or of one of its readings, as `key` reads it, or returns `nil` when `write`
+    /// removes the key.
     func migrationValue<Key>(
         for key: Key,
         writtenBy write: MigrationWrite

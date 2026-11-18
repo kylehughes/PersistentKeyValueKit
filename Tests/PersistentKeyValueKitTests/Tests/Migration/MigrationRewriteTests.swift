@@ -74,7 +74,13 @@ final class MigrationRewriteTests: XCTestCase {
 
     func testPlainSameKeyItemsStillThrowSameStore() throws {
         let memory = InMemoryPersistentKeyValueStore()
-        let memoryStore = TestStore(name: "memory", rawValue: memory.object(forKey:), store: memory)
+        let memoryStore = TestStore(
+            name: "memory",
+            rawValue: memory.object(forKey:),
+            reloadSerialized: { _ in
+            },
+            store: memory
+        )
 
         for store in try stores() + [memoryStore] {
             let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
@@ -469,6 +475,81 @@ final class MigrationRewriteTests: XCTestCase {
         }
     }
 
+    func testRewriteThatARetryInAnotherProcessWouldConvertAgainFailsBeforeWriting() throws {
+        for store in try stores() {
+            let id = "key:\(#function).distance"
+            let meters = PersistentKey(id, defaultValue: 0, representation: WideIntegerCodec())
+            let decimeters = PersistentKey(id, defaultValue: 0, representation: NarrowIntegerCodec())
+            let gate = PersistentKey<Int>("key:\(#function).gate", defaultValue: 0)
+            let renamed = PersistentKey<Int>("key:\(#function).renamed", defaultValue: 0)
+            let migrationID = "\(#function).\(store.name)"
+            let gateItem = PersistentKeyMigrationItem.key(gate, to: renamed) {
+                guard $0 != 0 else {
+                    throw RewriteFailure()
+                }
+
+                return $0
+            }
+            let items: [PersistentKeyMigrationItem] = [
+                .key(meters, to: decimeters) {
+                    $0 * 10
+                },
+                gateItem,
+            ]
+
+            store.store.set(meters, to: 12_345)
+            store.store.set(gate, to: 0)
+
+            let failed = try store.store.copy(
+                items: items,
+                to: store.store,
+                onConflict: .overwriteDestination,
+                tracking: .once(id: migrationID)
+            )
+
+            try store.reloadSerialized(id)
+            store.store.set(gate, to: 1)
+
+            let retried = try store.store.copy(
+                items: items,
+                to: store.store,
+                onConflict: .overwriteDestination,
+                tracking: .once(id: migrationID)
+            )
+
+            // The writing process reads the rewritten value as a 32-bit integer, which the source rejects, but other
+            // processes and later launches read a 64-bit integer, which the source accepts and would convert again.
+            XCTAssertEqual(failed.outcomes.map(\.status), [.failed(.prepare), .failed(.transform)], store.name)
+            XCTAssertEqual(
+                failed.outcomes.first?.error as? PersistentKeyMigrationError,
+                .nonIdempotentRewrite,
+                store.name
+            )
+            XCTAssertEqual(retried.outcomes.map(\.status), [.failed(.prepare), .copied], store.name)
+            XCTAssertEqual(retried.completion, .notRecorded, store.name)
+            XCTAssertEqual(store.store.get(meters), 12_345, store.name)
+
+            // Narrowing the width without changing the value is repeatable from either reading.
+            let narrowed = try store.store.copy(
+                items: [
+                    .key(meters, to: decimeters) {
+                        $0
+                    },
+                    gateItem,
+                ],
+                to: store.store,
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            )
+
+            XCTAssertEqual(narrowed.outcomes.map(\.status), [.rewritten, .copied], store.name)
+            XCTAssertEqual(store.store.get(decimeters), 12_345, store.name)
+            store.store.remove(decimeters)
+            store.store.remove(gate)
+            store.store.remove(renamed)
+        }
+    }
+
     func testRewriteThatARetryWouldConvertAgainFailsBeforeWriting() throws {
         for store in try stores() {
             let seconds = PersistentKey<Int>("key:\(#function).duration", defaultValue: 0)
@@ -722,9 +803,21 @@ final class MigrationRewriteTests: XCTestCase {
                 rawValue: {
                     defaults.persistentDomain(forName: suiteName)?[$0]
                 },
+                reloadSerialized: { _ in
+                    let domain = try XCTUnwrap(defaults.persistentDomain(forName: suiteName))
+                    let reloaded = try XCTUnwrap(try serializedReadback(of: domain) as? [String: Any])
+                    defaults.setPersistentDomain(reloaded, forName: suiteName)
+                },
                 store: defaults
             ),
-            TestStore(name: "cloud", rawValue: cloud.storedValue(for:), store: cloud),
+            TestStore(
+                name: "cloud",
+                rawValue: cloud.storedValue(for:),
+                reloadSerialized: {
+                    cloud.set(try serializedReadback(of: try XCTUnwrap(cloud.storedValue(for: $0))), forKey: $0)
+                },
+                store: cloud
+            ),
         ]
     }
 }
@@ -752,6 +845,29 @@ private final class Counter: @unchecked Sendable {
         lock.lock()
         count += 1
         lock.unlock()
+    }
+}
+
+// MARK: - Narrow Integer Codec Definition
+
+/// Stores an integer as a 32-bit number and decodes any integer.
+private struct NarrowIntegerCodec: PersistentKeyValueRepresentation {
+    // MARK: Internal Instance Interface
+
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Int {
+        guard let number = storageObject as? NSNumber, !CFNumberIsFloatType(number) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return number.intValue
+    }
+
+    func encode(_ value: Int, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        guard let value = Int32(exactly: value) else {
+            throw PersistentKeyValueConversionError.encodingFailed
+        }
+
+        return NSNumber(value: value)
     }
 }
 
@@ -828,6 +944,11 @@ private struct RewriteFailure: Error {
 private struct TestStore {
     let name: String
     let rawValue: (String) -> Any?
+
+    /// Replaces the stored object for a key identifier with its binary property-list round trip, as another process or
+    /// a later launch reads it.
+    let reloadSerialized: (String) throws -> Void
+
     let store: any PersistentKeyValueStore
 }
 
@@ -840,4 +961,31 @@ private final class UncheckedStore: @unchecked Sendable {
     init(_ store: any PersistentKeyValueStore) {
         self.store = store
     }
+}
+
+// MARK: - Wide Integer Codec Definition
+
+/// Stores an integer as a 64-bit number and decodes only 64-bit numbers.
+private struct WideIntegerCodec: PersistentKeyValueRepresentation {
+    // MARK: Internal Instance Interface
+
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Int {
+        guard let number = storageObject as? NSNumber, CFNumberGetType(number) == .sInt64Type else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return number.intValue
+    }
+
+    func encode(_ value: Int, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        NSNumber(value: Int64(value))
+    }
+}
+
+// MARK: - Serialized Readback
+
+/// Returns `object` after a binary property-list round trip, as another process or a later launch reads it.
+private func serializedReadback(of object: Any) throws -> Any {
+    let data = try PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0)
+    return try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
 }

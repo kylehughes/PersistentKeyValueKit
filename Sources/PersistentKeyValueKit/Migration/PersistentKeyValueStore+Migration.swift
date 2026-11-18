@@ -253,25 +253,26 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     /// Whether a retry that finds `write`'s value stored would leave it unchanged.
     ///
     /// A retry rewrites a stored value again when it still decodes with the source key's representation. That is safe
-    /// only when rewriting it again prepares the same write; otherwise the retry would convert the value twice.
+    /// only when rewriting it again prepares the same write; otherwise the retry would convert the value twice. The
+    /// retry can run in the writing process or in another process or launch, which read the stored value differently,
+    /// so every reading must be safe.
     private func isRepeatable<Store>(_ write: Store.MigrationWrite, in store: Store) -> Bool
     where Store: PersistentKeyValueMigrationRewriteBackend {
-        let storedValue: SourceKey.Value?
         do {
-            storedValue = try store.migrationValue(for: source, writtenBy: write)
-        } catch {
-            // A retry recognizes a value that does not decode as a source value as already rewritten.
-            return true
-        }
+            for reading in try store.migrationReadings(of: write) {
+                // A retry recognizes a reading that does not decode as a source value as already rewritten, and finds
+                // no source value after a write that removes the key.
+                guard let storedValue = try? store.migrationValue(for: source, writtenBy: reading) else {
+                    continue
+                }
 
-        // A retry finds no source value after a write that removes the key.
-        guard let storedValue else {
-            return true
-        }
+                let repeatedWrite = try store.prepareMigrationWrite(try transform(storedValue), for: destination)
+                guard store.migrationWrite(write, matches: repeatedWrite) else {
+                    return false
+                }
+            }
 
-        do {
-            let repeatedWrite = try store.prepareMigrationWrite(try transform(storedValue), for: destination)
-            return store.migrationWrite(write, matches: repeatedWrite)
+            return true
         } catch {
             return false
         }

@@ -167,8 +167,9 @@ extension PersistentKeyMigrationReport {
         case transform
 
         /// Encoding or validating the value with the destination key's representation failed before mutating the
-        /// destination. This includes an encoded object that the destination store cannot keep exactly, such as an
-        /// `NSDecimalNumber` that a `UserDefaults` or `NSUbiquitousKeyValueStore` store would keep as a `Double`
+        /// destination. This includes an encoded object that is not a property list, such as an array that contains
+        /// itself, or that the destination store cannot keep exactly, such as an `NSDecimalNumber` that a
+        /// `UserDefaults` or `NSUbiquitousKeyValueStore` store would keep as a `Double`
         /// (``PersistentKeyValueConversionError/encodingFailed``). An integer's width is not part of the value these
         /// stores keep, so an encoded `Int32` does not fail. As after an ordinary write, the writing process reads it
         /// back as written, while other processes and later launches can read a 64-bit integer.
@@ -285,10 +286,11 @@ extension PersistentKeyMigrationReport {
         /// or `NSUbiquitousKeyValueStore` store, under any copy or move conflict policy, or was found already
         /// rewritten because it decodes only with the destination key's representation. A move did not remove the key
         /// as its source. A tracked batch runs again after any item fails, so a rewrite is safe to retry only when its
-        /// result fails to decode with the source key's representation or when the transform and destination encoding
-        /// are idempotent; otherwise it fails with ``PersistentKeyMigrationError/nonIdempotentRewrite`` before
-        /// writing. To change a value without changing its representation, such as dollars to cents, move it to a new
-        /// key instead. See ``PersistentKeyMigrationItem/key(_:to:transform:)``.
+        /// result fails to decode with the source key's representation in any process or when the transform and
+        /// destination encoding are idempotent; otherwise it fails with
+        /// ``PersistentKeyMigrationError/nonIdempotentRewrite`` before writing. To change a value without changing its
+        /// representation, such as dollars to cents, move it to a new key instead. See
+        /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
         case rewritten
 
         /// No persisted value existed for the source key in the source store.

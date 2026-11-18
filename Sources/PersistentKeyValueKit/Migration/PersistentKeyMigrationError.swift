@@ -70,8 +70,11 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// when the source and destination representations share a storage format, including numbers that Foundation
     /// bridges, such as an integer and an integral `Double`, when the second run of the transform throws, or when the
     /// destination representation does not encode the same value identically on each run (for example, `JSONEncoder`
-    /// without `.sortedKeys` when the source representation can still decode the encoded result). Migrate the value to
-    /// a new key instead; see ``PersistentKeyMigrationItem/key(_:to:transform:)``.
+    /// without `.sortedKeys` when the source representation can still decode the encoded result). The value must be
+    /// safe to rewrite again as every process reads it: a `UserDefaults` or `NSUbiquitousKeyValueStore` store returns
+    /// an encoded `Int32` as written only to the writing process, and other processes and later launches read a 64-bit
+    /// integer, which a source representation can accept even when it rejects the `Int32`. Migrate the value to a new
+    /// key instead; see ``PersistentKeyMigrationItem/key(_:to:transform:)``.
     case nonIdempotentRewrite
 
     /// The source value changed between the initial snapshot and source removal during a move.

@@ -229,6 +229,49 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
     }
 
     @MainActor
+    func test_store_set_dropsChangesQueuedByPreviousStore() {
+        let previousStore = InMemoryPersistentKeyValueStore()
+        let selectedStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: previousStore, key: key)
+        let written = DispatchSemaphore(value: 0)
+
+        // Background writes queue their change notifications on the main queue, which is busy until the switch.
+        DispatchQueue.global().async {
+            for value in 1...32 {
+                previousStore.set(key, to: value)
+            }
+
+            written.signal()
+        }
+
+        written.wait()
+        observer.store = selectedStore
+
+        var notifiedValues: [Int] = []
+        let cancellable = observer.objectWillChange.sink {
+            notifiedValues.append(observer.value)
+        }
+
+        // The main queue runs blocks in order, so this runs after every queued notification.
+        let drained = expectation(description: "Queued notifications ran")
+
+        DispatchQueue.main.async {
+            drained.fulfill()
+        }
+
+        wait(for: [drained], timeout: 1)
+
+        XCTAssertEqual(notifiedValues, [])
+
+        selectedStore.set(key, to: 9)
+
+        XCTAssertEqual(notifiedValues, [9])
+
+        cancellable.cancel()
+    }
+
+    @MainActor
     func test_store_set_doesNotNotifyForSameSelection() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: 0)

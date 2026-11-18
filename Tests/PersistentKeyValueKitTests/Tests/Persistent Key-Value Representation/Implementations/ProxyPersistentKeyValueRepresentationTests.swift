@@ -111,6 +111,35 @@ extension ProxyPersistentKeyValueRepresentationTests {
         XCTAssertNil(representation.from("invalid"))
     }
 
+    func test_protocol_encodeRejectsAProxyEncodingThatIsNotAPropertyList() {
+        let finished = DispatchSemaphore(value: 0)
+
+        // A regression recurses into the array, so encoding runs where a timeout can report it.
+        DispatchQueue.global().async {
+            defer {
+                finished.signal()
+            }
+
+            let representation = ProxyPersistentKeyValueRepresentation<String, Loop>(
+                to: { _ in
+                    Loop()
+                },
+                from: { _ in
+                    "decoded"
+                }
+            )
+
+            do {
+                _ = try representation.encode("value", format: .userDefaults)
+                XCTFail("Encoding succeeded.")
+            } catch {
+                XCTAssertEqual(error as? PersistentKeyValueConversionError, .encodingFailed)
+            }
+        }
+
+        XCTAssertEqual(finished.wait(timeout: .now() + 10), .success)
+    }
+
     @MainActor
     func test_protocol_encodeValidatesWithoutConsumingTheEncodedObject() throws {
         let representation = ProxyPersistentKeyValueRepresentation<String, Packet>(
@@ -222,6 +251,29 @@ extension ProxyPersistentKeyValueRepresentationTests {
         )
 
         XCTAssertNil(representation.get(from: ["1", "invalid"]))
+    }
+}
+
+// MARK: - Loop Definition
+
+/// A value whose representation encodes it as an array that contains itself, which is not a property list.
+private struct Loop: KeyValuePersistible, Sendable {
+    static let persistentKeyValueRepresentation = Representation()
+}
+
+// MARK: - Loop Representation Definition
+
+extension Loop {
+    struct Representation: PersistentKeyValueKit.PersistentKeyValueRepresentation {
+        func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Loop {
+            Loop()
+        }
+
+        func encode(_ value: Loop, format: PersistentKeyValueStorageFormat) throws -> Any? {
+            let array = NSMutableArray()
+            array.add(array)
+            return array
+        }
     }
 }
 
