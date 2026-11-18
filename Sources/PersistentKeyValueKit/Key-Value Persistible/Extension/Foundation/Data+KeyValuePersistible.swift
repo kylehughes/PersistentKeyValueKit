@@ -18,6 +18,10 @@ extension Data {
     }
 }
 
+// MARK: - BuiltInScalarPrimitive Extension
+
+extension Data: BuiltInScalarPrimitive {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Data: PrimitiveKeyValuePersistible {

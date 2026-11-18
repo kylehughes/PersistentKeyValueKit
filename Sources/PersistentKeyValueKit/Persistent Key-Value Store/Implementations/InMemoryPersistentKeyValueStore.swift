@@ -28,7 +28,10 @@ import Foundation
 /// migration instead of removing or overwriting the value. It detects other references only when they are replaced, so
 /// do not mutate them while a migration runs. Same-type in-place rewrites compare the prepared result with `Equatable`
 /// and fail at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
-/// ``PersistentKeyMigrationError/nonIdempotentRewrite`` when the value type does not conform to `Equatable`.
+/// ``PersistentKeyMigrationError/nonIdempotentRewrite`` when the value type does not conform to `Equatable`. Because
+/// verification runs the transform again on the prepared result itself, such a rewrite also fails there when that run
+/// changes a Foundation property-list result in place, or when the result is any other reference, whose changes the
+/// store cannot detect.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
 ///   thread-safety requirement. The lock is not held while key identifiers are evaluated, observers are notified, or
@@ -246,11 +249,13 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             return (nextRevision, registeredObservations(for: write.keyID), replacedValue)
         }
 
+        // The committed entry must still have the contents the write was prepared with.
         let committed = MigrationSnapshot(
             identity: migrationIdentity,
             keyID: write.keyID,
             revision: result.0,
-            object: write.object
+            object: write.object,
+            contents: write.contents
         )
         notify(result.1, keyPath: write.keyID)
         guard try migrationSnapshotIsCurrent(committed, for: write.keyID) else {
@@ -333,6 +338,12 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
         }
 
         return value.isEqual(toMigrationObject: other.object)
+    }
+
+    /// Compares a Foundation property-list object with the exact copy captured when the write was prepared. Any other
+    /// reference cannot be compared, so it never counts as unchanged.
+    func migrationWriteIsUnchanged(_ write: MigrationWrite) -> Bool {
+        write.contents.isVerifiable && write.contents.match(write.object)
     }
 
     func prepareMigrationWrite<Key>(
@@ -448,10 +459,8 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
 extension InMemoryPersistentKeyValueStore {
     /// A captured entry, which is current while the store holds the same revision with the same contents.
     ///
-    /// Mutating a stored reference changes the entry without a new revision. A Foundation property-list object, such
-    /// as an `NSMutableArray`, is therefore also captured as an exact immutable copy whose contents must still match.
-    /// Other references, including ones inside Swift values, are retained but not copied, so they verify by revision
-    /// only.
+    /// Mutating a stored reference changes the entry without a new revision, so the contents of a Foundation
+    /// property-list object must also still match. Other references verify by revision only.
     struct MigrationSnapshot {
         /// The store and key this snapshot belongs to.
         let identity: PersistentKeyValueMigrationStoreIdentity
@@ -460,52 +469,84 @@ extension InMemoryPersistentKeyValueStore {
         let revision: UInt64
         /// The captured value.
         let object: Any
-        /// An exact immutable copy of `object` when it is a Foundation property-list object, or `nil` otherwise.
-        let contents: Any?
+        /// The captured contents of the reference that `object` is or wraps.
+        let contents: ReferenceContents
 
         // MARK: Internal Initialization
 
-        init(identity: PersistentKeyValueMigrationStoreIdentity, keyID: String, revision: UInt64, object: Any) {
+        /// Creates a snapshot of `object`, capturing its contents now unless `contents` were captured earlier.
+        init(
+            identity: PersistentKeyValueMigrationStoreIdentity,
+            keyID: String,
+            revision: UInt64,
+            object: Any,
+            contents: ReferenceContents? = nil
+        ) {
             self.identity = identity
             self.keyID = keyID
             self.revision = revision
             self.object = object
-            contents = Self.frozenContents(of: object)
+            self.contents = contents ?? ReferenceContents(of: object)
         }
 
         // MARK: Internal Instance Interface
 
         /// Whether `object`, the entry's current value, still has the captured contents.
         func hasContents(of object: Any?) -> Bool {
-            guard let contents else {
-                return true
-            }
-
-            return PropertyListMigrationStorage.equal(contents, object)
+            contents.match(object)
         }
+    }
+}
 
-        // MARK: Private Static Interface
+// MARK: - ReferenceContents Extension
 
-        /// Returns an exact immutable copy of `object` when it, or the value an optional wraps, is a Foundation
-        /// property-list object, whose contents can change without a store write.
-        ///
-        /// The copy keeps values that a serialized property list cannot, such as an `NSDecimalNumber`, so an edit to
-        /// one is still detected.
-        private static func frozenContents(of object: Any) -> Any? {
+extension InMemoryPersistentKeyValueStore {
+    /// The contents of the reference that a value is or wraps, captured so that an in-place edit can be detected.
+    ///
+    /// The store keeps references without copying them, so mutating one changes a stored or prepared value without a
+    /// store write. A Foundation property-list object, such as an `NSMutableArray`, is captured as an exact immutable
+    /// copy, which keeps values that a serialized property list cannot, such as an `NSDecimalNumber`. Any other
+    /// reference cannot be copied, so its contents are unknown. References inside Swift values, such as the elements
+    /// of a Swift array, are not captured.
+    struct ReferenceContents {
+        /// The exact copy, or `nil` when the value is not a Foundation property-list object.
+        private let copy: Any?
+
+        /// Whether the value is a reference that is not a Foundation property-list object.
+        private let isOpaque: Bool
+
+        // MARK: Internal Initialization
+
+        init(of object: Any) {
             var value = object
-            while let optional = value as? any OptionalElement {
-                guard let wrapped = optional.wrappedObject else {
-                    return nil
-                }
-
+            while let optional = value as? any OptionalElement, let wrapped = optional.wrappedObject {
                 value = wrapped
             }
 
             guard type(of: value) is AnyClass else {
-                return nil
+                copy = nil
+                isOpaque = false
+                return
             }
 
-            return try? PropertyListMigrationStorage.exactCopy(value)
+            copy = try? PropertyListMigrationStorage.exactCopy(value)
+            isOpaque = copy == nil
+        }
+
+        // MARK: Internal Instance Interface
+
+        /// Whether the captured contents are known, which is false for a reference that cannot be copied.
+        var isVerifiable: Bool {
+            !isOpaque
+        }
+
+        /// Whether `object` still has the captured contents. Contents that were not copied always match.
+        func match(_ object: Any?) -> Bool {
+            guard let copy else {
+                return true
+            }
+
+            return PropertyListMigrationStorage.equal(copy, object)
         }
     }
 }
@@ -519,6 +560,17 @@ extension InMemoryPersistentKeyValueStore {
         let keyID: String
         /// The normalized value that will be committed.
         let object: Any
+        /// The contents of the reference that `object` is or wraps, captured when the write was prepared.
+        let contents: ReferenceContents
+
+        // MARK: Internal Initialization
+
+        init(identity: PersistentKeyValueMigrationStoreIdentity, keyID: String, object: Any) {
+            self.identity = identity
+            self.keyID = keyID
+            self.object = object
+            contents = ReferenceContents(of: object)
+        }
     }
 }
 

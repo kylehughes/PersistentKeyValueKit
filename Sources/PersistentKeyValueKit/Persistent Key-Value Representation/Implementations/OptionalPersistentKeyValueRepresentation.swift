@@ -160,8 +160,13 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInContainerConversion {
         try base.checkedPropertyListDictionary(encoding: values.compactMapValues { $0 })
     }
 
-    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value] {
-        try base.checkedValues(decoding: propertyListArray).map(Optional.some)
+    func builtInValues<Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element
+    ) throws -> [Element] {
+        try base.checkedValues(decoding: propertyListArray) {
+            try convert($0)
+        }
     }
 
     func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {

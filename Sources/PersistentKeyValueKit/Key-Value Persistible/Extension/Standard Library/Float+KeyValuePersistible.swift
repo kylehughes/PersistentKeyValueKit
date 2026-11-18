@@ -18,6 +18,10 @@ extension Float: KeyValuePersistible {
     }
 }
 
+// MARK: - BuiltInScalarPrimitive Extension
+
+extension Float: BuiltInScalarPrimitive {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Float: PrimitiveKeyValuePersistible {

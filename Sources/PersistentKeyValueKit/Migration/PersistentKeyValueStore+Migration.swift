@@ -231,7 +231,9 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     /// Whether a retry that finds `write`'s value stored would leave it unchanged.
     ///
     /// A retry rewrites a stored value again when it still decodes with the source key's representation. That is safe
-    /// only when rewriting it again prepares the same write; otherwise the retry would convert the value twice.
+    /// only when rewriting it again prepares the same write; otherwise the retry would convert the value twice. The
+    /// transform runs on the value that `write` stores, which in a store that keeps references is the prepared object
+    /// itself, so `write` must also still have the contents it was prepared with.
     private func isRepeatable<Store>(_ write: Store.MigrationWrite, in store: Store) -> Bool
     where Store: PersistentKeyValueMigrationBackend {
         let storedValue: SourceKey.Value?
@@ -249,7 +251,7 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
 
         do {
             let repeatedWrite = try store.prepareMigrationWrite(try transform(storedValue), for: destination)
-            return store.migrationWrite(write, matches: repeatedWrite)
+            return store.migrationWrite(write, matches: repeatedWrite) && store.migrationWriteIsUnchanged(write)
         } catch {
             return false
         }
@@ -273,7 +275,8 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     /// decoded. A stored value that fails to decode with the source key's representation but decodes with the
     /// destination key's representation was already rewritten, typically by an earlier attempt of a tracked batch
     /// whose later item failed, so it is reported as rewritten without being written again. A rewrite whose result a
-    /// retry would convert again fails before writing, so a retry can never apply the transform twice.
+    /// retry would convert again fails before writing, so a retry can never apply the transform twice, and so does a
+    /// rewrite whose result verification changed or could have changed without the store detecting it.
     private func rewrite<Store>(in store: Store) -> PersistentKeyMigrationReport.Outcome
     where Store: PersistentKeyValueMigrationBackend {
         let id = source.id

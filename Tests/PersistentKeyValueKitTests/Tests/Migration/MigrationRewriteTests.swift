@@ -482,6 +482,96 @@ final class MigrationRewriteTests: XCTestCase {
         }
     }
 
+    func testRewriteWhoseVerificationChangesItsResultFailsBeforeWriting() throws {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = MutableArrayKey(id: "key:\(#function)")
+        let original = UncheckedReference(NSMutableArray(array: [3]))
+        let migrationID = "\(#function)"
+
+        store.set(key, to: original.value)
+
+        // The first run copies the stored array. Verification runs the transform on the first result, which this
+        // transform edits in place and returns, so both runs return the same object.
+        let report = try store.move(
+            .key(key, to: key) { price in
+                let result = price === original.value ? price.mutableCopy() as! NSMutableArray : price
+
+                result.replaceObject(at: 0, with: (result.object(at: 0) as! Int) * 100)
+
+                return result
+            },
+            to: store,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: migrationID)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.prepare)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .nonIdempotentRewrite)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertIdentical(store.get(key), original.value)
+        XCTAssertEqual(original.value, [3])
+    }
+
+    func testRewriteOfAMutableResultThatVerificationLeavesUnchangedCommitsTheResult() throws {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = MutableArrayKey(id: "key:\(#function)")
+        let results = UncheckedReference(NSMutableArray())
+
+        store.set(key, to: NSMutableArray(array: [3, 1, 2]))
+
+        let report = try store.copy(
+            .key(key, to: key) { numbers in
+                let sorted = NSMutableArray(array: numbers.sortedArray(using: #selector(NSNumber.compare(_:))))
+
+                results.value.add(sorted)
+
+                return sorted
+            },
+            to: store,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.rewritten])
+        XCTAssertEqual(store.get(key), [1, 2, 3])
+        // The rewrite keeps the first result, whose type and identity verification does not change.
+        XCTAssertEqual(results.value.count, 2)
+        XCTAssertIdentical(store.get(key), results.value.firstObject as AnyObject?)
+    }
+
+    func testRewriteOfAReferenceThatCannotBeCopiedFailsBeforeWriting() throws {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey<RewriteBox>(
+            "key:\(#function)",
+            defaultValue: RewriteBox(1),
+            representation: ProxyPersistentKeyValueRepresentation<RewriteBox, Int>(
+                to: {
+                    $0.number
+                },
+                from: {
+                    RewriteBox($0)
+                }
+            )
+        )
+        let original = RewriteBox(3)
+
+        store.set(key, to: original)
+
+        // Verification could change a reference without the store being able to tell, so the rewrite fails.
+        let report = try store.copy(
+            .key(key, to: key) {
+                RewriteBox(min($0.number, 2))
+            },
+            to: store,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.prepare)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .nonIdempotentRewrite)
+        XCTAssertIdentical(store.get(key), original)
+    }
+
     func testRewriteWithIdentityTransformChangesOnlyTheRepresentation() throws {
         for store in try stores() {
             let id = "key:\(#function)"
@@ -762,6 +852,21 @@ private struct ReentrantStringCodec: PersistentKeyValueRepresentation {
     }
 }
 
+// MARK: - Rewrite Box Definition
+
+/// An immutable reference to a number, which the in-memory store keeps without copying.
+private final class RewriteBox: Equatable, Sendable {
+    let number: Int
+
+    init(_ number: Int) {
+        self.number = number
+    }
+
+    static func == (lhs: RewriteBox, rhs: RewriteBox) -> Bool {
+        lhs.number == rhs.number
+    }
+}
+
 // MARK: - Rewrite Failure Definition
 
 private struct RewriteFailure: Error {
@@ -774,6 +879,17 @@ private struct TestStore {
     let rawValue: (String) -> Any?
     let store: any PersistentKeyValueStore
     let storesFoundationObjects: Bool
+}
+
+// MARK: - Unchecked Reference Definition
+
+/// Carries a reference into a `@Sendable` transform that runs synchronously on the calling thread.
+private final class UncheckedReference<Value: AnyObject>: @unchecked Sendable {
+    var value: Value
+
+    init(_ value: Value) {
+        self.value = value
+    }
 }
 
 // MARK: - Unchecked Store Definition

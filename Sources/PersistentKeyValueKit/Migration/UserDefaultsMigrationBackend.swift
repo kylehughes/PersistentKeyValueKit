@@ -155,6 +155,11 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         PropertyListMigrationStorage.equal(write.object, other.object)
     }
 
+    /// A prepared write holds a frozen property list, whose objects are immutable.
+    func migrationWriteIsUnchanged(_ write: MigrationWrite) -> Bool {
+        true
+    }
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key

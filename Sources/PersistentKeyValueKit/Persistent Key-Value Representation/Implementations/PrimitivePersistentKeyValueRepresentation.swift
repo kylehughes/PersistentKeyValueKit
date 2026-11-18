@@ -105,9 +105,12 @@ extension PrimitivePersistentKeyValueRepresentation: BuiltInContainerConversion 
         }
     }
 
-    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value] {
+    func builtInValues<Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element
+    ) throws -> [Element] {
         try propertyListArray.map {
-            try Value.decode(storageObject: $0, format: .propertyList)
+            try convert(Value.decode(storageObject: $0, format: .propertyList))
         }
     }
 
@@ -118,11 +121,21 @@ extension PrimitivePersistentKeyValueRepresentation: BuiltInContainerConversion 
     }
 }
 
+// MARK: - BuiltInScalarConversion Extension
+
+extension PrimitivePersistentKeyValueRepresentation: BuiltInScalarConversion where Value: BuiltInScalarPrimitive {}
+
 // MARK: - Built-In Container Primitive Definition
 
 /// A built-in primitive container, `Array` or `Dictionary`, whose checked conversion as an element decodes and
 /// encodes each element itself instead of using its ordinary container methods.
 ///
-/// Built-in scalar primitives do not conform: their container methods cast or convert each element exactly as their
-/// checked conversion does, so checked conversion calls those methods.
+/// Built-in scalar primitives conform to ``BuiltInScalarPrimitive`` instead: their container methods cast or convert
+/// each element exactly as their checked conversion does, so checked conversion calls those methods.
 internal protocol BuiltInContainerPrimitive: PrimitiveKeyValuePersistible {}
+
+// MARK: - Built-In Scalar Primitive Definition
+
+/// A built-in scalar primitive, such as `Int` or `URL`, whose container methods cast or convert each element exactly
+/// as its checked conversion does.
+internal protocol BuiltInScalarPrimitive: PrimitiveKeyValuePersistible {}

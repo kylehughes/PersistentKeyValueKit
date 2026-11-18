@@ -239,6 +239,58 @@ extension CheckedContainerConversionTests {
         }
     }
 
+    func test_checkedDecode_builtInProxyContainers_rethrowFirstElementErrorInInputOrder() throws {
+        let malformed = Data("invalid JSON".utf8)
+        let valid = try JSONEncoder().encode(CodedPayload(amount: 1))
+
+        XCTAssertEqual(
+            try [OuterPayload].persistentKeyValueRepresentation.decode(storageObject: [valid], format: .propertyList),
+            [OuterPayload(payload: CodedPayload(amount: 1))]
+        )
+        XCTAssertEqual(
+            try [ProxiedCount?].persistentKeyValueRepresentation.decode(storageObject: [1, 2], format: .propertyList),
+            [ProxiedCount(1), ProxiedCount(2)]
+        )
+
+        // Element zero is data that is not JSON; element one is not data at all. Each element completes both its
+        // storage and proxy conversion before the next element is read.
+        assertDecodingError([CodedPayload].persistentKeyValueRepresentation, [malformed, 42], "codable")
+        assertDecodingError([CodedPayload?].persistentKeyValueRepresentation, [malformed, 42], "optional")
+        assertDecodingError([[CodedPayload]].persistentKeyValueRepresentation, [[malformed, 42]], "nested")
+        assertDecodingError([OuterPayload].persistentKeyValueRepresentation, [malformed, 42], "proxy of codable")
+
+        XCTAssertThrowsError(
+            try [CodedPayload].persistentKeyValueRepresentation.decode(
+                storageObject: [42, malformed],
+                format: .propertyList
+            )
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .invalidStorageValue)
+        }
+        XCTAssertThrowsError(
+            try [ProxiedCount].persistentKeyValueRepresentation.decode(
+                storageObject: [-1, "not a number"],
+                format: .propertyList
+            )
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .invalidValue)
+        }
+    }
+
+    func test_move_codableArrayWithMalformedElements_reportsFirstElementError() throws {
+        let key = PersistentKey("key:\(#function)", defaultValue: [CodedPayload]())
+        let destination = InMemoryPersistentKeyValueStore()
+
+        userDefaults.set([Data("invalid JSON".utf8), 42] as [Any], forKey: key.id)
+
+        let report = try userDefaults.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.decode)])
+        XCTAssertTrue(report.outcomes.first?.error is DecodingError, "\(String(describing: report.outcomes.first?.error))")
+        XCTAssertEqual(userDefaults.array(forKey: key.id)?.count, 2)
+        XCTAssertNil(destination.object(forKey: key.id))
+    }
+
     func test_move_codableArrayWithUnencodableElement_failsWithCoderErrorAtAnyPosition() throws {
         let key = PersistentKey("key:\(#function)", defaultValue: [CodedPayload]())
 
@@ -326,6 +378,25 @@ extension CheckedContainerConversionTests {
         representation.set([nil, ProxiedCount(1), nil], to: &array)
 
         XCTAssertEqual(array as? [Int], [1])
+    }
+
+    func test_set_nestedContainersInUserDefaults_omitNilValuesOrLeaveStoredValue() {
+        let arrays = PersistentKey("key:\(#function).arrays", defaultValue: [[ProxiedCount?]]())
+        let dictionaries = PersistentKey("key:\(#function).dictionaries", defaultValue: [String: [ProxiedCount?]]())
+
+        // Every value of an inner container encodes to `nil`, which omits it rather than failing the write.
+        userDefaults.set(arrays, to: [[nil, nil], [ProxiedCount(1)]])
+        userDefaults.set(dictionaries, to: ["a": [nil], "b": [ProxiedCount(2)]])
+
+        XCTAssertEqual(userDefaults.array(forKey: arrays.id) as? [[Int]], [[], [1]])
+        XCTAssertEqual(userDefaults.dictionary(forKey: dictionaries.id) as? [String: [Int]], ["a": [], "b": [2]])
+
+        // A value that fails to encode leaves the stored value unchanged.
+        userDefaults.set(arrays, to: [[nil], [ProxiedCount(-1)]])
+        userDefaults.set(dictionaries, to: ["a": [nil], "b": [ProxiedCount(-1)]])
+
+        XCTAssertEqual(userDefaults.array(forKey: arrays.id) as? [[Int]], [[], [1]])
+        XCTAssertEqual(userDefaults.dictionary(forKey: dictionaries.id) as? [String: [Int]], ["a": [], "b": [2]])
     }
 
     func test_set_builtInNestedContainers_assignsOrLeavesArray() {
@@ -710,6 +781,20 @@ private struct CodedPayload: Codable, Equatable, KeyValuePersistible {
 
     static var persistentKeyValueRepresentation: Representation {
         Representation(encoder: JSONEncoder(), decoder: JSONDecoder())
+    }
+}
+
+// MARK: - Outer Payload Definition
+
+/// A value persisted through a closure proxy whose proxy is a ``CodedPayload``.
+private struct OuterPayload: Equatable, KeyValuePersistible {
+    let payload: CodedPayload
+
+    static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, CodedPayload> {
+        ProxyPersistentKeyValueRepresentation(
+            to: { $0.payload },
+            from: { OuterPayload(payload: $0) }
+        )
     }
 }
 

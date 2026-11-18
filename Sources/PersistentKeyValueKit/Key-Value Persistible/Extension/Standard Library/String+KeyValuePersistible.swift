@@ -18,6 +18,10 @@ extension String: KeyValuePersistible {
     }
 }
 
+// MARK: - BuiltInScalarPrimitive Extension
+
+extension String: BuiltInScalarPrimitive {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension String: PrimitiveKeyValuePersistible {

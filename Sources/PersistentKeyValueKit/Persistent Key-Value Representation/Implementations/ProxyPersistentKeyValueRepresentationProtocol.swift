@@ -223,8 +223,13 @@ extension BuiltInProxyConversion {
         )
     }
 
-    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value] {
-        try Proxy.persistentKeyValueRepresentation.checkedValues(decoding: propertyListArray).map(checkedValue(for:))
+    func builtInValues<Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element
+    ) throws -> [Element] {
+        try Proxy.persistentKeyValueRepresentation.checkedValues(decoding: propertyListArray) {
+            try convert(checkedValue(for: $0))
+        }
     }
 
     func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {

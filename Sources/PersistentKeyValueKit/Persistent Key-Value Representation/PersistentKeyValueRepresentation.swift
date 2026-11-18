@@ -281,9 +281,21 @@ extension PersistentKeyValueRepresentation {
     // MARK: Internal Instance Interface
 
     /// Returns the property-list array that stores `values`, or `nil` if any element fails to encode.
+    ///
+    /// Ordinary writes encode with ``set(_:to:)``, which reports a failure by leaving the array empty. Only an empty
+    /// result for nonempty `values` falls back to checked conversion, which tells a failure apart from a built-in
+    /// representation that omits every value, such as an array of `nil` optionals.
     @usableFromInline
     internal func propertyListArray(encoding values: [Value]) -> [Any]? {
-        try? checkedPropertyListArray(encoding: values)
+        var objects: [Any] = []
+
+        set(values, to: &objects)
+
+        guard objects.isEmpty, !values.isEmpty else {
+            return objects
+        }
+
+        return try? checkedPropertyListArray(encoding: values)
     }
 
     /// Returns the property-list array that stores `values`, throwing if it cannot be encoded.
@@ -309,9 +321,23 @@ extension PersistentKeyValueRepresentation {
     }
 
     /// Returns the property-list dictionary that stores `values`, or `nil` if any value fails to encode.
+    ///
+    /// Ordinary writes encode each entry with ``set(_:to:in:)``, which reports a failure by leaving the entry absent.
+    /// Only an absent entry falls back to checked conversion, which tells a failure apart from a built-in
+    /// representation that omits a value, such as a `nil` optional.
     @usableFromInline
     internal func propertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
-        try? checkedPropertyListDictionary(encoding: values)
+        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+
+        for (key, value) in values {
+            set(key, to: value, in: &objects)
+
+            guard objects[key] != nil else {
+                return try? checkedPropertyListDictionary(encoding: values)
+            }
+        }
+
+        return objects
     }
 
     /// Returns the property-list dictionary that stores `values`, throwing if it cannot be encoded.
@@ -341,19 +367,42 @@ extension PersistentKeyValueRepresentation {
     /// Returns the values stored in `propertyListArray`, throwing if it cannot be decoded.
     ///
     /// A built-in representation decodes each element with its own checked conversion, so a nested dictionary fails
-    /// instead of omitting an entry, and rethrows the first error. Any other representation is decoded with
-    /// ``get(from:)`` exactly as it implements it, and a `nil` result throws
+    /// instead of omitting an entry, and rethrows the first error in input order. Any other representation is decoded
+    /// with ``get(from:)`` exactly as it implements it, and a `nil` result throws
     /// ``PersistentKeyValueConversionError/invalidStorageValue``.
     internal func checkedValues(decoding propertyListArray: [Any]) throws -> [Value] {
         if let builtIn = self as? any BuiltInContainerConversion {
             return try builtInValues(decoding: propertyListArray, with: builtIn)
         }
 
-        guard let values = get(from: propertyListArray) else {
-            throw PersistentKeyValueConversionError.invalidStorageValue
+        return try values(readingArray: propertyListArray)
+    }
+
+    /// Returns the values stored in `propertyListArray`, each converted with `convert`, throwing if any element cannot
+    /// be decoded or converted.
+    ///
+    /// A built-in representation, including a built-in scalar such as `Int`, finishes decoding and converting each
+    /// element before it reads the next, so the first error in input order is rethrown even when it comes from
+    /// `convert`, such as a proxy representation's conversion of its decoded proxy. Any other representation is
+    /// decoded with ``get(from:)`` exactly as it implements it, so a `nil` result throws
+    /// ``PersistentKeyValueConversionError/invalidStorageValue`` before any value is converted.
+    internal func checkedValues<Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element
+    ) throws -> [Element] {
+        if let builtIn = self as? any BuiltInContainerConversion {
+            return try builtInValues(decoding: propertyListArray, converting: convert, with: builtIn)
         }
 
-        return values
+        // A built-in scalar's array read decodes each element exactly as its checked conversion does, so decoding
+        // one element at a time produces the same values while reporting the first error in input order.
+        if self is any BuiltInScalarConversion {
+            return try propertyListArray.map {
+                try convert(decode(storageObject: $0, format: .propertyList))
+            }
+        }
+
+        return try values(readingArray: propertyListArray).map(convert)
     }
 
     /// Returns the values stored in `propertyListDictionary`, throwing if any entry cannot be decoded.
@@ -417,7 +466,19 @@ extension PersistentKeyValueRepresentation {
         decoding propertyListArray: [Any],
         with builtIn: BuiltIn
     ) throws -> [Value] {
-        try builtIn.builtInValues(decoding: propertyListArray) as! [Value]
+        try builtIn.builtInValues(decoding: propertyListArray) {
+            $0
+        } as! [Value]
+    }
+
+    private func builtInValues<BuiltIn: BuiltInContainerConversion, Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element,
+        with builtIn: BuiltIn
+    ) throws -> [Element] {
+        try builtIn.builtInValues(decoding: propertyListArray) {
+            try convert($0 as! Value)
+        }
     }
 
     private func builtInDictionary<BuiltIn: BuiltInContainerConversion>(
@@ -425,6 +486,16 @@ extension PersistentKeyValueRepresentation {
         with builtIn: BuiltIn
     ) throws -> [String: Value] {
         try builtIn.builtInDictionary(decoding: propertyListDictionary) as! [String: Value]
+    }
+
+    /// Decodes `propertyListArray` with ``get(from:)``, throwing
+    /// ``PersistentKeyValueConversionError/invalidStorageValue`` when it returns `nil`.
+    private func values(readingArray propertyListArray: [Any]) throws -> [Value] {
+        guard let values = get(from: propertyListArray) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return values
     }
 }
 
@@ -436,9 +507,9 @@ extension PersistentKeyValueRepresentation {
 /// Built-in container methods are ordinary reads and writes: for example, a nested dictionary read omits entries that
 /// fail to decode. Checked conversion, which migration and registration use, must instead fail. A built-in
 /// representation therefore converts its elements through checked conversion directly, recursing into the checked
-/// conversion of its base or proxy representation. A representation defined outside this package does not conform, so
-/// checked conversion calls its container methods exactly as it implements them, including the protocol's default
-/// implementations.
+/// conversion of its base or proxy representation, and converts an array one element at a time so that it reports the
+/// first error in input order. A representation defined outside this package does not conform, so checked conversion
+/// calls its container methods exactly as it implements them, including the protocol's default implementations.
 internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
     /// Returns the property-list array that stores `values`, throwing the first error.
     func builtInPropertyListArray(encoding values: [Value]) throws -> [Any]
@@ -446,12 +517,27 @@ internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
     /// Returns the property-list dictionary that stores `values`, throwing the first error.
     func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any]
 
-    /// Returns the values stored in `propertyListArray`, throwing the first error.
-    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value]
+    /// Returns the values stored in `propertyListArray`, each converted with `convert`, throwing the first error in
+    /// input order.
+    ///
+    /// Each element is decoded and passed to `convert` before the next element is read.
+    func builtInValues<Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element
+    ) throws -> [Element]
 
     /// Returns the values stored in `propertyListDictionary`, throwing the first error.
     func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value]
 }
+
+// MARK: - Built-In Scalar Conversion Definition
+
+/// A representation of a built-in scalar primitive, such as `Int` or `URL`, whose container methods convert each
+/// element exactly as its checked conversion does.
+///
+/// Checked conversion uses these container methods, except when a built-in proxy or optional representation also
+/// converts each element: it then decodes one element at a time so that it reports the first error in input order.
+internal protocol BuiltInScalarConversion: PersistentKeyValueRepresentation {}
 
 /// The storage format used to encode or decode a persistent value.
 public enum PersistentKeyValueStorageFormat: Sendable {

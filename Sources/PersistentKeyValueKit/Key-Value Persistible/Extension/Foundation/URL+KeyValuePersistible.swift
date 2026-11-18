@@ -18,6 +18,10 @@ extension URL {
     }
 }
 
+// MARK: - BuiltInScalarPrimitive Extension
+
+extension URL: BuiltInScalarPrimitive {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension URL: PrimitiveKeyValuePersistible {

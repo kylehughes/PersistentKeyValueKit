@@ -35,8 +35,9 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     ///
     /// Throws if the array cannot be decoded. This checked conversion is stricter than ordinary reads: a nested
     /// dictionary fails instead of omitting an entry that fails to decode or merging canonically equivalent keys.
-    /// Built-in element representations decode each element with their own checked conversion and rethrow the first
-    /// error. Other element representations decode the array with their
+    /// Built-in element representations finish decoding each element with their own checked conversion, including a
+    /// proxy representation's conversion of the decoded proxy, before reading the next, and rethrow the first error in
+    /// input order. Other element representations decode the array with their
     /// ``PersistentKeyValueRepresentation/get(from:)`` exactly as it is implemented, so a custom array format
     /// round-trips, and throw ``PersistentKeyValueConversionError/invalidStorageValue`` when it returns `nil`.
     public static func decode(

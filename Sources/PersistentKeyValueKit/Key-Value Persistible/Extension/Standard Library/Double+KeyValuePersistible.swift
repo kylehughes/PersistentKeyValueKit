@@ -18,6 +18,10 @@ extension Double: KeyValuePersistible {
     }
 }
 
+// MARK: - BuiltInScalarPrimitive Extension
+
+extension Double: BuiltInScalarPrimitive {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Double: PrimitiveKeyValuePersistible {

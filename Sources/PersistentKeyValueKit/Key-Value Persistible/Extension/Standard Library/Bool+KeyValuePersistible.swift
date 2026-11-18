@@ -18,6 +18,10 @@ extension Bool {
     }
 }
 
+// MARK: - BuiltInScalarPrimitive Extension
+
+extension Bool: BuiltInScalarPrimitive {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Bool: PrimitiveKeyValuePersistible {

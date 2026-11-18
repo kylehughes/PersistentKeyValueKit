@@ -67,14 +67,20 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     }
     
     /// The value of the key in the store.
+    ///
+    /// Setting the value writes to the key and store that are current when the setter is called, even if a subscriber
+    /// to `objectWillChange` replaces the store before the write.
     public var value: Key.Value {
         get {
             Self.value(for: key, in: _store)
         }
         set {
+            let key = key
+            let store = _store
+
             objectWillChange.send()
 
-            Self.setValue(newValue, for: key, in: _store)
+            Self.setValue(newValue, for: key, in: store)
         }
     }
 
@@ -89,7 +95,8 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
 
     /// Writes `newValue` for `key` in `store`.
     ///
-    /// The caller notifies subscribers that the object will change first.
+    /// The caller captures `key` and `store` before notifying subscribers that the object will change, so a subscriber
+    /// that replaces the observed key or store cannot redirect the write.
     internal static func setValue(_ newValue: Key.Value, for key: Key, in store: (any PersistentKeyValueStore)?) {
         assertStoreExists(store)
 

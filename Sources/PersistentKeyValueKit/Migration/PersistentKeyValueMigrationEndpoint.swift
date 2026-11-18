@@ -72,6 +72,13 @@ protocol PersistentKeyValueMigrationBackend {
     /// Whether two writes prepared for the same key would store the same value.
     func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool
 
+    /// Whether `write` still stores the contents it was prepared with.
+    ///
+    /// Code that receives a prepared value, such as a transform that a rewrite runs again to verify its result, can
+    /// change a stored reference in place. A backend returns `false` when it cannot tell whether such a change
+    /// happened.
+    func migrationWriteIsUnchanged(_ write: MigrationWrite) -> Bool
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key

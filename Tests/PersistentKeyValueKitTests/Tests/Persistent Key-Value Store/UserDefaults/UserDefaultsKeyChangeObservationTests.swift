@@ -106,7 +106,7 @@ extension UserDefaultsKeyChangeObservationTests {
         let firstObserver = RecordingKeyObserver()
         let secondObserver = RecordingKeyObserver()
 
-        // The second registration finds no key yet, so it reads and adds the key before the first one finishes.
+        // The second registration is made on the reading thread before the first read returns, so it shares that read.
         storage.instrument(key.id)
         storage.afterNextRead { [storage] in
             storage?.register(
@@ -119,7 +119,7 @@ extension UserDefaultsKeyChangeObservationTests {
 
         storage.register(observer: firstObserver, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
 
-        XCTAssertEqual(storage.readCount, 2)
+        XCTAssertEqual(storage.readCount, 1)
 
         storage.instrument(key.id)
         storage.set(1, forKey: key.id)
@@ -180,6 +180,27 @@ extension UserDefaultsKeyChangeObservationTests {
 
         outerSubscription.cancel()
         innerSubscription?.cancel()
+    }
+
+    func test_changesPublisher_subscriptionFromFirstReadJoinsIt() throws {
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: 0)
+        let storage = try XCTUnwrap(LazilySubscribingUserDefaults(suiteName: suiteName))
+        let observer = RecordingKeyObserver()
+
+        // The getter subscribes to the key the first time it is read, so registration reenters itself.
+        storage.lazilySubscribedKey = key
+        storage.register(observer: observer, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+
+        XCTAssertEqual(storage.readCount, 1)
+        XCTAssertEqual(storage.changeCount, 0)
+
+        storage.set(key, to: 1)
+
+        XCTAssertEqual(storage.changeCount, 1)
+        XCTAssertEqual(observer.observations.count, 1)
+
+        storage.cancelSubscription()
+        storage.deregister(observer, for: key, context: nil)
     }
 
     func test_register_concurrentChangesDeliverLatestValue() async {
@@ -265,6 +286,151 @@ extension UserDefaultsKeyChangeObservationTests {
         storage.set(2, forKey: key.id)
 
         XCTAssertEqual(storage.readCount, 0)
+    }
+
+    func test_register_registrationsWithSameValueShareOneComparison() throws {
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: Data())
+        let storage = try XCTUnwrap(StubbedUserDefaults(suiteName: suiteName))
+        let observers = (0 ..< 3).map { _ in
+            RecordingKeyObserver()
+        }
+        let comparisonValue = EqualityCallbackData([1])
+
+        storage.stubbedObject = comparisonValue
+
+        for observer in observers {
+            storage.register(observer: observer, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+        }
+
+        storage.stubbedObject = EqualityCallbackData([2])
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: storage)
+
+        XCTAssertEqual(comparisonValue.equalityCheckCount, 1)
+        XCTAssertTrue(observers.allSatisfy { $0.observations.count == 1 })
+
+        for observer in observers {
+            storage.deregister(observer, for: key, context: nil)
+        }
+    }
+
+    func test_publisher_subscriptionJoiningObservedKeyComparesWithItsOwnValue() {
+        let outerKey = PersistentKey("com.example.outer.\(#function)", defaultValue: 0)
+        let innerKey = PersistentKey("com.example.inner.\(#function)", defaultValue: 0)
+        var existingValues: [Int] = []
+        var joiningSubscription: AnyCancellable?
+        var joiningValues: [Int] = []
+
+        storage.set(innerKey, to: 0)
+
+        let existingSubscription = storage.publisher(for: innerKey).sink { value in
+            existingValues.append(value)
+        }
+
+        // While the outer change is being reconciled, the inner key changes, gains a subscription, and changes back
+        // to the value the existing subscription last received.
+        let outerSubscription = storage.publisher(for: outerKey, emitsInitialValue: false).sink { [storage] _ in
+            guard joiningSubscription == nil, let storage else {
+                return
+            }
+
+            storage.set(innerKey, to: 1)
+
+            joiningSubscription = storage.publisher(for: innerKey).sink { value in
+                joiningValues.append(value)
+            }
+
+            storage.set(innerKey, to: 0)
+        }
+
+        storage.set(outerKey, to: 1)
+
+        XCTAssertEqual(joiningValues, [1, 0])
+        XCTAssertEqual(existingValues.last, 0)
+
+        storage.set(innerKey, to: 3)
+
+        XCTAssertEqual(joiningValues, [1, 0, 3])
+        XCTAssertEqual(existingValues.last, 3)
+
+        outerSubscription.cancel()
+        joiningSubscription?.cancel()
+        existingSubscription.cancel()
+    }
+
+    func test_publisher_subscriptionJoiningObservedKeyDoesNotReceiveItsFirstValueAgain() {
+        let outerKey = PersistentKey("com.example.outer.\(#function)", defaultValue: 0)
+        let innerKey = PersistentKey("com.example.inner.\(#function)", defaultValue: 0)
+        var existingValues: [Int] = []
+        var joiningSubscription: AnyCancellable?
+        var joiningValues: [Int] = []
+
+        storage.set(innerKey, to: 0)
+
+        let existingSubscription = storage.publisher(for: innerKey).sink { value in
+            existingValues.append(value)
+        }
+
+        // The inner key changes and gains a subscription before the existing subscription's change is reconciled.
+        let outerSubscription = storage.publisher(for: outerKey, emitsInitialValue: false).sink { [storage] _ in
+            guard joiningSubscription == nil, let storage else {
+                return
+            }
+
+            storage.set(innerKey, to: 1)
+
+            joiningSubscription = storage.publisher(for: innerKey).sink { value in
+                joiningValues.append(value)
+            }
+        }
+
+        storage.set(outerKey, to: 1)
+
+        XCTAssertEqual(existingValues, [0, 1])
+        XCTAssertEqual(joiningValues, [1])
+
+        storage.set(innerKey, to: 2)
+
+        XCTAssertEqual(existingValues, [0, 1, 2])
+        XCTAssertEqual(joiningValues, [1, 2])
+
+        outerSubscription.cancel()
+        joiningSubscription?.cancel()
+        existingSubscription.cancel()
+    }
+
+    func test_changesPublisher_subscriptionDuringComparisonDoesNotReceiveComparedValue() throws {
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: Data())
+        let storage = try XCTUnwrap(StubbedUserDefaults(suiteName: suiteName))
+        let observer = RecordingKeyObserver()
+        let comparisonValue = EqualityCallbackData([1])
+        var subscription: AnyCancellable?
+        var values: [Data] = []
+
+        storage.stubbedObject = comparisonValue
+        storage.register(observer: observer, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+
+        // The subscription is made while the changed value is compared with the existing registration's value, so the
+        // change is already stored when it subscribes.
+        comparisonValue.onEqualityCheck = {
+            subscription = storage.changesPublisher(for: key).sink { value in
+                values.append(value)
+            }
+        }
+        storage.stubbedObject = EqualityCallbackData([2])
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: storage)
+
+        XCTAssertNotNil(subscription)
+        XCTAssertEqual(observer.observations.count, 1)
+        XCTAssertEqual(values, [])
+
+        storage.stubbedObject = EqualityCallbackData([3])
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: storage)
+
+        XCTAssertEqual(observer.observations.count, 2)
+        XCTAssertEqual(values, [Data([3])])
+
+        subscription?.cancel()
+        storage.deregister(observer, for: key, context: nil)
     }
 
     func test_register_observerDeregisteredByEarlierObserverIsNotNotified() {
@@ -629,5 +795,44 @@ private final class LatestValueRecorder: @unchecked Sendable {
         }
 
         self.value = value
+    }
+}
+
+// MARK: - LazilySubscribingUserDefaults Definition
+
+/// A `UserDefaults` subclass that subscribes to changes of one key the first time that key is read.
+private final class LazilySubscribingUserDefaults: UserDefaults {
+    /// The key to subscribe to. Set before the key is first read.
+    var lazilySubscribedKey: PersistentKey<Int>?
+
+    /// The number of changes the subscription received.
+    private(set) var changeCount = 0
+
+    /// The number of reads of the subscribed key.
+    private(set) var readCount = 0
+
+    private var subscription: AnyCancellable?
+
+    // MARK: Internal Instance Interface
+
+    func cancelSubscription() {
+        subscription?.cancel()
+        subscription = nil
+    }
+
+    // MARK: UserDefaults Implementation
+
+    override func object(forKey defaultName: String) -> Any? {
+        if let lazilySubscribedKey, lazilySubscribedKey.id.utf16.elementsEqual(defaultName.utf16) {
+            readCount += 1
+
+            if subscription == nil {
+                subscription = changesPublisher(for: lazilySubscribedKey).sink { [weak self] _ in
+                    self?.changeCount += 1
+                }
+            }
+        }
+
+        return super.object(forKey: defaultName)
     }
 }

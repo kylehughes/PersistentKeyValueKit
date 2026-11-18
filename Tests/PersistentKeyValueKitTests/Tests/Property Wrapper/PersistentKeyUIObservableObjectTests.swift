@@ -178,6 +178,34 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
         XCTAssertEqual(secondStore.registrationCount, 1)
     }
 
+    @MainActor
+    func test_value_set_writesStoreObservedBeforeChangeNotification() {
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let observer = PersistentKeyUIObservableObject(store: firstStore, key: key)
+        var hasSwitchedStore = false
+
+        // A synchronous subscriber switches the observed store while the write is being announced.
+        let cancellable = observer.objectWillChange.sink {
+            guard !hasSwitchedStore else {
+                return
+            }
+
+            hasSwitchedStore = true
+            observer.store = secondStore
+        }
+
+        observer.value = 42
+
+        XCTAssertTrue(hasSwitchedStore)
+        XCTAssertEqual(firstStore.get(key), 42)
+        XCTAssertEqual(secondStore.get(key), 0)
+        XCTAssertEqual(observer.value, 0)
+
+        cancellable.cancel()
+    }
+
     #if !DEBUG
     @MainActor
     func test_observer_withoutStore_usesDefaultAndDoesNotWrite() {

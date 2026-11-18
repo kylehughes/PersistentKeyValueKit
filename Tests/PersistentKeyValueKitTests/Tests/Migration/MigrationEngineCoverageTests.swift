@@ -114,6 +114,10 @@ extension ScriptedMigrationStore: PersistentKeyValueMigrationBackend {
         base.migrationWrite(write, matches: other)
     }
 
+    func migrationWriteIsUnchanged(_ write: MigrationWrite) -> Bool {
+        base.migrationWriteIsUnchanged(write)
+    }
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key
