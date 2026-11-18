@@ -200,9 +200,10 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
     /// Encodes the non-`nil` values as an ordinary write of `base` does.
     ///
     /// A `base` that cannot omit values reports a failure by leaving an entry absent, so its entries are written
-    /// directly; an entry that a `base` defined outside this package writes also fails unless it is a property list
-    /// that a store accepts. Otherwise each value is written with ``builtInOrdinaryDictionaryEntryWriter()``, which
-    /// converts it through every layer of `base` before converting the next value.
+    /// directly; an entry that a `base` defined outside this package writes, or changes while writing a later entry,
+    /// also fails unless it is a property list that a store accepts. Otherwise each value is written with
+    /// ``builtInOrdinaryDictionaryEntryWriter()``, which converts it through every layer of `base` before converting
+    /// the next value.
     func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
         guard !(base is any BuiltInValueOmission) else {
             return propertyListDictionary(encoding: values, with: builtInOrdinaryDictionaryEntryWriter())
@@ -223,6 +224,10 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
             }
         }
 
+        guard !validating || isStorableDictionary(&objects) else {
+            return nil
+        }
+
         return objects
     }
 
@@ -230,7 +235,9 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
     func builtInOrdinaryDictionaryEntryWriter() -> OrdinaryDictionaryEntryWriter<Value> {
         let write = base.ordinaryDictionaryEntryWriter()
 
-        return { key, value, objects in
+        return OrdinaryDictionaryEntryWriter(
+            requiresCompletedDictionaryValidation: write.requiresCompletedDictionaryValidation
+        ) { key, value, objects in
             guard let value else {
                 return true
             }

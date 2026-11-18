@@ -321,6 +321,42 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
+    func testMemoryDestinationVerificationRestoringSourceFailsMoveCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
+        let destinationKey = PublishedRowsKey(id: "destination:\(#function)")
+
+        source.set(sourceKey, to: 42)
+
+        let report = try source.move(
+            .key(sourceKey, to: destinationKey) { _ in
+                let rows = PublishedRows()
+                // Once cleanup removes the source, the only remaining reads compare the destination after cleanup.
+                // Another writer restores the source during that comparison, which still finds the expected rows.
+                rows.onRead = {
+                    guard source.object(forKey: sourceKey.id) == nil else {
+                        return
+                    }
+
+                    source.set(sourceKey, to: 99)
+                }
+
+                return rows
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .removalVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.get(sourceKey), 99)
+        XCTAssertEqual(destination.object(forKey: destinationKey.id) as? NSArray, NSArray(array: [[42]]))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
     func testMemoryKeptDestinationRemovedByDiscardedSourceDeinitFailsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -350,6 +386,45 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertNil(source.object(forKey: key.id))
         XCTAssertNil(destination.object(forKey: key.id))
         XCTAssertFalse(destination.get(marker))
+    }
+
+    func testMemoryKeptDestinationVerificationRestoringSourceFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
+        let destinationKey = PublishedRowsKey(id: "destination:\(#function)")
+        let rows = PublishedRows()
+        var restoreCount = 0
+
+        source.set(sourceKey, to: 42)
+        destination.set(destinationKey, to: rows)
+        // Once cleanup removes the source, the only remaining reads compare the kept destination after cleanup. Another
+        // writer restores the source during that comparison, which still finds the kept rows.
+        rows.onRead = {
+            guard source.object(forKey: sourceKey.id) == nil else {
+                return
+            }
+
+            source.set(sourceKey, to: 99)
+            restoreCount += 1
+        }
+
+        let report = try source.move(
+            .key(sourceKey, to: destinationKey) { _ in
+                NSArray()
+            },
+            to: destination,
+            onConflict: .keepDestinationAndRemoveSource,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .removalVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.get(sourceKey), 99)
+        XCTAssertTrue(destination.object(forKey: destinationKey.id) as? PublishedRows === rows)
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
     func testMemoryMovePublishesSourceRemovalAndDestinationTransfer() throws {
@@ -482,6 +557,51 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(marker))
     }
 
+    func testMemoryReplacedFalseMarkerDeinitRemovingRecordFailsCompletion() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        var deinitRan = false
+
+        // A decimal zero reads as a `false` marker. Its associated entry runs its hook when the replaced marker is
+        // released.
+        do {
+            let falseMarker = NSDecimalNumber(string: "0.000")
+
+            objc_setAssociatedObject(
+                falseMarker,
+                &DeinitHookEntry.associationKey,
+                DeinitHookEntry("marker") {
+                    destination.remove(marker)
+                    deinitRan = true
+                },
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+            destination.set(falseMarker, forKey: marker.id)
+        }
+
+        source.set(key, to: 5)
+
+        XCTAssertFalse(destination.get(marker))
+        XCTAssertFalse(deinitRan)
+
+        let report = try source.move(
+            key,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(report.completion, .failed)
+        XCTAssertEqual(report.completionError as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertNil(destination.object(forKey: marker.id))
+        XCTAssertEqual(destination.get(key), 5)
+        XCTAssertNil(source.object(forKey: key.id))
+    }
+
     func testMemorySourceReferenceMutatedByDestinationObserverFailsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suiteName = stableSuiteName("MigrationObservation")
@@ -609,6 +729,9 @@ private final class DeinitHookEntry: @unchecked Sendable {
     }
 
     // MARK: Internal Static Interface
+
+    /// The key that associates an entry with another object, so the entry is released with that object.
+    nonisolated(unsafe) static var associationKey: UInt8 = 0
 
     static func key(_ id: String) -> PersistentKey<DeinitHookEntry> {
         PersistentKey(

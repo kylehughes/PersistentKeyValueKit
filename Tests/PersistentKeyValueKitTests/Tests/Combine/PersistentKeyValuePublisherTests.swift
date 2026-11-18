@@ -7,8 +7,9 @@
 
 import Combine
 import Foundation
-import PersistentKeyValueKit
 import XCTest
+
+@testable import PersistentKeyValueKit
 
 final class PersistentKeyValuePublisherTests: XCTestCase {
     private var cancellables: Set<AnyCancellable> = []
@@ -128,6 +129,118 @@ extension PersistentKeyValuePublisherTests {
         subscriber.cancel()
     }
 
+    func test_publisher_changeQueuedDuringSubscriptionIsDeliveredBySubscribingThreadDespiteCompetingDemand() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        let subscriptionBox = SubscriptionBox()
+        var competingRequestResult: DispatchTimeoutResult?
+        var handoffWasObserved = false
+        var valuesAfterCompetingRequest: [Int]?
+        var writeResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            let handoff = subscription as? any PersistentKeyValueSubscriptionHandoffObserving
+
+            subscriptionBox.subscription = subscription
+            // Another thread requests demand after subscription ends but before the subscribing thread delivers the
+            // change queued while it subscribed.
+            handoff?.didFinishSubscribing = {
+                let requested = DispatchSemaphore(value: 0)
+
+                Thread.detachNewThread {
+                    subscriptionBox.subscription?.request(.max(1))
+                    requested.signal()
+                }
+
+                // The competing request does not wait for delivery, so this wait cannot deadlock.
+                competingRequestResult = requested.wait(timeout: .now() + 5)
+                valuesAfterCompetingRequest = subscriber.values
+            }
+            handoffWasObserved = handoff != nil
+            subscription.request(.unlimited)
+
+            let written = DispatchSemaphore(value: 0)
+
+            Thread.detachNewThread {
+                store.set(key, to: 1)
+                written.signal()
+            }
+
+            writeResult = written.wait(timeout: .now() + 5)
+        }
+
+        key.changesPublisher(in: store).subscribe(subscriber)
+
+        XCTAssertTrue(handoffWasObserved)
+        XCTAssertEqual(writeResult, .success)
+        XCTAssertEqual(competingRequestResult, .success)
+        XCTAssertEqual(valuesAfterCompetingRequest, [])
+        XCTAssertEqual(subscriber.values, [1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        subscriber.cancel()
+    }
+
+    func test_publisher_changeQueuedDuringSubscriptionIsDeliveredBySubscribingThreadUnderContention() {
+        let deadline = Date(timeIntervalSinceNow: 0.5)
+        var otherThreadDeliveries = 0
+        var subscriptions = 0
+        var timedOut = false
+
+        // Each subscription queues a change from another thread while it subscribes, and that thread then requests
+        // demand repeatedly until the change is delivered, racing the subscribing thread's delivery after it returns.
+        while Date() < deadline, !timedOut {
+            let store = InMemoryPersistentKeyValueStore()
+            let key = PersistentKey("key:\(#function)", defaultValue: 0)
+            let subscriber = SubscriptionHookSubscriber<Int>()
+            let subscriptionBox = SubscriptionBox()
+            let finished = DispatchSemaphore(value: 0)
+
+            subscriber.onReceiveSubscription = { subscription in
+                let written = DispatchSemaphore(value: 0)
+
+                subscriptionBox.subscription = subscription
+                subscription.request(.unlimited)
+                DispatchQueue.global().async {
+                    store.set(key, to: 1)
+                    written.signal()
+
+                    let requestDeadline = Date(timeIntervalSinceNow: 5)
+
+                    while subscriber.values.isEmpty, Date() < requestDeadline {
+                        subscriptionBox.subscription?.request(.max(1))
+                    }
+
+                    finished.signal()
+                }
+
+                if written.wait(timeout: .now() + 5) == .timedOut {
+                    timedOut = true
+                }
+            }
+
+            key.changesPublisher(in: store).subscribe(subscriber)
+
+            if finished.wait(timeout: .now() + 5) == .timedOut {
+                timedOut = true
+            }
+
+            if !subscriber.receivedEveryValueOnSubscribingThread {
+                otherThreadDeliveries += 1
+            }
+
+            XCTAssertEqual(subscriber.values, [1])
+
+            subscriber.cancel()
+            subscriptions += 1
+        }
+
+        XCTAssertFalse(timedOut)
+        XCTAssertGreaterThan(subscriptions, 0)
+        XCTAssertEqual(otherThreadDeliveries, 0, "\(otherThreadDeliveries) of \(subscriptions) subscriptions")
+    }
+
     func test_publisher_coalescesChangesUntilDemandIsRequested() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -143,6 +256,47 @@ extension PersistentKeyValuePublisherTests {
         subscriber.request(.max(1))
 
         XCTAssertEqual(subscriber.values, ["secondChangedValue"])
+    }
+
+    func test_publisher_demandRequestedAgainDuringSubscriptionDeliversChangeQueuedOnAnotherThread() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        var valuesAfterSecondRequest: [Int]?
+        var valuesAfterWrite: [Int]?
+        var writeResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            subscription.request(.unlimited)
+
+            let written = DispatchSemaphore(value: 0)
+
+            Thread.detachNewThread {
+                store.set(key, to: 1)
+                written.signal()
+            }
+
+            writeResult = written.wait(timeout: .now() + 5)
+            valuesAfterWrite = subscriber.values
+            // Demand requested on the subscribing thread is met before `receive(subscription:)` returns, including
+            // with the change that the other thread queued.
+            subscription.request(.max(1))
+            valuesAfterSecondRequest = subscriber.values
+        }
+
+        key.changesPublisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(writeResult, .success)
+        XCTAssertEqual(valuesAfterWrite, [])
+        XCTAssertEqual(valuesAfterSecondRequest, [1])
+        XCTAssertEqual(subscriber.values, [1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        store.set(key, to: 2)
+
+        XCTAssertEqual(subscriber.values, [1, 2])
+
+        subscriber.cancel()
     }
 
     func test_publisher_demandRequestedOnAnotherThreadDuringSubscriptionIsDeliveredAfterSubscriptionReturns() {

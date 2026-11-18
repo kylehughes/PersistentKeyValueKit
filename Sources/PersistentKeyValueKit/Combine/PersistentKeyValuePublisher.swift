@@ -28,9 +28,11 @@ import Foundation
 /// - Important: The publisher does not schedule delivery on any queue. Values are delivered synchronously on the
 ///   thread that requests demand or that reports a store change, which can be a background thread. While one thread
 ///   is delivering values, changes reported on other threads are delivered by that thread, so a concurrent write can
-///   return before its change is delivered. Likewise, until the subscriber returns from `receive(subscription:)`,
-///   demand requested and changes reported on other threads are delivered by the subscribing thread after it returns.
-///   Use `receive(on: DispatchQueue.main)` before updating UI.
+///   return before its change is delivered. Likewise, while the subscriber is in `receive(subscription:)`, only the
+///   subscribing thread delivers values. Demand it requests there is met before `receive(subscription:)` returns,
+///   including with changes that other threads reported earlier. Values that demand requested or changes reported on
+///   other threads make deliverable in the meantime are delivered by the subscribing thread after it returns. Use
+///   `receive(on: DispatchQueue.main)` before updating UI.
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
 /// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit
@@ -108,12 +110,18 @@ extension PersistentKeyValuePublisher {
     /// - Important: This type is manually `Sendable` because `PersistentKeyValueStore` cannot require `Sendable`
     ///   conformance from `UserDefaults` or `NSUbiquitousKeyValueStore`. Access to mutable subscription state is
     ///   protected by `lock`, and conforming stores are required to be thread-safe.
-    private final class Subscription<Downstream>: NSObject, Combine.Subscription, @unchecked Sendable
+    private final class Subscription<Downstream>:
+        NSObject,
+        Combine.Subscription,
+        PersistentKeyValueSubscriptionHandoffObserving,
+        @unchecked Sendable
     where
         Downstream: Subscriber,
         Downstream.Failure == Never,
         Downstream.Input == Key.Value
     {
+        internal var didFinishSubscribing: (() -> Void)?
+
         private let key: Key
         private let keyID: String
         private let lock: NSLock
@@ -127,7 +135,7 @@ extension PersistentKeyValuePublisher {
         /// The thread that is delivering the subscription to the subscriber, or `nil` once delivery returns.
         ///
         /// Until then, only this thread delivers values, so another thread cannot call the subscriber while it is
-        /// still receiving the subscription.
+        /// still receiving the subscription. When delivery returns, this thread delivers the values queued meanwhile.
         private var subscribingThread: pthread_t?
 
         /// The store being observed. Marked `nonisolated(unsafe)` because ``PersistentKeyValueStore`` conforming
@@ -234,17 +242,27 @@ extension PersistentKeyValuePublisher {
 
         /// Ends subscription delivery and delivers the values that other threads queued while it was in progress.
         internal func finishSubscribing() {
-            let hasQueuedValue = withLock {
+            let deliversQueuedValues = withLock {
                 subscribingThread = nil
 
-                return !isEmitting && canEmit()
+                guard !isEmitting, canEmit() else {
+                    return false
+                }
+
+                // Become the emitter under the lock that ends subscription delivery, so a thread that requests demand
+                // after the lock is unlocked cannot deliver the values queued while the subscriber subscribed.
+                isEmitting = true
+
+                return true
             }
 
-            guard hasQueuedValue else {
+            didFinishSubscribing?()
+
+            guard deliversQueuedValues else {
                 return
             }
 
-            emitPendingValues()
+            emitUntilDrained()
         }
 
         // MARK: NSObject Implementation
@@ -314,6 +332,11 @@ extension PersistentKeyValuePublisher {
             isEmitting = true
             lock.unlock()
 
+            emitUntilDrained()
+        }
+
+        /// Delivers values until none can be delivered, then releases emitter ownership. The caller must own it.
+        private nonisolated func emitUntilDrained() {
             while let emission = nextEmission() {
                 // The emission can hold the last reference to the subscriber after a concurrent cancellation, so keep
                 // it alive until the lock is unlocked.
@@ -426,4 +449,16 @@ extension PersistentKeyValuePublisher {
             return body()
         }
     }
+}
+
+// MARK: - Subscription Handoff Observing Definition
+
+/// A subscription that lets tests run code when the subscribing thread stops being the only thread that delivers
+/// values.
+protocol PersistentKeyValueSubscriptionHandoffObserving: AnyObject {
+    /// Runs on the subscribing thread after the subscriber returns from `receive(subscription:)`, before the values
+    /// queued while it subscribed are delivered.
+    ///
+    /// Set it from `receive(subscription:)`. It is only read on the subscribing thread.
+    var didFinishSubscribing: (() -> Void)? { get set }
 }
