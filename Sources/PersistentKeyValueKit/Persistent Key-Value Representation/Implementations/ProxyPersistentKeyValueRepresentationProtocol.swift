@@ -287,7 +287,7 @@ extension BuiltInProxyConversion {
 
             proxyRepresentation.set(key, to: proxy, in: &objects)
 
-            guard isStorableEntry(objects[key], validating: validating) else {
+            guard isStorableEntry(at: key, in: &objects, validating: validating) else {
                 return nil
             }
         }

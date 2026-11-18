@@ -89,6 +89,45 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["changedValue"])
     }
 
+    func test_publisher_changeOnAnotherThreadDuringSubscriptionIsDeliveredAfterSubscriptionReturns() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        var valuesAfterRequest: [Int] = []
+        var valuesAfterWrite: [Int] = []
+        var writeResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            subscription.request(.unlimited)
+            valuesAfterRequest = subscriber.values
+
+            let written = DispatchSemaphore(value: 0)
+
+            Thread.detachNewThread {
+                store.set(key, to: 1)
+                written.signal()
+            }
+
+            // The write does not wait for its change to be delivered, so this wait cannot deadlock.
+            writeResult = written.wait(timeout: .now() + 5)
+            valuesAfterWrite = subscriber.values
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(writeResult, .success)
+        XCTAssertEqual(valuesAfterRequest, [0])
+        XCTAssertEqual(valuesAfterWrite, [0])
+        XCTAssertEqual(subscriber.values, [0, 1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        store.set(key, to: 2)
+
+        XCTAssertEqual(subscriber.values, [0, 1, 2])
+
+        subscriber.cancel()
+    }
+
     func test_publisher_coalescesChangesUntilDemandIsRequested() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -104,6 +143,37 @@ extension PersistentKeyValuePublisherTests {
         subscriber.request(.max(1))
 
         XCTAssertEqual(subscriber.values, ["secondChangedValue"])
+    }
+
+    func test_publisher_demandRequestedOnAnotherThreadDuringSubscriptionIsDeliveredAfterSubscriptionReturns() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        let subscriptionBox = SubscriptionBox()
+        var valuesAfterRequest: [Int]?
+        var requestResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            let requested = DispatchSemaphore(value: 0)
+
+            subscriptionBox.subscription = subscription
+            Thread.detachNewThread {
+                subscriptionBox.subscription?.request(.unlimited)
+                requested.signal()
+            }
+
+            requestResult = requested.wait(timeout: .now() + 5)
+            valuesAfterRequest = subscriber.values
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(requestResult, .success)
+        XCTAssertEqual(valuesAfterRequest, [])
+        XCTAssertEqual(subscriber.values, [0])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        subscriber.cancel()
     }
 
     func test_publisher_emitsDefaultValueInitially() {
@@ -1002,5 +1072,83 @@ extension CallbackRetainingPersistentKeyValueStore: PersistentKeyValueStore {
 
     func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
         storage[key.id] = value
+    }
+}
+
+// MARK: - Subscription Hook Subscriber Definition
+
+/// A subscriber that runs ``onReceiveSubscription`` from `receive(subscription:)` and records the thread that delivers
+/// each value.
+private final class SubscriptionHookSubscriber<Input>: @unchecked Sendable {
+    var onReceiveSubscription: ((Subscription) -> Void)?
+
+    private let lock = NSLock()
+    private var receivedValues: [Input] = []
+    private var receivedOnOtherThread = false
+    private var subscribingThread: pthread_t?
+    private var subscription: Subscription?
+
+    // MARK: Internal Instance Interface
+
+    /// Whether every value was delivered on the thread that delivered the subscription.
+    var receivedEveryValueOnSubscribingThread: Bool {
+        withLock {
+            !receivedOnOtherThread
+        }
+    }
+
+    var values: [Input] {
+        withLock {
+            receivedValues
+        }
+    }
+
+    func cancel() {
+        let subscription = withLock {
+            self.subscription
+        }
+
+        subscription?.cancel()
+    }
+
+    // MARK: Private Instance Interface
+
+    private func withLock<Result>(_ body: () -> Result) -> Result {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        return body()
+    }
+}
+
+// MARK: - Subscriber Extension
+
+extension SubscriptionHookSubscriber: Subscriber {
+    typealias Failure = Never
+
+    func receive(_ input: Input) -> Subscribers.Demand {
+        withLock {
+            receivedValues.append(input)
+
+            if let subscribingThread, pthread_equal(subscribingThread, pthread_self()) == 0 {
+                receivedOnOtherThread = true
+            }
+        }
+
+        return .none
+    }
+
+    func receive(completion: Subscribers.Completion<Never>) {
+    }
+
+    func receive(subscription: Subscription) {
+        withLock {
+            subscribingThread = pthread_self()
+            self.subscription = subscription
+        }
+
+        onReceiveSubscription?(subscription)
     }
 }

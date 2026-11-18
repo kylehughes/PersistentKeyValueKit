@@ -61,7 +61,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
     /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
     /// `nil`. So does a result that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept,
-    /// such as one that contains the UIDs in a keyed archive's property list.
+    /// such as one that contains the UIDs in a keyed archive's property list. Callers keep an immutable copy of each
+    /// mutable array or dictionary in the result when this method returns, so changing one afterward, such as while
+    /// encoding another collection in the same write, does not change what is stored.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to write the encoded values into.
@@ -89,7 +91,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
     /// values cannot be encoded, so an absent entry counts as a failure, even if the value encodes to `nil`. So does an
     /// entry that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept, such as one that
-    /// contains the UIDs in a keyed archive's property list.
+    /// contains the UIDs in a keyed archive's property list. Callers keep an immutable copy of each mutable array or
+    /// dictionary in the entry when this method returns, so changing one afterward, such as while encoding another
+    /// value in the same write, does not change what is stored.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -145,6 +149,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 /// A property list contains only strings, numbers, dates, data, arrays, and dictionaries with string keys, which are
 /// the objects that `UserDefaults` and `NSUbiquitousKeyValueStore` store. Binary property-list serialization also
 /// accepts the UIDs in a keyed archive's property list, but these writes reject them; store such an archive as `Data`.
+/// Writes keep an immutable copy of each mutable array or dictionary in the object that `encode` returns, so changing
+/// one after `encode` returns, such as while a later element of the same collection is encoded, does not change what
+/// is stored.
 ///
 /// These defaults read the effective `UserDefaults` object without inspecting `UserDefaults.argumentDomain`, so they do
 /// not coerce string launch arguments into typed values. Built-in representations implement these methods themselves
@@ -341,17 +348,16 @@ extension PersistentKeyValueRepresentation {
     /// A built-in representation encodes each element with its own checked conversion and rethrows the first error.
     /// Any other representation is encoded with ``set(_:to:)`` exactly as it implements it. That method receives an
     /// empty array, which it may assign or append to, and reports a failure by leaving it empty, so an empty result for
-    /// nonempty `values` throws ``PersistentKeyValueConversionError/encodingFailed``.
+    /// nonempty `values` throws ``PersistentKeyValueConversionError/encodingFailed``. So does a result that a
+    /// representation defined outside this package writes, unless it is a property list that a store accepts.
     internal func checkedPropertyListArray(encoding values: [Value]) throws -> [Any] {
         if let builtIn = self as? any BuiltInContainerConversion {
             return try builtInPropertyListArray(encoding: values, with: builtIn)
         }
 
-        var objects: [Any] = []
+        let validating = !(self is any BuiltInPrimitiveConversion)
 
-        set(values, to: &objects)
-
-        guard !objects.isEmpty || values.isEmpty else {
+        guard let objects = propertyListArray(setting: values, validating: validating) else {
             throw PersistentKeyValueConversionError.encodingFailed
         }
 
@@ -447,7 +453,7 @@ extension PersistentKeyValueRepresentation {
         return { key, value, objects in
             set(key, to: value, in: &objects)
 
-            return isStorableEntry(objects[key], validating: validating)
+            return isStorableEntry(at: key, in: &objects, validating: validating)
         }
     }
 
@@ -457,19 +463,17 @@ extension PersistentKeyValueRepresentation {
     /// `nil`, and rethrows the first error. Any other representation is encoded with ``set(_:to:in:)`` exactly as it
     /// implements it. That method receives a dictionary that does not yet contain the entry's key and reports a
     /// failure by leaving it absent, so an absent entry throws ``PersistentKeyValueConversionError/encodingFailed``.
+    /// So does an entry that a representation defined outside this package writes, unless it is a property list that a
+    /// store accepts.
     internal func checkedPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
         if let builtIn = self as? any BuiltInContainerConversion {
             return try builtInPropertyListDictionary(encoding: values, with: builtIn)
         }
 
-        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+        let validating = !(self is any BuiltInPrimitiveConversion)
 
-        for (key, value) in values {
-            set(key, to: value, in: &objects)
-
-            guard objects[key] != nil else {
-                throw PersistentKeyValueConversionError.encodingFailed
-            }
+        guard let objects = propertyListDictionary(setting: values, validating: validating) else {
+            throw PersistentKeyValueConversionError.encodingFailed
         }
 
         return objects
@@ -557,15 +561,25 @@ extension PersistentKeyValueRepresentation {
 
     /// Encodes `values` with ``set(_:to:)``, which reports a failure by leaving the array empty.
     ///
-    /// If `validating`, a result that is not a property list that a store accepts is also a failure.
+    /// If `validating`, a result that is not a property list that a store accepts is also a failure, and each element
+    /// is replaced with its snapshot, as ``storablePropertyList(_:)`` describes.
     internal func propertyListArray(setting values: [Value], validating: Bool) -> [Any]? {
         var objects: [Any] = []
 
         set(values, to: &objects)
 
-        // A Swift array cannot contain itself, so validating each element validates the array without bridging it.
-        guard !objects.isEmpty || values.isEmpty, !validating || objects.allSatisfy(isStorablePropertyList) else {
+        guard !objects.isEmpty || values.isEmpty else {
             return nil
+        }
+
+        if validating {
+            guard let copies = storableCopies(of: objects) else {
+                return nil
+            }
+
+            for (index, copy) in copies {
+                objects[index] = copy
+            }
         }
 
         return objects
@@ -573,14 +587,15 @@ extension PersistentKeyValueRepresentation {
 
     /// Encodes each entry of `values` with ``set(_:to:in:)``, which reports a failure by leaving the entry absent.
     ///
-    /// If `validating`, an entry that is not a property list that a store accepts is also a failure.
+    /// If `validating`, an entry that is not a property list that a store accepts is also a failure, and each entry is
+    /// replaced with its snapshot, as ``storablePropertyList(_:)`` describes.
     internal func propertyListDictionary(setting values: [String: Value], validating: Bool) -> [String: Any]? {
         var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
 
         for (key, value) in values {
             set(key, to: value, in: &objects)
 
-            guard isStorableEntry(objects[key], validating: validating) else {
+            guard isStorableEntry(at: key, in: &objects, validating: validating) else {
                 return nil
             }
         }
@@ -725,10 +740,11 @@ internal protocol BuiltInScalarConversion: PersistentKeyValueRepresentation {}
 ///
 /// Container methods implemented outside this package can write any object, including one that binary property-list
 /// validation accepts but a store rejects, such as the UIDs in a keyed archive's property list, so ordinary writes
-/// validate what such methods write before a store receives it. A conforming representation's container methods
-/// write only such property lists, or encode the elements of a container through the ordinary writes of their own
-/// representation, which validate what they write, so ordinary writes skip that validation. A built-in proxy or
-/// optional representation does not conform; it writes through ``BuiltInValueOmission`` instead.
+/// validate what such methods write before a store receives it, and keep immutable copies of its mutable containers so
+/// that a later conversion cannot change it. A conforming representation's container methods write only such property
+/// lists, or encode the elements of a container through the ordinary writes of their own representation, which
+/// validate and copy what they write, so ordinary writes skip that validation. A built-in proxy or optional
+/// representation does not conform; it writes through ``BuiltInValueOmission`` instead.
 internal protocol BuiltInPrimitiveConversion: PersistentKeyValueRepresentation {}
 
 // MARK: - Built-In Value Omission Definition
@@ -794,8 +810,9 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 /// Returns `object` wrapped for storage, or `nil` when it is not a property list that a store accepts.
 ///
 /// Foundation stores raise an Objective-C exception for non-property-list objects, so the default write paths treat
-/// such an object as a failed encoding. The wrapped object is the Foundation object that validation bridged `object`
-/// to, so a store, or a later validation of a collection that holds it, does not bridge it again.
+/// such an object as a failed encoding. The wrapped object is the snapshot that ``storablePropertyList(_:)`` returns,
+/// so a store, or a later validation of a collection that holds it, does not bridge it again, and a later conversion
+/// that changes a mutable container `object` holds does not change what is stored.
 internal func storableEncoding(_ object: Any?) -> Any?? {
     guard let object else {
         return .some(nil)
@@ -812,45 +829,122 @@ internal func storableEncoding(_ object: Any?) -> Any?? {
 ///
 /// See ``storablePropertyList(_:)``.
 internal func isStorablePropertyList(_ object: Any) -> Bool {
-    storablePropertyList(object) != nil
+    storableSnapshot(of: object) != nil
 }
 
-/// Returns whether `object`, the entry that a dictionary container method wrote, is present and, if `validating`, is
-/// a property list that a store accepts.
-internal func isStorableEntry(_ object: Any?, validating: Bool) -> Bool {
-    guard let object else {
+/// Returns the snapshots that are copies of the elements of `objects`, an array that an array container method wrote,
+/// with their indices, or `nil` if any element is not a property list that a store accepts.
+///
+/// A Swift array cannot contain itself, so validating each element validates the array without bridging it.
+///
+/// See ``storablePropertyList(_:)``.
+internal func storableCopies(of objects: [Any]) -> [(index: Int, copy: AnyObject)]? {
+    var copies: [(index: Int, copy: AnyObject)] = []
+    var index = 0
+
+    // `allSatisfy` reads each element in place, which costs less than iterating indices or enumerated elements.
+    let isStorable = objects.allSatisfy { object in
+        defer {
+            index += 1
+        }
+
+        switch storableSnapshot(of: object) {
+        case nil:
+            return false
+        case .unchanged?:
+            return true
+        case .copied(let copy)?:
+            copies.append((index, copy))
+            return true
+        }
+    }
+
+    return isStorable ? copies : nil
+}
+
+/// Returns whether `objects` holds the entry at `key` that a dictionary container method wrote and, if `validating`,
+/// whether that entry is a property list that a store accepts, replacing a validated entry that holds a mutable
+/// container with its snapshot.
+///
+/// See ``storablePropertyList(_:)``.
+internal func isStorableEntry(at key: String, in objects: inout [String: Any], validating: Bool) -> Bool {
+    guard let object = objects[key] else {
         return false
     }
 
-    return !validating || isStorablePropertyList(object)
+    guard validating else {
+        return true
+    }
+
+    switch storableSnapshot(of: object) {
+    case nil:
+        return false
+    case .unchanged?:
+        return true
+    case .copied(let copy)?:
+        objects[key] = copy
+        return true
+    }
 }
 
-/// Returns the Foundation object that `object` bridges to if it is a property list that `UserDefaults` and
-/// `NSUbiquitousKeyValueStore` accept, or `nil` otherwise.
+/// Returns the snapshot of `object` if it is a property list that `UserDefaults` and `NSUbiquitousKeyValueStore`
+/// accept, or `nil` otherwise.
 ///
 /// Such a property list is a string, number (including a Boolean), date, or data object, or an array or string-keyed
 /// dictionary of such objects that does not contain itself. Binary property-list validation also accepts other
 /// objects, such as the UIDs in a keyed archive's property list. `UserDefaults` removes the key's previous value before
 /// rejecting such an object, so a write must not pass one to a store.
+///
+/// The snapshot is the Foundation object that `object` bridges to, with every mutable array or dictionary in it
+/// replaced by an immutable copy. A representation can keep a mutable container it returned and change it while a
+/// later value of the same collection is converted, such as by adding an archive UID to a dictionary that has already
+/// been validated, so writes store the snapshot instead. Changing a mutable string or data object cannot make a
+/// property list unstorable, so the snapshot shares them.
 internal func storablePropertyList(_ object: Any) -> AnyObject? {
     let bridgedObject = object as AnyObject
     var enclosingContainers: [ObjectIdentifier] = []
 
-    guard isStorablePropertyList(bridgedObject, within: &enclosingContainers) else {
+    switch storableSnapshot(of: bridgedObject, within: &enclosingContainers) {
+    case nil:
         return nil
+    case .unchanged?:
+        return bridgedObject
+    case .copied(let copy)?:
+        return copy
     }
-
-    return bridgedObject
 }
 
-/// Returns whether `object` is a storable property list, given the containers that enclose it.
+/// Returns how ``storablePropertyList(_:)`` snapshots `object`, or `nil` if it is not a property list that a store
+/// accepts.
+internal func storableSnapshot(of object: Any) -> StorableSnapshot? {
+    var enclosingContainers: [ObjectIdentifier] = []
+
+    return storableSnapshot(of: object as AnyObject, within: &enclosingContainers)
+}
+
+/// How ``storablePropertyList(_:)`` snapshots a property list that a store accepts.
+internal enum StorableSnapshot {
+    /// The property list holds no mutable container, so it is its own snapshot.
+    case unchanged
+
+    /// The property list holds a mutable container, so its snapshot is this copy.
+    case copied(AnyObject)
+}
+
+/// Returns how `object` is snapshotted, given the containers that enclose it, or `nil` if it is not a storable
+/// property list.
 ///
 /// This compares Core Foundation type identifiers, which are what property-list validation compares and cost less than
-/// dynamic casts, and reads container elements through Core Foundation without bridging them to Swift values.
-private func isStorablePropertyList(_ object: AnyObject, within enclosingContainers: inout [ObjectIdentifier]) -> Bool {
+/// dynamic casts, and reads container elements through Core Foundation without bridging them to Swift values. A
+/// container of such a type is a toll-free bridged Foundation container, whose `copy()` returns the container itself if
+/// it is immutable, so a container is copied only if it or one of the containers it holds is mutable.
+private func storableSnapshot(
+    of object: AnyObject,
+    within enclosingContainers: inout [ObjectIdentifier]
+) -> StorableSnapshot? {
     switch CFGetTypeID(object) {
     case CFStringGetTypeID(), CFNumberGetTypeID(), CFBooleanGetTypeID(), CFDateGetTypeID(), CFDataGetTypeID():
-        return true
+        return .unchanged
     case CFArrayGetTypeID():
         let array = unsafeDowncast(object, to: CFArray.self)
         let count = CFArrayGetCount(array)
@@ -859,9 +953,15 @@ private func isStorablePropertyList(_ object: AnyObject, within enclosingContain
             withUnsafeTemporaryAllocation(of: UnsafeRawPointer?.self, capacity: count) { elements in
                 CFArrayGetValues(array, CFRange(location: 0, length: count), elements.baseAddress)
 
-                return elements.allSatisfy {
-                    isStorablePropertyList(storedObject(at: $0), within: &enclosingContainers)
+                guard let copiedElements = storableSnapshots(of: elements, within: &enclosingContainers) else {
+                    return nil
                 }
+
+                guard let copiedElements else {
+                    return snapshot(ofContainer: unsafeDowncast(object, to: NSArray.self))
+                }
+
+                return .copied(NSArray(array: copiedElements))
             }
         }
     case CFDictionaryGetTypeID():
@@ -873,29 +973,79 @@ private func isStorablePropertyList(_ object: AnyObject, within enclosingContain
                 withUnsafeTemporaryAllocation(of: UnsafeRawPointer?.self, capacity: count) { values in
                     CFDictionaryGetKeysAndValues(dictionary, keys.baseAddress, values.baseAddress)
 
-                    return zip(keys, values).allSatisfy { key, value in
-                        CFGetTypeID(storedObject(at: key)) == CFStringGetTypeID()
-                            && isStorablePropertyList(storedObject(at: value), within: &enclosingContainers)
+                    guard
+                        keys.allSatisfy({ CFGetTypeID(storedObject(at: $0)) == CFStringGetTypeID() }),
+                        let copiedValues = storableSnapshots(of: values, within: &enclosingContainers)
+                    else {
+                        return nil
                     }
+
+                    guard let copiedValues else {
+                        return snapshot(ofContainer: unsafeDowncast(object, to: NSDictionary.self))
+                    }
+
+                    let copiedKeys = keys.map {
+                        unsafeDowncast(storedObject(at: $0), to: NSString.self)
+                    }
+
+                    return .copied(NSDictionary(objects: copiedValues, forKeys: copiedKeys))
                 }
             }
         }
     default:
-        return false
+        return nil
     }
 }
 
-/// Returns the result of validating the elements of `container` with `body`, or `false` if `container` encloses
-/// itself, which would otherwise recurse forever.
+/// Returns the snapshots of `elements`, which a Core Foundation container returned without retaining them, if any of
+/// them is a copy; `.some(nil)` if every element is its own snapshot; or `nil` if any element is not a storable
+/// property list.
+private func storableSnapshots(
+    of elements: UnsafeMutableBufferPointer<UnsafeRawPointer?>,
+    within enclosingContainers: inout [ObjectIdentifier]
+) -> [AnyObject]?? {
+    // Most elements are their own snapshots, so the snapshots are collected only once one of them is a copy.
+    var snapshots: [AnyObject]?
+
+    for index in elements.indices {
+        let element = storedObject(at: elements[index])
+
+        switch storableSnapshot(of: element, within: &enclosingContainers) {
+        case nil:
+            return nil
+        case .unchanged?:
+            snapshots?.append(element)
+        case .copied(let copy)?:
+            if snapshots == nil {
+                snapshots = elements[..<index].map(storedObject(at:))
+            }
+
+            snapshots?.append(copy)
+        }
+    }
+
+    return .some(snapshots)
+}
+
+/// Returns `.unchanged` if `container`, whose elements are their own snapshots, is immutable, or its immutable copy
+/// otherwise.
+private func snapshot(ofContainer container: NSObject) -> StorableSnapshot {
+    let copy = container.copy() as AnyObject
+
+    return copy === container ? .unchanged : .copied(copy)
+}
+
+/// Returns the result of validating the elements of `container` with `body`, or `nil` if `container` encloses itself,
+/// which would otherwise recurse forever.
 private func withElements(
     of container: AnyObject,
     within enclosingContainers: inout [ObjectIdentifier],
-    _ body: (inout [ObjectIdentifier]) -> Bool
-) -> Bool {
+    _ body: (inout [ObjectIdentifier]) -> StorableSnapshot?
+) -> StorableSnapshot? {
     let identifier = ObjectIdentifier(container)
 
     guard !enclosingContainers.contains(identifier) else {
-        return false
+        return nil
     }
 
     enclosingContainers.append(identifier)

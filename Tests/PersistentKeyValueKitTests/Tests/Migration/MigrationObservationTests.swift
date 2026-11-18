@@ -208,6 +208,39 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(values, [9])
     }
 
+    func testMemoryCopyReplacedDestinationDeinitRemovingCopyFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = DeinitHookEntry.key("key:\(#function)")
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        var deinitRan = false
+
+        source.set(key, to: DeinitHookEntry("source"))
+        destination.set(
+            key,
+            to: DeinitHookEntry("old") {
+                destination.remove(key)
+                deinitRan = true
+            }
+        )
+        let report = try source.copy(
+            .key(key, to: key) {
+                DeinitHookEntry($0.text)
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual((source.object(forKey: key.id) as? DeinitHookEntry)?.text, "source")
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(marker))
+    }
+
     func testMemoryDestinationRemovedWhileVerifyingKeptValueKeepsSource() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -288,6 +321,37 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
+    func testMemoryKeptDestinationRemovedByDiscardedSourceDeinitFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = DeinitHookEntry.key("key:\(#function)")
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        var deinitRan = false
+
+        source.set(
+            key,
+            to: DeinitHookEntry("source") {
+                destination.remove(key)
+                deinitRan = true
+            }
+        )
+        destination.set(key, to: DeinitHookEntry("kept"))
+        let report = try source.move(
+            key,
+            to: destination,
+            onConflict: .keepDestinationAndRemoveSource,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertNil(source.object(forKey: key.id))
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(marker))
+    }
+
     func testMemoryMovePublishesSourceRemovalAndDestinationTransfer() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -318,6 +382,104 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(sourceValues, [0])
         XCTAssertEqual(destinationValues, [7])
         XCTAssertTrue(unrelatedValues.isEmpty)
+    }
+
+    func testMemoryMoveRemovedSourceDeinitRemovingDestinationFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = DeinitHookEntry.key("key:\(#function)")
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        var deinitRan = false
+
+        source.set(
+            key,
+            to: DeinitHookEntry("source") {
+                destination.remove(key)
+                deinitRan = true
+            }
+        )
+        let report = try source.move(
+            .key(key, to: key) {
+                DeinitHookEntry($0.text)
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertNil(source.object(forKey: key.id))
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(marker))
+    }
+
+    func testMemoryMoveRemovedSourceDeinitRestoringSourceFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = DeinitHookEntry.key("key:\(#function)")
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        var deinitRan = false
+
+        source.set(
+            key,
+            to: DeinitHookEntry("source") {
+                source.set(key, to: DeinitHookEntry("restored"))
+                deinitRan = true
+            }
+        )
+        destination.set(key, to: DeinitHookEntry("old"))
+        let report = try source.move(
+            .key(key, to: key) {
+                DeinitHookEntry($0.text)
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .removalVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual((source.object(forKey: key.id) as? DeinitHookEntry)?.text, "restored")
+        XCTAssertEqual((destination.object(forKey: key.id) as? DeinitHookEntry)?.text, "source")
+        XCTAssertFalse(destination.get(marker))
+    }
+
+    func testMemoryMoveReplacedDestinationDeinitRemovingMoveKeepsSource() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = DeinitHookEntry.key("key:\(#function)")
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
+        var deinitRan = false
+
+        source.set(key, to: DeinitHookEntry("source"))
+        destination.set(
+            key,
+            to: DeinitHookEntry("old") {
+                destination.remove(key)
+                deinitRan = true
+            }
+        )
+        let report = try source.move(
+            .key(key, to: key) {
+                DeinitHookEntry($0.text)
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual((source.object(forKey: key.id) as? DeinitHookEntry)?.text, "source")
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(marker))
     }
 
     func testMemorySourceReferenceMutatedByDestinationObserverFailsCleanup() throws {
@@ -423,6 +585,44 @@ final class MigrationObservationTests: XCTestCase {
 
         XCTAssertEqual(values, ["migrated"])
         XCTAssertEqual(source.get(key), "")
+    }
+}
+
+// MARK: - Deinit Hook Entry Definition
+
+/// A stored reference that runs `onDeinit` when its last reference is released.
+private final class DeinitHookEntry: @unchecked Sendable {
+    let onDeinit: () -> Void
+    let text: String
+
+    // MARK: Internal Initialization
+
+    init(_ text: String, onDeinit: @escaping () -> Void = {}) {
+        self.text = text
+        self.onDeinit = onDeinit
+    }
+
+    // MARK: Deinitialization
+
+    deinit {
+        onDeinit()
+    }
+
+    // MARK: Internal Static Interface
+
+    static func key(_ id: String) -> PersistentKey<DeinitHookEntry> {
+        PersistentKey(
+            id,
+            defaultValue: DeinitHookEntry("default"),
+            representation: ProxyPersistentKeyValueRepresentation<DeinitHookEntry, String>(
+                to: {
+                    $0.text
+                },
+                from: {
+                    DeinitHookEntry($0)
+                }
+            )
+        )
     }
 }
 

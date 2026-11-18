@@ -75,6 +75,67 @@ extension StorablePropertyListTests {
         XCTAssertFalse(isStorablePropertyList([1: "one"] as NSDictionary))
         XCTAssertFalse(isStorablePropertyList(looped))
     }
+
+    func test_storablePropertyList_ofImmutablePropertyList_returnsSameObject() {
+        let objects: [AnyObject] = [
+            NSString(string: "a string long enough to need its own allocation"),
+            NSNumber(value: 42),
+            NSDate(),
+            NSData(data: Data([1, 2])),
+            NSArray(array: ["text", NSArray(array: [1])]),
+            NSDictionary(dictionary: ["a": NSDictionary(dictionary: ["b": "c"])]),
+        ]
+
+        for object in objects {
+            XCTAssertTrue(storablePropertyList(object) === object, "\(object)")
+        }
+    }
+
+    func test_storablePropertyList_ofMutableContainers_returnsImmutableCopies() throws {
+        let array = NSMutableArray(array: ["element"])
+        let dictionary = NSMutableDictionary(dictionary: ["key": "value"])
+
+        let arraySnapshot = try XCTUnwrap(storablePropertyList(array))
+        let dictionarySnapshot = try XCTUnwrap(storablePropertyList(dictionary))
+
+        array.add(try archiveUID())
+        dictionary["uid"] = try archiveUID()
+
+        XCTAssertFalse(arraySnapshot === array)
+        XCTAssertFalse(dictionarySnapshot === dictionary)
+        XCTAssertEqual(arraySnapshot as? [String], ["element"])
+        XCTAssertEqual(dictionarySnapshot as? [String: String], ["key": "value"])
+        XCTAssertTrue(isStorablePropertyList(arraySnapshot))
+        XCTAssertTrue(isStorablePropertyList(dictionarySnapshot))
+    }
+
+    func test_storablePropertyList_ofMutableLeaves_returnsSameObjects() {
+        let string = NSMutableString(string: "text")
+        let data = NSMutableData(data: Data([1]))
+
+        XCTAssertTrue(storablePropertyList(string) === string)
+        XCTAssertTrue(storablePropertyList(data) === data)
+    }
+
+    func test_storablePropertyList_ofImmutableContainersOfMutableObjects_copiesThemAtAnyDepth() throws {
+        let buffer = NSMutableDictionary(dictionary: ["field": "value"])
+        let list = NSMutableArray(array: ["element"])
+        let array = NSArray(array: ["first", buffer, "middle", list])
+        let dictionary = NSDictionary(dictionary: ["first": "value", "buffer": NSArray(array: [buffer])])
+
+        let arraySnapshot = try XCTUnwrap(storablePropertyList(array) as? NSArray)
+        let dictionarySnapshot = try XCTUnwrap(storablePropertyList(dictionary) as? NSDictionary)
+
+        buffer["uid"] = try archiveUID()
+        list.add(try archiveUID())
+
+        XCTAssertFalse(arraySnapshot === array)
+        XCTAssertFalse(dictionarySnapshot === dictionary)
+        XCTAssertEqual(arraySnapshot, ["first", ["field": "value"], "middle", ["element"]] as NSArray)
+        XCTAssertEqual(dictionarySnapshot, ["first": "value", "buffer": [["field": "value"]]] as NSDictionary)
+        XCTAssertTrue(isStorablePropertyList(arraySnapshot))
+        XCTAssertTrue(isStorablePropertyList(dictionarySnapshot))
+    }
 }
 
 // MARK: - Ordinary Write Tests
@@ -247,6 +308,159 @@ extension StorablePropertyListTests {
     }
 }
 
+// MARK: - Shared Encoding Buffer Tests
+
+extension StorablePropertyListTests {
+    func test_userDefaultsCollectionWrites_ofEncoderThatChangesEarlierOutput_storeEachEncodingAsReturned() {
+        for storesData in [false, true] {
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).dictionary",
+                writing: { ["first": $0[0], "second": $0[1]] },
+                storesData: storesData
+            )
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).nestedArray",
+                writing: { [[$0[0]], [$0[1]]] },
+                storesData: storesData
+            )
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).array",
+                writing: { $0 },
+                storesData: storesData
+            )
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).dictionaryOfArrays",
+                writing: { ["first": [$0[0]], "second": [$0[1]]] },
+                storesData: storesData
+            )
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).optionalDictionary",
+                writing: { ["first": Optional($0[0]), "second": Optional($0[1])] },
+                storesData: storesData
+            )
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).proxyDictionary",
+                writing: { ["first": ProxiedBufferedText(base: $0[0]), "second": ProxiedBufferedText(base: $0[1])] },
+                storesData: storesData
+            )
+        }
+    }
+
+    func test_userDefaultsCollectionWrites_ofContainerHooksThatChangeEarlierOutput_storeEachEncodingAsReturned() {
+        for storesData in [false, true] {
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).dictionary",
+                writing: { ["first": $0[0], "second": $0[1]].mapValues(HookBufferedText.init(base:)) },
+                storesData: storesData
+            )
+            assertUserDefaultsWritesStoreEachEncoding(
+                "key:\(#function).\(storesData).nestedArray",
+                writing: { [[$0[0]], [$0[1]]].map { $0.map(HookBufferedText.init(base:)) } },
+                storesData: storesData
+            )
+        }
+    }
+
+    @available(watchOS 9.0, *)
+    func test_ubiquitousStoreCollectionWrites_ofEncoderThatChangesEarlierOutput_storeEachEncodingAsReturned() throws {
+        let store = MockUbiquitousKeyValueStore()
+        let dictionaryKey = PersistentKey("key:\(#function).dictionary", defaultValue: [String: BufferedText]())
+        let nestedKey = PersistentKey("key:\(#function).nestedArray", defaultValue: [[BufferedText]]())
+        let dictionaryValues = BufferedText.encodedTogether(["one", "two"], storesData: false)
+        let nestedValues = BufferedText.encodedTogether(["one", "two"], storesData: false)
+
+        store.set(dictionaryKey, to: ["first": dictionaryValues[0], "second": dictionaryValues[1]])
+        store.set(nestedKey, to: [[nestedValues[0]], [nestedValues[1]]])
+
+        for id in [dictionaryKey.id, nestedKey.id] {
+            let object = try XCTUnwrap(store.object(forKey: id))
+
+            XCTAssertTrue(isStorablePropertyList(object), id)
+            XCTAssertFalse(containsMetadata(object), id)
+        }
+
+        XCTAssertEqual(store.get(dictionaryKey), ["first": dictionaryValues[0], "second": dictionaryValues[1]])
+        XCTAssertEqual(store.get(nestedKey), [[nestedValues[0]], [nestedValues[1]]])
+    }
+}
+
+// MARK: - Checked Encoding Tests
+
+extension StorablePropertyListTests {
+    func test_checkedEncode_ofCustomArchivePropertyLists_throwsEncodingFailed() {
+        let candidate = HookArchivedText("candidate", storesData: false)
+        let formats: [PersistentKeyValueStorageFormat] = [.userDefaults, .ubiquitousKeyValueStore, .propertyList]
+
+        for format in formats {
+            assertEncodingFails([candidate], format: format)
+            assertEncodingFails(["entry": candidate], format: format)
+            assertEncodingFails([HookArchivedText("control", storesData: true), candidate], format: format)
+            assertEncodingFails([[candidate]], format: format)
+            assertEncodingFails(["entry": [candidate]], format: format)
+            assertEncodingFails([Optional(candidate)], format: format)
+            assertEncodingFails(["entry": ProxiedArchivedText(base: candidate)], format: format)
+        }
+    }
+
+    func test_checkedEncode_ofCustomArchiveData_encodesStorableObjects() throws {
+        let control = HookArchivedText("control", storesData: true)
+        let array = try XCTUnwrap(
+            [HookArchivedText].persistentKeyValueRepresentation.encode([control], format: .userDefaults)
+        )
+        let dictionary = try XCTUnwrap(
+            [String: HookArchivedText].persistentKeyValueRepresentation.encode(
+                ["entry": control],
+                format: .userDefaults
+            )
+        )
+
+        XCTAssertTrue(isStorablePropertyList(array))
+        XCTAssertTrue(isStorablePropertyList(dictionary))
+        XCTAssertEqual(
+            try [HookArchivedText].persistentKeyValueRepresentation.decode(storageObject: array, format: .userDefaults),
+            [control]
+        )
+        XCTAssertEqual(
+            try [String: HookArchivedText].persistentKeyValueRepresentation.decode(
+                storageObject: dictionary,
+                format: .userDefaults
+            ),
+            ["entry": control]
+        )
+    }
+
+    func test_checkedEncode_ofEncoderThatChangesEarlierOutput_encodesEachEncodingAsReturned() throws {
+        let dictionaryValues = BufferedText.encodedTogether(["one", "two"], storesData: false)
+        let nestedValues = BufferedText.encodedTogether(["one", "two"], storesData: false)
+        let hookValues = BufferedText.encodedTogether(["one", "two"], storesData: false).map(HookBufferedText.init)
+        let objects = [
+            try XCTUnwrap(
+                [String: BufferedText].persistentKeyValueRepresentation.encode(
+                    ["first": dictionaryValues[0], "second": dictionaryValues[1]],
+                    format: .userDefaults
+                )
+            ),
+            try XCTUnwrap(
+                [[BufferedText]].persistentKeyValueRepresentation.encode(
+                    [[nestedValues[0]], [nestedValues[1]]],
+                    format: .userDefaults
+                )
+            ),
+            try XCTUnwrap(
+                [[HookBufferedText]].persistentKeyValueRepresentation.encode(
+                    [[hookValues[0]], [hookValues[1]]],
+                    format: .userDefaults
+                )
+            ),
+        ]
+
+        for object in objects {
+            XCTAssertTrue(isStorablePropertyList(object), "\(object)")
+            XCTAssertFalse(containsMetadata(object), "\(object)")
+        }
+    }
+}
+
 // MARK: - Archive UID Comparison Tests
 
 extension StorablePropertyListTests {
@@ -349,6 +563,46 @@ extension StorablePropertyListTests {
         XCTAssertNotNil(userDefaults.object(forKey: key.id), file: file, line: line)
         XCTAssertEqual(userDefaults.get(key), control, file: file, line: line)
     }
+
+    /// Asserts that a write of values whose encoder adds metadata to the dictionary it returned for the first value
+    /// while encoding the second stores each encoding as the encoder returned it.
+    private func assertUserDefaultsWritesStoreEachEncoding<Value: Equatable & KeyValuePersistible & Sendable>(
+        _ id: String,
+        writing value: ([BufferedText]) -> Value,
+        storesData: Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let texts = BufferedText.encodedTogether(["one", "two"], storesData: storesData)
+        let key = PersistentKey(id, defaultValue: value([BufferedText("fallback"), BufferedText("fallback")]))
+
+        userDefaults.set("previous", forKey: key.id)
+        userDefaults.set(key, to: value(texts))
+
+        let object = userDefaults.object(forKey: key.id)
+
+        XCTAssertTrue(texts[0].buffer?.hasAddedMetadata == true, file: file, line: line)
+        XCTAssertNotNil(object, file: file, line: line)
+        XCTAssertFalse(containsMetadata(object), file: file, line: line)
+        XCTAssertEqual(userDefaults.get(key), value(texts), file: file, line: line)
+    }
+
+    /// Asserts that checked encoding of `value` throws ``PersistentKeyValueConversionError/encodingFailed``.
+    private func assertEncodingFails<Value: KeyValuePersistible>(
+        _ value: Value,
+        format: PersistentKeyValueStorageFormat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertThrowsError(
+            try Value.persistentKeyValueRepresentation.encode(value, format: format),
+            "\(Value.self), \(format)",
+            file: file,
+            line: line
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .encodingFailed, file: file, line: line)
+        }
+    }
 }
 
 // MARK: - Migration Tests
@@ -441,6 +695,18 @@ private func arrayArchiveUIDs() throws -> [Any] {
     let objects = try XCTUnwrap(archive["$objects"] as? NSArray)
     let array = try XCTUnwrap(objects[1] as? NSDictionary)
     return try XCTUnwrap(array["NS.objects"] as? [Any])
+}
+
+/// Returns whether `object` holds a dictionary with the metadata that ``SharedEncodingBuffer`` adds, at any depth.
+private func containsMetadata(_ object: Any?) -> Bool {
+    switch object {
+    case let dictionary as [String: Any]:
+        dictionary["metadata"] != nil || dictionary.values.contains { containsMetadata($0) }
+    case let array as [Any]:
+        array.contains { containsMetadata($0) }
+    default:
+        false
+    }
 }
 
 // MARK: - Archive Dictionary Key Definition
@@ -642,6 +908,164 @@ private struct ProxiedArchivedText: Equatable, KeyValuePersistible {
     // MARK: KeyValuePersistible Implementation
 
     static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, HookArchivedText> {
+        ProxyPersistentKeyValueRepresentation(
+            to: {
+                $0.base
+            },
+            from: {
+                Self(base: $0)
+            }
+        )
+    }
+}
+
+// MARK: - Shared Encoding Buffer Definition
+
+/// A mutable dictionary that an encoder returns for the first text it encodes and, while encoding each later text,
+/// adds metadata to: a keyed archive, either as its property list or as its `Data`.
+private final class SharedEncodingBuffer: @unchecked Sendable {
+    /// Whether the metadata is stored as an archive's `Data` rather than as its property list.
+    let storesData: Bool
+
+    private let dictionary = NSMutableDictionary()
+    private let lock = NSLock()
+    private var hasEncoded = false
+
+    // MARK: Initialization
+
+    init(storesData: Bool) {
+        self.storesData = storesData
+    }
+
+    // MARK: Instance Interface
+
+    /// Whether encoding a later text has added metadata to the dictionary.
+    var hasAddedMetadata: Bool {
+        lock.withLock {
+            dictionary["metadata"] != nil
+        }
+    }
+
+    /// Returns the dictionary, holding `text`, for the first text, or adds metadata to the dictionary and returns
+    /// `text` for each later text.
+    func object(for text: String) throws -> Any {
+        try lock.withLock {
+            guard hasEncoded else {
+                hasEncoded = true
+                dictionary["text"] = text
+                return dictionary
+            }
+
+            dictionary["metadata"] = try archivedObject(for: "metadata", storesData: storesData)
+            return text
+        }
+    }
+}
+
+// MARK: - Buffered Text Definition
+
+/// A string whose representation encodes it through a ``SharedEncodingBuffer``, if it has one, with the protocol's
+/// default container methods.
+private struct BufferedText: Equatable, KeyValuePersistible {
+    let text: String
+    let buffer: SharedEncodingBuffer?
+
+    // MARK: Initialization
+
+    init(_ text: String, buffer: SharedEncodingBuffer? = nil) {
+        self.text = text
+        self.buffer = buffer
+    }
+
+    // MARK: Static Interface
+
+    /// Returns `texts` encoded through one buffer, in order.
+    static func encodedTogether(_ texts: [String], storesData: Bool) -> [Self] {
+        let buffer = SharedEncodingBuffer(storesData: storesData)
+
+        return texts.map {
+            Self($0, buffer: buffer)
+        }
+    }
+
+    // MARK: Equatable Implementation
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.text == rhs.text
+    }
+
+    // MARK: KeyValuePersistible Implementation
+
+    static var persistentKeyValueRepresentation: BufferedTextRepresentation {
+        BufferedTextRepresentation()
+    }
+}
+
+private struct BufferedTextRepresentation: PersistentKeyValueRepresentation {
+    // MARK: PersistentKeyValueRepresentation Implementation
+
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> BufferedText {
+        guard let text = storageObject as? String ?? (storageObject as? [String: Any])?["text"] as? String else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return BufferedText(text)
+    }
+
+    func encode(_ value: BufferedText, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        try value.buffer?.object(for: value.text) ?? value.text
+    }
+}
+
+// MARK: - Hook Buffered Text Definition
+
+/// A ``BufferedText`` whose representation writes collections with its own container methods, which store each
+/// encoding as the encoder returns it.
+private struct HookBufferedText: Equatable, KeyValuePersistible {
+    let base: BufferedText
+
+    // MARK: KeyValuePersistible Implementation
+
+    static var persistentKeyValueRepresentation: HookBufferedTextRepresentation {
+        HookBufferedTextRepresentation()
+    }
+}
+
+private struct HookBufferedTextRepresentation: PersistentKeyValueRepresentation {
+    // MARK: PersistentKeyValueRepresentation Implementation
+
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> HookBufferedText {
+        HookBufferedText(base: try BufferedTextRepresentation().decode(storageObject: storageObject, format: format))
+    }
+
+    func encode(_ value: HookBufferedText, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        try BufferedTextRepresentation().encode(value.base, format: format)
+    }
+
+    /// Appends each value's encoding without checking that a store accepts it.
+    func set(_ values: [HookBufferedText], to propertyListArray: inout [Any]) {
+        guard let objects = try? values.map({ try encode($0, format: .propertyList) }) else {
+            return
+        }
+
+        propertyListArray.append(contentsOf: objects.compactMap { $0 })
+    }
+
+    /// Writes the value's encoding without checking that a store accepts it.
+    func set(_ dictionaryKey: String, to value: HookBufferedText, in propertyListDictionary: inout [String: Any]) {
+        propertyListDictionary[dictionaryKey] = try? encode(value, format: .propertyList)
+    }
+}
+
+// MARK: - Proxied Buffered Text Definition
+
+/// A value proxied through ``BufferedText``.
+private struct ProxiedBufferedText: Equatable, KeyValuePersistible {
+    let base: BufferedText
+
+    // MARK: KeyValuePersistible Implementation
+
+    static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, BufferedText> {
         ProxyPersistentKeyValueRepresentation(
             to: {
                 $0.base

@@ -76,7 +76,8 @@ where
     /// Throws if any value fails to encode. Built-in value representations encode each value with their own checked
     /// conversion, omit values that encode to `nil`, and rethrow the first error. Other value representations encode
     /// each entry with their ``PersistentKeyValueRepresentation/set(_:to:in:)-91w4n`` exactly as it is implemented and
-    /// throw ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the entry absent.
+    /// throw ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the entry absent or writes an entry
+    /// that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         try Value.persistentKeyValueRepresentation.checkedPropertyListDictionary(encoding: self)
     }

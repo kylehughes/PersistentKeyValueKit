@@ -143,11 +143,7 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
                     }
 
                     stage = .cleanup
-                    guard try sourceStore.migrationSnapshotIsCurrent(sourceSnapshot, for: sourceID) else {
-                        throw PersistentKeyMigrationError.sourceChanged
-                    }
-
-                    try sourceStore.removeMigrationValue(for: sourceID, matching: sourceSnapshot)
+                    try Self.remove(consume sourceSnapshot, from: sourceStore, for: sourceID)
                     // Removal can notify observers synchronously, and they can change the destination.
                     guard try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID)
                     else {
@@ -160,25 +156,24 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
 
             stage = .decode
             let value = try sourceStore.migrationValue(for: source, in: sourceSnapshot)
+            // The decoded value can be the instance stored in the source, and the destination snapshot can hold the
+            // instance being replaced. A `deinit` of either can change a key, so each is released at its last use,
+            // before the write and removal are verified.
             stage = .transform
-            let destinationValue = try transform(value)
+            let destinationValue = try transform(consume value)
             stage = .prepare
-            let write = try destinationStore.prepareMigrationWrite(destinationValue, for: destination)
+            let write = try destinationStore.prepareMigrationWrite(consume destinationValue, for: destination)
             stage = .write
             let committedSnapshot = try Self.commit(
                 write,
-                replacing: destinationSnapshot,
+                replacing: consume destinationSnapshot,
                 in: destinationStore,
                 for: destinationID
             )
 
             if case .move = operation {
                 stage = .cleanup
-                guard try sourceStore.migrationSnapshotIsCurrent(sourceSnapshot, for: sourceID) else {
-                    throw PersistentKeyMigrationError.sourceChanged
-                }
-
-                try sourceStore.removeMigrationValue(for: sourceID, matching: sourceSnapshot)
+                try Self.remove(consume sourceSnapshot, from: sourceStore, for: sourceID)
                 // Removal can notify observers synchronously, and they can change the destination.
                 guard try Self.isCommitted(committedSnapshot, in: destinationStore, for: destinationID) else {
                     throw PersistentKeyMigrationError.destinationChanged
@@ -197,13 +192,17 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
 
     /// Commits `write` in place of `snapshot`, throwing ``PersistentKeyMigrationError/writeVerificationFailed`` unless
     /// `store` then holds the committed value.
+    ///
+    /// The snapshot can hold the last reference to the replaced value, whose `deinit` can change the key, so it is
+    /// released before the write is verified.
     private static func commit<Store>(
         _ write: Store.MigrationWrite,
-        replacing snapshot: Store.MigrationSnapshot?,
+        replacing snapshot: consuming Store.MigrationSnapshot?,
         in store: Store,
         for keyID: String
     ) throws -> Store.MigrationSnapshot? where Store: PersistentKeyValueMigrationBackend {
         let committedSnapshot = try store.commitMigrationWrite(write, replacing: snapshot)
+        _ = consume snapshot
         guard try isCommitted(committedSnapshot, in: store, for: keyID) else {
             throw PersistentKeyMigrationError.writeVerificationFailed
         }
@@ -222,6 +221,27 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
         }
 
         return try store.migrationSnapshotIsCurrent(snapshot, for: keyID)
+    }
+
+    /// Removes the value captured as `snapshot`, throwing ``PersistentKeyMigrationError/sourceChanged`` if `store` no
+    /// longer holds it and ``PersistentKeyMigrationError/removalVerificationFailed`` unless the key is then absent.
+    ///
+    /// The snapshot can hold the last reference to the removed value, whose `deinit` can write either key, so it is
+    /// released before the removal is verified.
+    private static func remove<Store>(
+        _ snapshot: consuming Store.MigrationSnapshot,
+        from store: Store,
+        for keyID: String
+    ) throws where Store: PersistentKeyValueMigrationBackend {
+        guard try store.migrationSnapshotIsCurrent(snapshot, for: keyID) else {
+            throw PersistentKeyMigrationError.sourceChanged
+        }
+
+        try store.removeMigrationValue(for: keyID, matching: snapshot)
+        _ = consume snapshot
+        guard try store.migrationSnapshot(for: keyID) == nil else {
+            throw PersistentKeyMigrationError.removalVerificationFailed
+        }
     }
 }
 
@@ -425,9 +445,12 @@ extension PersistentKeyValueStore {
     /// On a failure before the destination write, including a transform failure, the migration writes to neither
     /// store. Migrations do not roll back completed items, and a move that fails during
     /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` does not roll back its destination write (though another
-    /// writer or observer may have modified or removed the value in either store). After removing the source, the move
-    /// checks the destination again, because observers notified of the removal can change it. An empty batch is valid;
-    /// with completion tracking, it records the marker.
+    /// writer or observer may have modified or removed the value in either store). The move releases its references to
+    /// a replaced destination value before verifying the write, and to the removed source value before verifying the
+    /// removal, so a `deinit` that those releases run is reflected in the item's outcome. After removing the source,
+    /// the move checks that the source is still absent and the destination unchanged, because observers notified of
+    /// the removal, or the removed value's `deinit`, can change either store. An empty batch is valid; with completion
+    /// tracking, it records the marker.
     ///
     /// - Parameter items: The items to move, processed in order.
     /// - Parameter destination: The destination store.

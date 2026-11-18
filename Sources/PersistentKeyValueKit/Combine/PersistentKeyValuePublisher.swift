@@ -28,7 +28,9 @@ import Foundation
 /// - Important: The publisher does not schedule delivery on any queue. Values are delivered synchronously on the
 ///   thread that requests demand or that reports a store change, which can be a background thread. While one thread
 ///   is delivering values, changes reported on other threads are delivered by that thread, so a concurrent write can
-///   return before its change is delivered. Use `receive(on: DispatchQueue.main)` before updating UI.
+///   return before its change is delivered. Likewise, until the subscriber returns from `receive(subscription:)`,
+///   demand requested and changes reported on other threads are delivered by the subscribing thread after it returns.
+///   Use `receive(on: DispatchQueue.main)` before updating UI.
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
 /// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit
@@ -94,6 +96,7 @@ extension PersistentKeyValuePublisher: Publisher {
         )
 
         subscriber.receive(subscription: subscription)
+        subscription.finishSubscribing()
     }
 }
 
@@ -121,6 +124,11 @@ extension PersistentKeyValuePublisher {
         private var isCancelled: Bool
         private var isEmitting: Bool
         private var pendingInitialValue: Key.Value?
+        /// The thread that is delivering the subscription to the subscriber, or `nil` once delivery returns.
+        ///
+        /// Until then, only this thread delivers values, so another thread cannot call the subscriber while it is
+        /// still receiving the subscription.
+        private var subscribingThread: pthread_t?
 
         /// The store being observed. Marked `nonisolated(unsafe)` because ``PersistentKeyValueStore`` conforming
         /// types are required to be thread-safe.
@@ -160,6 +168,8 @@ extension PersistentKeyValuePublisher {
             isEmitting = false
             lock = NSLock()
             pendingInitialValue = nil
+            // The publisher creates the subscription on the thread that delivers it to the subscriber.
+            subscribingThread = pthread_self()
 
             super.init()
 
@@ -220,6 +230,23 @@ extension PersistentKeyValuePublisher {
             store.deregister(self, for: key, context: nil)
         }
 
+        // MARK: Internal Instance Interface
+
+        /// Ends subscription delivery and delivers the values that other threads queued while it was in progress.
+        internal func finishSubscribing() {
+            let hasQueuedValue = withLock {
+                subscribingThread = nil
+
+                return !isEmitting && canEmit()
+            }
+
+            guard hasQueuedValue else {
+                return
+            }
+
+            emitPendingValues()
+        }
+
         // MARK: NSObject Implementation
 
         /// - SeeAlso: https://forums.swift.org/t/crash-when-running-in-swift-6-language-mode/72431/2
@@ -251,6 +278,22 @@ extension PersistentKeyValuePublisher {
 
         // MARK: Private Instance Interface
 
+        /// Whether the current thread can start delivering values. Must be called with the lock held.
+        ///
+        /// While the subscriber receives the subscription, only the subscribing thread can, so demand it requests from
+        /// `receive(subscription:)` is still delivered synchronously.
+        private nonisolated func canBecomeEmitter() -> Bool {
+            guard !isEmitting else {
+                return false
+            }
+
+            guard let subscribingThread else {
+                return true
+            }
+
+            return pthread_equal(subscribingThread, pthread_self()) != 0
+        }
+
         private nonisolated func canEmit() -> Bool {
             !isCancelled
                 && downstream != nil
@@ -261,7 +304,8 @@ extension PersistentKeyValuePublisher {
         private nonisolated func emitPendingValues() {
             lock.lock()
 
-            guard !isEmitting else {
+            // A thread that is already emitting, or that is still subscribing, delivers the values queued here.
+            guard canBecomeEmitter() else {
                 lock.unlock()
 
                 return

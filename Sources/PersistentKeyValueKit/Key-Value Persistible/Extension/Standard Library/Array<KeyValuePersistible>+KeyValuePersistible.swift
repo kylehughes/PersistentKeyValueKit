@@ -63,7 +63,8 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     /// checked conversion (converting outer proxy layers before encoding the resulting proxies) and rethrow the
     /// thrown error. Other element representations encode the array with their
     /// ``PersistentKeyValueRepresentation/set(_:to:)`` exactly as it is implemented and throw
-    /// ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the array empty for nonempty values.
+    /// ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the array empty for nonempty values or
+    /// writes an object that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         try Element.persistentKeyValueRepresentation.checkedPropertyListArray(encoding: self)
     }

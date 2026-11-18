@@ -218,7 +218,7 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
 
             base.set(key, to: value, in: &objects)
 
-            guard isStorableEntry(objects[key], validating: validating) else {
+            guard isStorableEntry(at: key, in: &objects, validating: validating) else {
                 return nil
             }
         }
