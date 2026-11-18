@@ -66,16 +66,24 @@ internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObserva
 /// notifying its observers only when the key's property-list value differs from the last value read. Registrations for
 /// the same key share one read and one comparison value.
 ///
-/// One caller reconciles at a time. A change reported while another caller reconciles, including one made by an
-/// overridden getter or an observer during the reconciliation, is reconciled by that caller before it finishes. Reads
-/// and observer callbacks run without the lock held, so they can access the store and its observations again. Each
-/// key's comparison value is replaced only by a later read, so a stale read can never suppress a later change.
+/// A key's first registration reads the key's first comparison value before it returns, so every later change is
+/// compared with it, even while another caller is reconciling. One caller reconciles at a time. A change reported while
+/// another caller reconciles, including one made by an overridden getter, an equality check, or an observer during the
+/// reconciliation, is reconciled by that caller before it finishes. Each key's comparison value is replaced only by a
+/// later read, so a stale read can never suppress a later change.
+///
+/// The lock is never held while running code that can access the store or its observations. Reads, comparisons, and
+/// observer callbacks run after it is unlocked, and no reference whose release can deinitialize an observer is released
+/// while it is held.
 ///
 /// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Access to
-///   mutable state is protected by `lock`, and `userDefaults` is a weak reference.
+///   mutable state is protected by `lock`, except each key's comparison value, which only the reconciling caller
+///   accesses, and `userDefaults` is a weak reference.
 internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable {
     private let lock: NSLock
 
+    /// The number of changes reported, which tells a registration whether a change was reported during its first read.
+    private var changeCount: Int
     private var hasPendingChange: Bool
     private var isReconciling: Bool
     private var observedKeys: [ObservedKey]
@@ -88,6 +96,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     private init(userDefaults: UserDefaults) {
         self.userDefaults = userDefaults
 
+        changeCount = 0
         hasPendingChange = false
         isReconciling = false
         lock = NSLock()
@@ -134,27 +143,46 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     // MARK: Internal Instance Interface
 
     /// Starts delivering changes to `observation`, unless it has already been invalidated.
+    ///
+    /// When `observation` is the first registration for its key, the key's first comparison value is read before this
+    /// returns.
     internal func add(_ observation: UserDefaultsKeyChangeObservation) {
-        let isAdded = withLock {
-            guard !observation.isInvalidated else {
-                return false
+        let changeCountBeforeRead: Int? = withLock {
+            guard !observation.isInvalidated, !appendToObservedKey(observation) else {
+                return nil
             }
 
-            if let observedKey = observedKey(for: observation.keyID) {
-                observedKey.observations.append(observation)
-            } else {
-                observedKeys.append(ObservedKey(observation: observation))
-            }
-
-            return true
+            return changeCount
         }
 
-        guard isAdded else {
+        guard let changeCountBeforeRead else {
             return
         }
 
-        // A new key's first read becomes its comparison value without notifying observers.
-        reconcile()
+        // Read without the lock held: an overridden getter can write the store and report a change synchronously.
+        let object = userDefaults?.object(forKey: observation.keyID)
+
+        let isChangedDuringRead = withLock {
+            // The observation can be invalidated, or another registration can add its key, during the read.
+            guard !observation.isInvalidated, !appendToObservedKey(observation) else {
+                return false
+            }
+
+            observedKeys.append(ObservedKey(observation: observation, lastObject: object))
+
+            guard changeCount == changeCountBeforeRead else {
+                // A change reported during the read was reconciled without this key, so reconcile again.
+                hasPendingChange = true
+
+                return true
+            }
+
+            return false
+        }
+
+        if isChangedDuringRead {
+            reconcile()
+        }
     }
 
     /// Stops delivering changes to `observation`.
@@ -168,6 +196,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
             let observedKey = observedKeys[index]
 
+            // The caller holds `observation`, so removing it from the key does not release it.
             observedKey.observations.removeAll {
                 $0 === observation
             }
@@ -197,14 +226,19 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     // MARK: Private Instance Interface
 
-    /// Returns the observed key with the given identifier. Must be called with the lock held.
-    private func observedKey(for keyID: String) -> ObservedKey? {
-        observedKeys.first {
-            StoreKeyObservationRegistry.keyIDsMatch($0.keyID, keyID)
+    /// Adds `observation` to the registrations of its observed key and returns `true`, or returns `false` when its key
+    /// is not observed. Must be called with the lock held.
+    private func appendToObservedKey(_ observation: UserDefaultsKeyChangeObservation) -> Bool {
+        let observedKey = observedKeys.first {
+            StoreKeyObservationRegistry.keyIDsMatch($0.keyID, observation.keyID)
         }
+
+        observedKey?.observations.append(observation)
+
+        return observedKey != nil
     }
 
-    /// Reads and compares observed keys until no reconciliation is pending.
+    /// Reads and compares observed keys until no change is pending.
     ///
     /// Only one caller reconciles at a time. Another caller records its work and returns, and the reconciling caller
     /// performs it before finishing.
@@ -225,15 +259,17 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
             return
         }
 
-        // Read without the lock held: an overridden getter can write the store and report a change synchronously.
+        // Read and compare without the lock held: an overridden getter or `isEqual(_:)` can write the store, report a
+        // change synchronously, or deregister.
         let object = userDefaults.object(forKey: observedKey.keyID)
 
-        let (observations, replacedObject) = withLock {
-            observedKey.record(object)
+        guard observedKey.recordRead(object) else {
+            return
         }
 
-        // Release the replaced comparison value after the lock is unlocked.
-        withExtendedLifetime(replacedObject) {}
+        let observations = withLock {
+            observedKey.observations
+        }
 
         for observation in observations {
             // An observer notified earlier in this loop can deregister a later one.
@@ -263,26 +299,14 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
         }
     }
 
-    /// Returns the keys to read next, or releases reconciliation and returns `nil` when none remain.
+    /// Returns every observed key to read after a change, or releases reconciliation and returns `nil` when no change
+    /// is pending.
     ///
-    /// After a change, every key with a live observer is read. Otherwise, only keys without a comparison value are.
+    /// A key is read even when its observers have been deallocated, so its comparison value stays current until its
+    /// registrations are removed.
     private func takePendingKeys() -> [ObservedKey]? {
         withLock {
-            let isChange = hasPendingChange
-            hasPendingChange = false
-
-            let pendingKeys = observedKeys.filter { observedKey in
-                guard observedKey.hasLiveObserver else {
-                    // Without a live observer the key is not read, so its comparison value would become stale.
-                    observedKey.invalidateLastObject()
-
-                    return false
-                }
-
-                return isChange || !observedKey.hasLastObject
-            }
-
-            guard !pendingKeys.isEmpty else {
+            guard hasPendingChange else {
                 // Release reconciliation while holding the lock so a concurrent change cannot be recorded between the
                 // final check and the release.
                 isReconciling = false
@@ -290,13 +314,16 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
                 return nil
             }
 
-            return pendingKeys
+            hasPendingChange = false
+
+            return observedKeys
         }
     }
 
     @objc
     private func userDefaultsDidChange(_ notification: Notification) {
         withLock {
+            changeCount &+= 1
             hasPendingChange = true
         }
 
@@ -318,56 +345,30 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 extension UserDefaultsKeyChangeMonitor {
     /// The registrations for one key and the key's last read property-list value.
     ///
-    /// Every property is protected by the monitor's lock, except the immutable `keyID`.
+    /// `observations` is protected by the monitor's lock. The last read value is set before the key is observed, and
+    /// then only the reconciling caller reads and replaces it, without the lock held.
     private final class ObservedKey {
         let keyID: String
         var observations: [UserDefaultsKeyChangeObservation]
 
-        private(set) var hasLastObject: Bool
         private var lastObject: Any?
 
-        init(observation: UserDefaultsKeyChangeObservation) {
+        init(observation: UserDefaultsKeyChangeObservation, lastObject: Any?) {
             keyID = observation.keyID
             observations = [observation]
 
-            hasLastObject = false
-            lastObject = nil
+            self.lastObject = lastObject
         }
 
-        var hasLiveObserver: Bool {
-            observations.contains {
-                $0.observer != nil
-            }
-        }
-
-        /// Makes the next read the key's comparison value without notifying observers.
+        /// Records a read and returns whether it differs from the previous read.
         ///
-        /// The previous value is kept until that read replaces it, so it is never released with the lock held.
-        func invalidateLastObject() {
-            hasLastObject = false
-        }
-
-        /// Records a read and returns the observations to notify, plus the replaced value for release after unlocking.
-        func record(_ object: Any?) -> ([UserDefaultsKeyChangeObservation], Any?) {
-            let replacedObject = lastObject
-
-            // Keep the latest read even when it is equal, so the next read of an unchanged value is the same object.
+        /// The latest read is kept even when it is equal, so the next read of an unchanged value is the same object.
+        func recordRead(_ object: Any?) -> Bool {
+            let previousObject = lastObject
             lastObject = object
 
-            guard hasLastObject else {
-                hasLastObject = true
-
-                return ([], replacedObject)
-            }
-
-            guard
-                !Self.isSameObject(replacedObject, object),
-                !PropertyListMigrationStorage.equal(replacedObject, object)
-            else {
-                return ([], replacedObject)
-            }
-
-            return (observations, replacedObject)
+            return !Self.isSameObject(previousObject, object)
+                && !PropertyListMigrationStorage.equal(previousObject, object)
         }
 
         /// Returns whether two reads returned the same object, which makes a recursive comparison unnecessary.

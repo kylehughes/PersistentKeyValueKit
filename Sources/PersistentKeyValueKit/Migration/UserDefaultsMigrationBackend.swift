@@ -138,23 +138,34 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         return try decodeStorageValue(for: key, object: snapshot.object, format: .userDefaults)
     }
 
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
+        guard write.identity == migrationIdentity, write.keyID == key.id else {
+            throw PersistentKeyMigrationError.internalInconsistency
+        }
+
+        return try write.object.map {
+            try decodeStorageValue(for: key, object: $0, format: .userDefaults)
+        }
+    }
+
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
+        PropertyListMigrationStorage.equal(write.object, other.object)
+    }
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key
     ) throws -> MigrationWrite where Key: PersistentKeyProtocol {
         let object = try encodeStorageValue(value, for: key, format: .userDefaults)
         if let object {
-            let frozen = try PropertyListMigrationStorage.freeze(object)
-            // UserDefaults stores a file URL as its path, which drops a host or a trailing slash that later relative
-            // resolution depends on, so a URL that the ordinary reader cannot reproduce fails before any mutation.
-            if let url = value as? URL,
-                (try decodeStorageValue(for: key, object: frozen, format: .userDefaults) as? URL)?.absoluteString
-                    != url.absoluteString
-            {
-                throw PersistentKeyValueConversionError.encodingFailed
-            }
-
-            return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: frozen)
+            return MigrationWrite(
+                identity: migrationIdentity,
+                keyID: key.id,
+                object: try PropertyListMigrationStorage.freeze(object)
+            )
         }
 
         return MigrationWrite(identity: migrationIdentity, keyID: key.id, object: nil)

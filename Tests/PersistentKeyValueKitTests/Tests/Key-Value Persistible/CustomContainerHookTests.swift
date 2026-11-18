@@ -280,38 +280,58 @@ extension CustomContainerHookTests {
         XCTAssertEqual(userDefaults.get(key), [])
     }
 
-    func test_set_arrayOfOnlyRemovedElements_storesEmptyArray() {
+    // A custom representation's container methods report a failed element by leaving it out, so checked conversion
+    // cannot tell an element that encodes to `nil` from a failure without encoding it again, which is exponential in
+    // the depth of a recursive value. It treats a missing result as a failure instead.
+
+    func test_set_arrayOfOnlyRemovedCustomElements_leavesStoredArray() {
         let key = PersistentKey("key:\(#function)", defaultValue: [ConversionOnlyValue(1)])
 
         userDefaults.set(key, to: [ConversionOnlyValue(2)])
         userDefaults.set(key, to: [ConversionOnlyValue(0)])
 
-        XCTAssertEqual(userDefaults.array(forKey: key.id) as? [Int], [])
+        XCTAssertEqual(userDefaults.array(forKey: key.id) as? [Int], [2])
     }
 
-    func test_set_dictionaryOfOnlyRemovedValues_storesEmptyDictionary() {
+    func test_set_arrayWithSomeRemovedCustomElements_omitsThem() {
+        let key = PersistentKey("key:\(#function)", defaultValue: [ConversionOnlyValue(1)])
+
+        userDefaults.set(key, to: [ConversionOnlyValue(2), ConversionOnlyValue(0), ConversionOnlyValue(3)])
+
+        XCTAssertEqual(userDefaults.array(forKey: key.id) as? [Int], [2, 3])
+    }
+
+    func test_set_dictionaryWithRemovedCustomValue_leavesStoredDictionary() {
         let key = PersistentKey("key:\(#function)", defaultValue: ["default": ConversionOnlyValue(1)])
 
         userDefaults.set(key, to: ["a": ConversionOnlyValue(2)])
         userDefaults.set(key, to: ["a": ConversionOnlyValue(0)])
+        userDefaults.set(key, to: ["a": ConversionOnlyValue(3), "b": ConversionOnlyValue(0)])
 
-        XCTAssertEqual(userDefaults.dictionary(forKey: key.id) as? [String: Int], [:])
+        XCTAssertEqual(userDefaults.dictionary(forKey: key.id) as? [String: Int], ["a": 2])
     }
 
     func test_checkedEncode_arrayOfOnlyNilElements_returnsEmptyArray() throws {
         let representation = [ConversionOnlyValue?].persistentKeyValueRepresentation
 
-        XCTAssertEqual(try representation.encode([nil, .init(0)], format: .propertyList) as? [Int], [])
+        XCTAssertEqual(try representation.encode([nil, nil], format: .propertyList) as? [Int], [])
+        XCTAssertEqual(try representation.encode([nil, .init(2), .init(0)], format: .propertyList) as? [Int], [2])
+        XCTAssertThrowsError(try representation.encode([nil, .init(0)], format: .propertyList)) { error in
+            XCTAssertEqual(error as? PersistentKeyValueConversionError, .encodingFailed)
+        }
         XCTAssertThrowsError(try representation.encode([nil, .init(-1)], format: .propertyList)) { error in
-            XCTAssertTrue(error is ConversionOnlyEncodingFailure)
+            XCTAssertEqual(error as? PersistentKeyValueConversionError, .encodingFailed)
         }
     }
 
-    func test_checkedEncode_failedDictionaryValuePreservesError() {
+    func test_checkedEncode_failedCustomDictionaryValue_throwsEncodingFailed() {
         let representation = [String: ConversionOnlyValue].persistentKeyValueRepresentation
 
         XCTAssertThrowsError(try representation.encode(["a": .init(1), "b": .init(-1)], format: .propertyList)) {
-            XCTAssertTrue($0 is ConversionOnlyEncodingFailure)
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .encodingFailed)
+        }
+        XCTAssertThrowsError(try representation.encode(["a": .init(1), "b": .init(0)], format: .propertyList)) {
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .encodingFailed)
         }
     }
 }

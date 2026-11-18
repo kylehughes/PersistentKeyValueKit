@@ -62,12 +62,22 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// same store.
     case overlappingMigration
 
+    /// An in-place rewrite produced a value that still decodes with the source key's representation and that rewriting
+    /// again would change, so a retried migration would apply the transform twice.
+    ///
+    /// The item fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` before anything is written. This happens
+    /// when the source and destination representations share a storage format, including numbers that Foundation
+    /// bridges, such as an integer and an integral `Double`. Migrate the value to a new key instead; see
+    /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
+    case nonIdempotentRewrite
+
     /// The source value changed between the initial snapshot and source removal during a move.
     case sourceChanged
 
     /// The destination value changed between the initial snapshot and the destination write or source cleanup,
     /// including when an observer wrote it while a write replaced it, or no longer matched the migrated value after the
-    /// source was removed during a move.
+    /// source was removed during a move. For an in-place rewrite that finds its value already rewritten, the stored
+    /// value changed while it was being recognized.
     case destinationChanged
 
     /// The destination store did not retain the expected value after writing.

@@ -42,3 +42,7 @@ extension RawRepresentablePersistentKeyValueRepresentation: ProxyPersistentKeyVa
         value.rawValue
     }
 }
+
+// MARK: - BuiltInProxyConversion Extension
+
+extension RawRepresentablePersistentKeyValueRepresentation: BuiltInProxyConversion {}

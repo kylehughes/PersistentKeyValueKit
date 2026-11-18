@@ -170,7 +170,10 @@ extension PersistentKeyMigrationReport {
         /// destination.
         case prepare
 
-        /// Writing to or verifying the destination store failed.
+        /// Writing to or verifying the destination store failed. A move had not started removing the source value.
+        ///
+        /// Under ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource``, this includes finding that the
+        /// existing destination value changed, in which case the source value is left in place.
         case write
 
         /// Removing the value from the source store or verifying its removal failed during a move, or the destination
@@ -257,10 +260,9 @@ extension PersistentKeyMigrationReport {
         /// The item failed at the given stage. The error is available in ``Outcome/error``. If failure occurred at
         /// ``FailureStage/cleanup`` after a move wrote the destination, the written value remains in the destination
         /// store unless something else changed it. A cleanup failure with
-        /// ``PersistentKeyMigrationError/destinationChanged`` means the destination changed during cleanup: either
-        /// before the source was removed, when ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` found
-        /// the kept destination value changed and left the source in place, or after the source was removed, for
-        /// example because an observer of the source key modified the destination. Read the source key to tell which.
+        /// ``PersistentKeyMigrationError/sourceChanged`` left the changed source value in place. A cleanup failure
+        /// with ``PersistentKeyMigrationError/destinationChanged`` means the source value was removed and the
+        /// destination then changed, for example because an observer of the source key modified it.
         case failed(FailureStage)
 
         /// The existing destination value was preserved under ``PersistentKeyCopyConflictPolicy/keepDestination`` or
@@ -276,7 +278,9 @@ extension PersistentKeyMigrationReport {
 
         /// The value was rewritten in place by an item that maps a key to its own identifier within one store, under
         /// any copy or move conflict policy, or was found already rewritten because it decodes only with the
-        /// destination key's representation. A move did not remove the key as its source. See
+        /// destination key's representation. A move did not remove the key as its source. A rewrite is safe to retry
+        /// only when its result fails to decode with the source key's representation or the transform is idempotent;
+        /// otherwise it fails with ``PersistentKeyMigrationError/nonIdempotentRewrite`` before writing. See
         /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
         case rewritten
 

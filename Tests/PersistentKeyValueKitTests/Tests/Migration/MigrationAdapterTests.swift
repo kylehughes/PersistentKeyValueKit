@@ -218,6 +218,34 @@ final class MigrationAdapterTests: XCTestCase {
         XCTAssertNoThrow(try store.removeMigrationValue(for: key.id, matching: current))
     }
 
+    func testMemoryMutableReferenceSnapshotKeepsExactContents() throws {
+        let store = InMemoryPersistentKeyValueStore()
+        let keyID = "key:\(#function)"
+        let text = NSMutableString(string: "a")
+        let data = NSMutableData(data: Data([1]))
+        let nested = NSMutableDictionary(
+            dictionary: ["decimal": NSDecimalNumber(string: "1.000000000000000001"), "text": text, "data": data]
+        )
+
+        store.set(NSMutableArray(array: [nested, 1]), forKey: keyID)
+
+        // A serialized property list stores a decimal as a double, which cannot tell these two decimals apart.
+        let mutations: [(String, () -> Void)] = [
+            ("decimal", { nested["decimal"] = NSDecimalNumber(string: "1.000000000000000002") }),
+            ("string", { text.append("b") }),
+            ("data", { data.append(Data([2])) }),
+            ("dictionary", { nested["added"] = true }),
+        ]
+
+        for (name, mutate) in mutations {
+            let snapshot = try XCTUnwrap(store.migrationSnapshot(for: keyID), name)
+
+            XCTAssertTrue(try store.migrationSnapshotIsCurrent(snapshot, for: keyID), name)
+            mutate()
+            XCTAssertFalse(try store.migrationSnapshotIsCurrent(snapshot, for: keyID), name)
+        }
+    }
+
     func testMutablePayloadSnapshotIsFrozen() throws {
         let defaults = try defaults()
         let key = PersistentKey("data", defaultValue: Data())

@@ -108,6 +108,17 @@ extension GateMigrationStore: PersistentKeyValueMigrationBackend {
         try base.migrationValue(for: key, in: snapshot)
     }
 
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
+        try base.migrationValue(for: key, writtenBy: write)
+    }
+
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
+        base.migrationWrite(write, matches: other)
+    }
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key

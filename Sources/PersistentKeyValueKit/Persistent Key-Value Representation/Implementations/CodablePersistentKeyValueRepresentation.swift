@@ -83,6 +83,20 @@ extension CodablePersistentKeyValueRepresentation: ProxyPersistentKeyValueRepres
     }
 }
 
+// MARK: - BuiltInProxyConversion Extension
+
+extension CodablePersistentKeyValueRepresentation: BuiltInProxyConversion {
+    // MARK: Internal Instance Interface
+
+    func checkedProxy(for value: Value) throws -> Proxy {
+        try encoder.encode(value)
+    }
+
+    func checkedValue(for proxy: Proxy) throws -> Value {
+        try decoder.decode(Value.self, from: proxy)
+    }
+}
+
 // MARK: - Extension for Data Coders
 
 @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)

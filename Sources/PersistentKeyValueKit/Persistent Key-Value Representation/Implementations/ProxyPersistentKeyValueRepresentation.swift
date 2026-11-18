@@ -121,3 +121,7 @@ extension ProxyPersistentKeyValueRepresentation: ProxyPersistentKeyValueRepresen
         to(value)
     }
 }
+
+// MARK: - BuiltInProxyConversion Extension
+
+extension ProxyPersistentKeyValueRepresentation: BuiltInProxyConversion {}

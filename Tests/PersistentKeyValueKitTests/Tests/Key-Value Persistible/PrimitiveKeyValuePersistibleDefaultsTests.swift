@@ -88,7 +88,9 @@ extension PrimitiveKeyValuePersistibleDefaultsTests {
         )
 
         userDefaults.set(arrayKey, to: [.init(7), .init(0), .init(8)])
-        userDefaults.set(dictionaryKey, to: ["a": .init(9), "removed": .init(0)])
+        userDefaults.set(dictionaryKey, to: ["a": .init(9)])
+        // A dictionary whose custom value encodes to `nil` is indistinguishable from a failed write.
+        userDefaults.set(dictionaryKey, to: ["a": .init(10), "removed": .init(0)])
 
         XCTAssertEqual(userDefaults.object(forKey: arrayKey.id) as? [Int], [7, 8])
         XCTAssertEqual(userDefaults.object(forKey: dictionaryKey.id) as? [String: Int], ["a": 9])

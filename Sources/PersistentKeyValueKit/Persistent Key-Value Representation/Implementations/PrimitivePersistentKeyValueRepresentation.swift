@@ -87,3 +87,42 @@ extension PrimitivePersistentKeyValueRepresentation: PersistentKeyValueRepresent
         Value.set(ubiquitousStoreKey, to: value, in: ubiquitousStore)
     }
 }
+
+// MARK: - BuiltInContainerConversion Extension
+
+extension PrimitivePersistentKeyValueRepresentation: BuiltInContainerConversion where Value: BuiltInContainerPrimitive {
+    // MARK: Internal Instance Interface
+
+    func builtInPropertyListArray(encoding values: [Value]) throws -> [Any] {
+        try values.compactMap {
+            try $0.encode(format: .propertyList)
+        }
+    }
+
+    func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
+        try values.compactMapValues {
+            try $0.encode(format: .propertyList)
+        }
+    }
+
+    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value] {
+        try propertyListArray.map {
+            try Value.decode(storageObject: $0, format: .propertyList)
+        }
+    }
+
+    func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
+        try propertyListDictionary.mapValues {
+            try Value.decode(storageObject: $0, format: .propertyList)
+        }
+    }
+}
+
+// MARK: - Built-In Container Primitive Definition
+
+/// A built-in primitive container, `Array` or `Dictionary`, whose checked conversion as an element decodes and
+/// encodes each element itself instead of using its ordinary container methods.
+///
+/// Built-in scalar primitives do not conform: their container methods cast or convert each element exactly as their
+/// checked conversion does, so checked conversion calls those methods.
+internal protocol BuiltInContainerPrimitive: PrimitiveKeyValuePersistible {}

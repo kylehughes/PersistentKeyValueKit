@@ -69,11 +69,31 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     /// The value of the key in the store.
     public var value: Key.Value {
         get {
-            value(for: key, in: _store)
+            Self.value(for: key, in: _store)
         }
         set {
-            setValue(newValue, for: key, in: _store)
+            objectWillChange.send()
+
+            Self.setValue(newValue, for: key, in: _store)
         }
+    }
+
+    // MARK: Internal Static Interface
+
+    /// Returns the value of `key` in `store`, or the key's default value when there is no store.
+    internal static func value(for key: Key, in store: (any PersistentKeyValueStore)?) -> Key.Value {
+        assertStoreExists(store)
+
+        return store?.get(key) ?? key.defaultValue
+    }
+
+    /// Writes `newValue` for `key` in `store`.
+    ///
+    /// The caller notifies subscribers that the object will change first.
+    internal static func setValue(_ newValue: Key.Value, for key: Key, in store: (any PersistentKeyValueStore)?) {
+        assertStoreExists(store)
+
+        store?.set(key, to: newValue)
     }
 
     // MARK: Internal Instance Interface
@@ -96,23 +116,11 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
         store = newStore
     }
 
-    /// Returns the value of `key` in `store`, or the key's default value when there is no store.
-    internal func value(for key: Key, in store: (any PersistentKeyValueStore)?) -> Key.Value {
-        assertStoreExists(store)
-
-        return store?.get(key) ?? key.defaultValue
-    }
-
-    /// Writes `newValue` for `key` in `store` after notifying subscribers that the object will change.
-    internal func setValue(_ newValue: Key.Value, for key: Key, in store: (any PersistentKeyValueStore)?) {
-        assertStoreExists(store)
-
-        objectWillChange.send()
-
-        store?.set(key, to: newValue)
-    }
-
     // MARK: Private Static Interface
+
+    private static func assertStoreExists(_ store: (any PersistentKeyValueStore)?) {
+        assert(store != nil, "Store should always be set on initialization or immediately after.")
+    }
 
     /// Returns whether two stores are the same instance.
     ///
@@ -130,11 +138,7 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     }
 
     // MARK: Private Instance Interface
-    
-    private func assertStoreExists(_ store: (any PersistentKeyValueStore)?) {
-        assert(store != nil, "Store should always be set on initialization or immediately after.")
-    }
-    
+
     private func registerObserver(on store: (any PersistentKeyValueStore)?) {
         guard let store else {
             return

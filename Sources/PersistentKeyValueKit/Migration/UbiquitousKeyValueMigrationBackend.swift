@@ -109,6 +109,23 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
         return try decodeStorageValue(for: key, object: snapshot.object, format: .ubiquitousKeyValueStore)
     }
 
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
+        guard write.identity == migrationIdentity, write.keyID == key.id else {
+            throw PersistentKeyMigrationError.internalInconsistency
+        }
+
+        return try write.object.map {
+            try decodeStorageValue(for: key, object: $0, format: .ubiquitousKeyValueStore)
+        }
+    }
+
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
+        PropertyListMigrationStorage.equal(write.object, other.object)
+    }
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key

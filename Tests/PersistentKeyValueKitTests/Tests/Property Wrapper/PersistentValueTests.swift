@@ -803,7 +803,57 @@ extension PersistentValueTests {
         XCTAssertEqual(store.get(secondKey), 2)
     }
 
+    @MainActor
+    func test_inputChange_retainedBindingDoesNotRetainLaterStore() async {
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let recorder = SwitchingRecorder()
+        var retainedBinding: Binding<Int>?
+        var viewController: ViewController? = ViewController()
+        weak var releasedSecondStore: InMemoryPersistentKeyValueStore?
+
+        do {
+            let secondStore = InMemoryPersistentKeyValueStore()
+            let model = SwitchingModel(keyID: key.id, store: firstStore, environmentStore: userDefaults)
+
+            releasedSecondStore = secondStore
+            firstStore.set(key, to: 1)
+            secondStore.set(key, to: 2)
+
+            host(SwitchingRoot(model: model, recorder: recorder), in: viewController!)
+            await waitForRenderedValue(1, in: recorder)
+
+            retainedBinding = recorder.binding
+
+            model.store = secondStore
+            await waitForRenderedValue(2, in: recorder)
+        }
+
+        // Release the view, keeping only the binding for the first store.
+        recorder.binding = nil
+        viewController = nil
+
+        await waitForRelease { releasedSecondStore == nil }
+
+        XCTAssertNil(releasedSecondStore)
+        XCTAssertEqual(retainedBinding?.wrappedValue, 1)
+
+        retainedBinding?.wrappedValue = 3
+
+        XCTAssertEqual(firstStore.get(key), 3)
+    }
+
     // MARK: Private Instance Interface
+
+    /// Waits until `isReleased` returns `true`, giving up after a bounded timeout.
+    @MainActor
+    private func waitForRelease(_ isReleased: () -> Bool) async {
+        let deadline = Date(timeIntervalSinceNow: 5)
+
+        while !isReleased(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
 
     /// Waits until the row renders `value`, failing after a bounded timeout.
     @MainActor

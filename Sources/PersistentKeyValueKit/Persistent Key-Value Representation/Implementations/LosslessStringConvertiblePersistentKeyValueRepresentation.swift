@@ -41,3 +41,7 @@ extension LosslessStringConvertiblePersistentKeyValueRepresentation: ProxyPersis
         String(value)
     }
 }
+
+// MARK: - BuiltInProxyConversion Extension
+
+extension LosslessStringConvertiblePersistentKeyValueRepresentation: BuiltInProxyConversion {}

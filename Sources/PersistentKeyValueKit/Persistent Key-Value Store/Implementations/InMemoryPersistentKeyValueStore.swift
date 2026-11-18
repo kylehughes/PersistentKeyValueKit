@@ -82,7 +82,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// - Parameter key: The identifier of the entry.
     public func removeObject(forKey key: String) {
         let (removedValue, observations) = withLock {
-            (storage.removeValue(forKey: key), liveObservations(for: key))
+            (storage.removeValue(forKey: key), registeredObservations(for: key))
         }
 
         notify(observations, keyPath: key)
@@ -113,7 +113,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
 
             return (
                 storage.updateValue(StoredValue(object: storedValue, revision: nextRevision), forKey: key),
-                liveObservations(for: key)
+                registeredObservations(for: key)
             )
         }
 
@@ -143,14 +143,36 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
 
     // MARK: Private Instance Interface
 
-    private func liveObservations(for keyID: String) -> [Observation] {
-        observations.removeAll {
-            $0.observer == nil
-        }
-
-        return observations.filter {
+    /// Returns the registrations for `keyID`. Must be called with the lock held.
+    ///
+    /// Registrations whose observer has been deallocated are skipped by notification and released on the next
+    /// registration or deregistration, so this does not read the weak observers.
+    private func registeredObservations(for keyID: String) -> [Observation] {
+        observations.filter {
             $0.keyID == keyID
         }
+    }
+
+    /// Removes the registrations whose observer has been deallocated or that `isRemoved` selects for their live
+    /// observer, returning every live observer read. Must be called with the lock held.
+    ///
+    /// Reading a weak observer retains it, and that reference becomes the last one if the observer is released on
+    /// another thread. An observer's `deinit` can deregister, so the caller releases the returned observers only after
+    /// the lock is unlocked.
+    private func removeObservations(where isRemoved: (NSObject, Observation) -> Bool) -> [NSObject] {
+        var liveObservers: [NSObject] = []
+
+        observations.removeAll { observation in
+            guard let observer = observation.observer else {
+                return true
+            }
+
+            liveObservers.append(observer)
+
+            return isRemoved(observer, observation)
+        }
+
+        return liveObservers
     }
 
     private func notify(_ observations: [Observation], keyPath: String?) {
@@ -218,7 +240,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
                 StoredValue(object: write.object, revision: nextRevision),
                 forKey: write.keyID
             )
-            return (nextRevision, liveObservations(for: write.keyID), replacedValue)
+            return (nextRevision, registeredObservations(for: write.keyID), replacedValue)
         }
 
         let committed = MigrationSnapshot(
@@ -284,6 +306,32 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
         return value
     }
 
+    /// Returns the value a prepared write would store, cast to the requested key's value type.
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
+        guard write.identity == migrationIdentity, write.keyID == key.id else {
+            throw PersistentKeyMigrationError.internalInconsistency
+        }
+
+        guard let value = write.object as? Key.Value else {
+            throw PersistentKeyValueConversionError.invalidValue
+        }
+
+        return value
+    }
+
+    /// Compares prepared values with `==`. Values that are not `Equatable` never match, because the store cannot tell
+    /// whether they are the same.
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
+        guard let value = write.object as? any Equatable else {
+            return false
+        }
+
+        return value.isEqual(toMigrationObject: other.object)
+    }
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key
@@ -306,7 +354,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
                 throw PersistentKeyMigrationError.sourceChanged
             }
 
-            return (storage.removeValue(forKey: keyID), liveObservations(for: keyID))
+            return (storage.removeValue(forKey: keyID), registeredObservations(for: keyID))
         }
 
         notify(observations, keyPath: keyID)
@@ -352,15 +400,14 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     ) where Key: PersistentKeyProtocol {
         let keyID = key.id
 
-        withLock {
-            observations.removeAll { observation in
-                guard let registeredObserver = observation.observer else {
-                    return true
-                }
-
-                return registeredObserver === observer && observation.keyID == keyID && observation.context == context
+        let liveObservers = withLock {
+            removeObservations { registeredObserver, observation in
+                registeredObserver === observer && observation.keyID == keyID && observation.context == context
             }
         }
+
+        // Release the observers after the lock is unlocked.
+        withExtendedLifetime(liveObservers) {}
     }
 
     public func register<Key>(
@@ -371,9 +418,9 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     ) where Key: PersistentKeyProtocol {
         let keyID = key.id
 
-        withLock {
-            observations.removeAll {
-                $0.observer == nil
+        let liveObservers = withLock {
+            let liveObservers = removeObservations { _, _ in
+                false
             }
 
             observations.append(
@@ -383,7 +430,12 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
                     context: context
                 )
             )
+
+            return liveObservers
         }
+
+        // Release the observers after the lock is unlocked.
+        withExtendedLifetime(liveObservers) {}
     }
 
 }
@@ -394,8 +446,9 @@ extension InMemoryPersistentKeyValueStore {
     /// A captured entry, which is current while the store holds the same revision with the same contents.
     ///
     /// Mutating a stored reference changes the entry without a new revision. A Foundation property-list object, such
-    /// as an `NSMutableArray`, is therefore also captured as a frozen copy whose contents must still match. Other
-    /// references, including ones inside Swift values, are retained but not copied, so they verify by revision only.
+    /// as an `NSMutableArray`, is therefore also captured as an exact immutable copy whose contents must still match.
+    /// Other references, including ones inside Swift values, are retained but not copied, so they verify by revision
+    /// only.
     struct MigrationSnapshot {
         /// The store and key this snapshot belongs to.
         let identity: PersistentKeyValueMigrationStoreIdentity
@@ -404,7 +457,7 @@ extension InMemoryPersistentKeyValueStore {
         let revision: UInt64
         /// The captured value.
         let object: Any
-        /// A frozen copy of `object` when it is a Foundation property-list object, or `nil` otherwise.
+        /// An exact immutable copy of `object` when it is a Foundation property-list object, or `nil` otherwise.
         let contents: Any?
 
         // MARK: Internal Initialization
@@ -430,8 +483,11 @@ extension InMemoryPersistentKeyValueStore {
 
         // MARK: Private Static Interface
 
-        /// Returns a frozen copy of `object` when it, or the value an optional wraps, is a Foundation property-list
-        /// object, whose contents can change without a store write.
+        /// Returns an exact immutable copy of `object` when it, or the value an optional wraps, is a Foundation
+        /// property-list object, whose contents can change without a store write.
+        ///
+        /// The copy keeps values that a serialized property list cannot, such as an `NSDecimalNumber`, so an edit to
+        /// one is still detected.
         private static func frozenContents(of object: Any) -> Any? {
             var value = object
             while let optional = value as? any OptionalElement {
@@ -446,7 +502,7 @@ extension InMemoryPersistentKeyValueStore {
                 return nil
             }
 
-            return try? PropertyListMigrationStorage.freeze(value)
+            return try? PropertyListMigrationStorage.exactCopy(value)
         }
     }
 }
@@ -463,13 +519,33 @@ extension InMemoryPersistentKeyValueStore {
     }
 }
 
+// MARK: - Equatable Extension
+
+extension Equatable {
+    /// Whether `object`, a stored value, is this value.
+    fileprivate func isEqual(toMigrationObject object: Any) -> Bool {
+        (object as? Self) == self
+    }
+}
+
 // MARK: - Observation Extension
 
 private extension InMemoryPersistentKeyValueStore {
-    struct Observation {
+    /// A registration for one observer, key, and context.
+    ///
+    /// This is a class because copying a weak reference to an Objective-C object briefly retains the object, and that
+    /// reference can be the last one. Copying a registration copies only a reference to it, so the store can copy its
+    /// registrations with the lock held.
+    final class Observation {
         weak var observer: NSObject?
         let keyID: String
         let context: UnsafeMutableRawPointer?
+
+        init(observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
+            self.observer = observer
+            self.keyID = keyID
+            self.context = context
+        }
     }
 }
 

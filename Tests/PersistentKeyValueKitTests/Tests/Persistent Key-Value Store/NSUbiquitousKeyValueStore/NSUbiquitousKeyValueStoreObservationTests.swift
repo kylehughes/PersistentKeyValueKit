@@ -24,12 +24,23 @@ extension NSUbiquitousKeyValueStoreObservationTests {
         let key = PersistentKey("key:\(#function)", defaultValue: 0)
         let observer = DeregisteringNotificationObserver(store: storage, key: key)
 
-        NotificationObserverInstallationHook.perform(
+        // An unrelated store installing the same notification name first must not consume the hook.
+        let unrelatedStore = MockUbiquitousKeyValueStore()
+        let unrelatedObserver = RecordingKeyObserver()
+
+        let didRunHook = NotificationObserverInstallationHook.perform(
             afterInstallingObserverFor: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: storage,
             action: { [storage] in
-                Self.postExternalChange(to: [key.id], from: storage)
+                Self.postExternalChange(to: [key.id], from: storage, phase: "registering")
             },
             during: {
+                unrelatedStore.register(
+                    observer: unrelatedObserver,
+                    for: key,
+                    with: nil,
+                    and: #selector(RecordingKeyObserver.didReceive(_:))
+                )
                 storage.register(
                     observer: observer,
                     for: key,
@@ -39,10 +50,14 @@ extension NSUbiquitousKeyValueStoreObservationTests {
             }
         )
 
-        Self.postExternalChange(to: [key.id], from: storage)
+        Self.postExternalChange(to: [key.id], from: storage, phase: "registered")
         storage.set(key, to: 3)
 
-        XCTAssertEqual(observer.callbackCount, 1)
+        XCTAssertTrue(didRunHook)
+        XCTAssertEqual(observer.receivedPhases, ["registering"])
+        XCTAssertTrue(unrelatedObserver.notifications.isEmpty)
+
+        unrelatedStore.deregister(unrelatedObserver, for: key, context: nil)
     }
 }
 
@@ -107,14 +122,25 @@ extension NSUbiquitousKeyValueStoreObservationTests {
 
 @available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStoreObservationTests {
-    private static func postExternalChange(to keyIDs: [String], from store: NSUbiquitousKeyValueStore) {
+    /// The `userInfo` key for the test phase in which a notification was posted.
+    fileprivate static let phaseKey = "PersistentKeyValueKitTestPhase"
+
+    private static func postExternalChange(
+        to keyIDs: [String],
+        from store: NSUbiquitousKeyValueStore,
+        phase: String? = nil
+    ) {
+        var userInfo: [AnyHashable: Any] = [
+            NSUbiquitousKeyValueStoreChangeReasonKey: NSUbiquitousKeyValueStoreServerChange,
+            NSUbiquitousKeyValueStoreChangedKeysKey: keyIDs,
+        ]
+
+        userInfo[phaseKey] = phase
+
         NotificationCenter.default.post(
             name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: store,
-            userInfo: [
-                NSUbiquitousKeyValueStoreChangeReasonKey: NSUbiquitousKeyValueStoreServerChange,
-                NSUbiquitousKeyValueStoreChangedKeysKey: keyIDs,
-            ]
+            userInfo: userInfo
         )
     }
 }
@@ -124,7 +150,8 @@ extension NSUbiquitousKeyValueStoreObservationTests {
 /// An observer that deregisters itself when it receives its first notification.
 @available(watchOS 9.0, *)
 private final class DeregisteringNotificationObserver: NSObject {
-    private(set) var callbackCount = 0
+    /// The test phase of each notification received, or `"unknown"` for one posted without a phase.
+    private(set) var receivedPhases: [String] = []
 
     private let key: PersistentKey<Int>
     private let store: NSUbiquitousKeyValueStore
@@ -136,7 +163,9 @@ private final class DeregisteringNotificationObserver: NSObject {
 
     @objc
     func didReceive(_ notification: Notification) {
-        callbackCount += 1
+        let phase = notification.userInfo?[NSUbiquitousKeyValueStoreObservationTests.phaseKey] as? String
+
+        receivedPhases.append(phase ?? "unknown")
 
         store.deregister(self, for: key, context: nil)
     }

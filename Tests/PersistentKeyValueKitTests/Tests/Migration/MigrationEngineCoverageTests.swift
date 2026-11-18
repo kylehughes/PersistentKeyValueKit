@@ -100,6 +100,20 @@ extension ScriptedMigrationStore: PersistentKeyValueMigrationBackend {
         )
     }
 
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
+        try base.migrationValue(
+            for: key,
+            writtenBy: .init(identity: base.migrationIdentity, keyID: write.keyID, object: write.object)
+        )
+    }
+
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
+        base.migrationWrite(write, matches: other)
+    }
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key
@@ -233,7 +247,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
             tracking: .untracked
         )
 
-        guard let outcome = report.outcomes.first, case .failed(.cleanup) = outcome.status,
+        guard let outcome = report.outcomes.first, case .failed(.write) = outcome.status,
             let error = outcome.error
         else {
             return XCTFail()
@@ -343,7 +357,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
         store.current = false
         let report = try store.move(
             .key(k, to: k) {
-                $0 + 1
+                max($0, 2)
             },
             to: store,
             onConflict: .overwriteDestination,

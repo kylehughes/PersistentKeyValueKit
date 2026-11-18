@@ -153,13 +153,16 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
                 }
 
                 if destinationSnapshot != nil, policy == .keepDestinationAndRemoveSource {
-                    stage = .cleanup
+                    // Keeping the destination is verified like a write, so a change found here, before the source is
+                    // removed, fails at the same stage as a change found while writing.
+                    stage = .write
                     guard let destinationSnapshot,
                         try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID)
                     else {
                         throw PersistentKeyMigrationError.destinationChanged
                     }
 
+                    stage = .cleanup
                     guard try sourceStore.migrationSnapshotIsCurrent(sourceSnapshot, for: sourceID) else {
                         throw PersistentKeyMigrationError.sourceChanged
                     }
@@ -225,6 +228,33 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
 
     // MARK: Private Instance Interface
 
+    /// Whether a retry that finds `write`'s value stored would leave it unchanged.
+    ///
+    /// A retry rewrites a stored value again when it still decodes with the source key's representation. That is safe
+    /// only when rewriting it again prepares the same write; otherwise the retry would convert the value twice.
+    private func isRepeatable<Store>(_ write: Store.MigrationWrite, in store: Store) -> Bool
+    where Store: PersistentKeyValueMigrationBackend {
+        let storedValue: SourceKey.Value?
+        do {
+            storedValue = try store.migrationValue(for: source, writtenBy: write)
+        } catch {
+            // A retry recognizes a value that does not decode as a source value as already rewritten.
+            return true
+        }
+
+        // A retry finds no source value after a write that removes the key.
+        guard let storedValue else {
+            return true
+        }
+
+        do {
+            let repeatedWrite = try store.prepareMigrationWrite(try transform(storedValue), for: destination)
+            return store.migrationWrite(write, matches: repeatedWrite)
+        } catch {
+            return false
+        }
+    }
+
     /// Whether `snapshot` decodes with the destination key's representation, which identifies a value that an earlier
     /// attempt of a rewrite already converted.
     private func isRewritten<Store>(_ snapshot: Store.MigrationSnapshot, in store: Store) -> Bool
@@ -242,7 +272,8 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     /// The existing value is the source, so no conflict policy applies. The write replaces only the snapshot that was
     /// decoded. A stored value that fails to decode with the source key's representation but decodes with the
     /// destination key's representation was already rewritten, typically by an earlier attempt of a tracked batch
-    /// whose later item failed, so it is reported as rewritten without being written again.
+    /// whose later item failed, so it is reported as rewritten without being written again. A rewrite whose result a
+    /// retry would convert again fails before writing, so a retry can never apply the transform twice.
     private func rewrite<Store>(in store: Store) -> PersistentKeyMigrationReport.Outcome
     where Store: PersistentKeyValueMigrationBackend {
         let id = source.id
@@ -261,6 +292,12 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
                     throw error
                 }
 
+                // A decoder can change the stored value, and the recognized value must still be the stored one.
+                stage = .write
+                guard try store.migrationSnapshotIsCurrent(snapshot, for: id) else {
+                    throw PersistentKeyMigrationError.destinationChanged
+                }
+
                 return .init(sourceKeyID: id, status: .rewritten)
             }
 
@@ -268,6 +305,10 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
             let rewrittenValue = try transform(value)
             stage = .prepare
             let write = try store.prepareMigrationWrite(rewrittenValue, for: destination)
+            guard isRepeatable(write, in: store) else {
+                throw PersistentKeyMigrationError.nonIdempotentRewrite
+            }
+
             stage = .write
             let committedSnapshot = try store.commitMigrationWrite(write, replacing: snapshot)
             guard try Self.isCommitted(committedSnapshot, in: store, for: id) else {

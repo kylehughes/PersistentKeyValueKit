@@ -40,6 +40,8 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(report.completion, .notRecorded)
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
         XCTAssertEqual(destination.get(key), 99)
+        // A cleanup failure for a changed destination always follows the source's removal.
+        XCTAssertNil(source.object(forKey: key.id))
     }
 
     func testCleanupObserverThatRemovesDestinationFailsMove() throws {
@@ -56,7 +58,8 @@ final class MigrationNativeFidelityTests: XCTestCase {
             source.removePersistentDomain(forName: sourceName)
         }
 
-        source.set(key, to: 17)
+        // The stored value equals the key's default, so only the persisted entry shows whether it was removed.
+        source.set(key, to: 0)
         source.register(observer: observer, for: key, with: nil, and: #selector(CallbackObserver.observeValue))
 
         defer {
@@ -75,6 +78,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(report.completion, .notRecorded)
         XCTAssertFalse(recorder.get(.isMigrationCompleted(id: #function)))
         XCTAssertFalse(report.isComplete)
+        XCTAssertNil(source.persistentDomain(forName: sourceName)?[key.id])
     }
 
     func testDefaultsDictionaryWithKeysThatSwiftMergesFailsToDecode() throws {
@@ -325,6 +329,32 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(destination.get(optionalKey))
     }
 
+    func testMemorySourceDecimalEditDuringMoveFailsCleanup() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = MutableArrayKey(id: "key:\(#function)")
+        let original = NSDecimalNumber(string: "1.000000000000000001")
+
+        source.set(key, to: NSMutableArray(object: original))
+
+        // The transform receives the stored array itself, so it can edit the source while migrating a copy.
+        let report = try source.move(
+            .key(key, to: key) {
+                let copy = NSMutableArray(array: Array($0))
+                $0.replaceObject(at: 0, with: NSDecimalNumber(string: "1.000000000000000002"))
+                return copy
+            },
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .untracked
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.cleanup)])
+        XCTAssertEqual(report.outcomes[0].error as? PersistentKeyMigrationError, .sourceChanged)
+        XCTAssertEqual(source.get(key), [NSDecimalNumber(string: "1.000000000000000002")])
+        XCTAssertEqual(destination.get(key), [original])
+    }
+
     func testPropertyListEqualityComparesTypesAndLiteralKeys() {
         let date = Date(timeIntervalSinceReferenceDate: 12)
         let url = URL(string: "https://example.com")!
@@ -367,6 +397,17 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(equal("1", 1))
         XCTAssertFalse(PropertyListMigrationStorage.equal(nil, 1))
         XCTAssertTrue(PropertyListMigrationStorage.equal(nil, nil))
+    }
+
+    func testPropertyListEqualityComparesDecimalsExactly() {
+        let decimal = NSDecimalNumber(string: "1.000000000000000001")
+
+        XCTAssertTrue(PropertyListMigrationStorage.equal(decimal, NSDecimalNumber(string: "1.000000000000000001")))
+        XCTAssertFalse(PropertyListMigrationStorage.equal(decimal, NSDecimalNumber(string: "1.000000000000000002")))
+        XCTAssertFalse(PropertyListMigrationStorage.equal(decimal, NSNumber(value: 1.0)))
+        XCTAssertFalse(PropertyListMigrationStorage.equal(NSNumber(value: 1.0), decimal))
+        XCTAssertTrue(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, NSDecimalNumber.notANumber))
+        XCTAssertFalse(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, decimal))
     }
 
     @available(watchOS 9.0, *)

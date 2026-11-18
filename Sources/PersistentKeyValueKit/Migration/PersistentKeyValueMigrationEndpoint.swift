@@ -61,6 +61,17 @@ protocol PersistentKeyValueMigrationBackend {
     ) throws -> Key.Value
     where Key: PersistentKeyProtocol
 
+    /// Decodes the value that committing `write` would store, as `key` reads it, or returns `nil` when `write` removes
+    /// the key.
+    func migrationValue<Key>(
+        for key: Key,
+        writtenBy write: MigrationWrite
+    ) throws -> Key.Value?
+    where Key: PersistentKeyProtocol
+
+    /// Whether two writes prepared for the same key would store the same value.
+    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool
+
     func prepareMigrationWrite<Key>(
         _ value: Key.Value,
         for key: Key

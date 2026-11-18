@@ -15,8 +15,9 @@ final class MigrationRewriteTests: XCTestCase {
         let a = PersistentKey<Int>("key:\(#function).a", defaultValue: 0)
         let b = PersistentKey<Int>("key:\(#function).b", defaultValue: 0)
         let c = PersistentKey<Int>("key:\(#function).c", defaultValue: 0)
-        let rewrite = PersistentKeyMigrationItem.key(a, to: a) {
-            $0 + 1
+        let aText = PersistentKey<String>(a.id, defaultValue: "")
+        let rewrite = PersistentKeyMigrationItem.key(a, to: aText) {
+            String($0 + 1)
         }
 
         store.set(a, to: 1)
@@ -49,7 +50,7 @@ final class MigrationRewriteTests: XCTestCase {
         )
 
         XCTAssertEqual(report.outcomes.map(\.status), [.moved, .rewritten])
-        XCTAssertEqual(store.get(a), 2)
+        XCTAssertEqual(store.get(aText), "2")
         XCTAssertEqual(store.get(c), 2)
         XCTAssertNil(store.object(forKey: b.id))
     }
@@ -178,6 +179,7 @@ final class MigrationRewriteTests: XCTestCase {
     func testRewriteFailuresLeaveTheStoredValue() throws {
         let store = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
+        let stringKey = PersistentKey<String>(key.id, defaultValue: "")
         let box = UncheckedStore(store)
         let runs = Counter()
 
@@ -210,9 +212,9 @@ final class MigrationRewriteTests: XCTestCase {
         XCTAssertEqual(store.get(key), 5)
 
         let changed = try store.move(
-            .key(key, to: key) {
+            .key(key, to: stringKey) {
                 box.store.set(key, to: 6)
-                return $0 + 1
+                return String($0 + 1)
             },
             to: store,
             onConflict: .overwriteDestination,
@@ -222,8 +224,6 @@ final class MigrationRewriteTests: XCTestCase {
         XCTAssertEqual(changed.outcomes.map(\.status), [.failed(.write)])
         XCTAssertEqual(changed.outcomes[0].error as? PersistentKeyMigrationError, .destinationChanged)
         XCTAssertEqual(store.get(key), 6)
-
-        let stringKey = PersistentKey<String>(key.id, defaultValue: "")
 
         store.set(stringKey, to: "text")
 
@@ -311,6 +311,53 @@ final class MigrationRewriteTests: XCTestCase {
         }
     }
 
+    func testRewriteRecognizedWhileItsDecoderChangesTheValueFails() throws {
+        // The in-memory store skips representations, so no decoder runs there.
+        for store in try stores() where store.storesFoundationObjects {
+            let id = "key:\(#function)"
+            let legacy = PersistentKey<Int>(id, defaultValue: -1)
+            let box = UncheckedStore(store.store)
+            let current = PersistentKey<String>(
+                id,
+                defaultValue: "",
+                representation: ReentrantStringCodec {
+                    box.store.set(legacy, to: 88)
+                }
+            )
+            let migrationID = "\(#function).\(store.name)"
+            let item = PersistentKeyMigrationItem.key(legacy, to: current) {
+                String($0)
+            }
+
+            store.store.set(current, to: "already")
+
+            let report = try store.store.copy(
+                item,
+                to: store.store,
+                onConflict: .overwriteDestination,
+                tracking: .once(id: migrationID)
+            )
+
+            XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)], store.name)
+            XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged, store.name)
+            XCTAssertEqual(report.completion, .notRecorded, store.name)
+            XCTAssertEqual(store.store.get(legacy), 88, store.name)
+
+            let retried = try store.store.copy(
+                item,
+                to: store.store,
+                onConflict: .overwriteDestination,
+                tracking: .once(id: migrationID)
+            )
+
+            XCTAssertEqual(retried.outcomes.map(\.status), [.rewritten], store.name)
+            XCTAssertEqual(retried.completion, .recorded, store.name)
+            XCTAssertEqual(store.rawValue(id) as? String, "88", store.name)
+            store.store.remove(legacy)
+            store.store.remove(.isMigrationCompleted(id: migrationID))
+        }
+    }
+
     func testRewriteRetriedAfterALaterFailureFindsTheValueAlreadyRewritten() throws {
         for store in try stores() {
             let legacy = PersistentKey<Int>("key:\(#function).weight", defaultValue: 0)
@@ -367,6 +414,74 @@ final class MigrationRewriteTests: XCTestCase {
         }
     }
 
+    func testRewriteThatARetryWouldConvertAgainFailsBeforeWriting() throws {
+        for store in try stores() {
+            let seconds = PersistentKey<Int>("key:\(#function).duration", defaultValue: 0)
+            let milliseconds = PersistentKey<Double>(seconds.id, defaultValue: 0)
+            let gate = PersistentKey<Int>("key:\(#function).gate", defaultValue: 0)
+            let renamed = PersistentKey<Int>("key:\(#function).renamed", defaultValue: 0)
+            let migrationID = "\(#function).\(store.name)"
+            let items: [PersistentKeyMigrationItem] = [
+                .key(seconds, to: milliseconds) {
+                    Double($0) * 1000
+                },
+                .key(gate, to: renamed) {
+                    guard $0 != 0 else {
+                        throw RewriteFailure()
+                    }
+
+                    return $0
+                },
+            ]
+
+            store.store.set(seconds, to: 3)
+            store.store.set(gate, to: 0)
+
+            let failed = try store.store.move(
+                items: items,
+                to: store.store,
+                onConflict: .keepBoth,
+                tracking: .once(id: migrationID)
+            )
+
+            store.store.set(gate, to: 1)
+
+            let retried = try store.store.move(
+                items: items,
+                to: store.store,
+                onConflict: .keepBoth,
+                tracking: .once(id: migrationID)
+            )
+
+            if store.storesFoundationObjects {
+                // Foundation stores bridge an integral `Double` to `Int`, so a retry would multiply the value again.
+                XCTAssertEqual(failed.outcomes.map(\.status), [.failed(.prepare), .failed(.transform)], store.name)
+                XCTAssertEqual(
+                    failed.outcomes.first?.error as? PersistentKeyMigrationError,
+                    .nonIdempotentRewrite,
+                    store.name
+                )
+                XCTAssertEqual(retried.outcomes.map(\.status), [.failed(.prepare), .moved], store.name)
+                XCTAssertEqual(retried.completion, .notRecorded, store.name)
+                XCTAssertEqual(store.store.get(seconds), 3, store.name)
+
+                let raw = try XCTUnwrap(store.rawValue(seconds.id) as? NSNumber, store.name)
+
+                XCTAssertFalse(CFNumberIsFloatType(raw), store.name)
+            } else {
+                // The in-memory store keeps a `Double`, which does not decode as an `Int`.
+                XCTAssertEqual(failed.outcomes.map(\.status), [.rewritten, .failed(.transform)], store.name)
+                XCTAssertEqual(retried.outcomes.map(\.status), [.rewritten, .moved], store.name)
+                XCTAssertEqual(retried.completion, .recorded, store.name)
+                XCTAssertEqual(store.store.get(milliseconds), 3000, store.name)
+            }
+
+            store.store.remove(seconds)
+            store.store.remove(renamed)
+            store.store.remove(.isMigrationCompleted(id: migrationID))
+        }
+    }
+
     func testRewriteWithIdentityTransformChangesOnlyTheRepresentation() throws {
         for store in try stores() {
             let id = "key:\(#function)"
@@ -414,6 +529,90 @@ final class MigrationRewriteTests: XCTestCase {
             XCTAssertEqual(unchanged.outcomes.map(\.status), [.rewritten], store.name)
             XCTAssertEqual(store.store.get(current), 7, store.name)
             store.store.remove(current)
+        }
+    }
+
+    func testRewriteWithinOneStorageFormatMustBeIdempotent() throws {
+        for store in try stores() {
+            let id = "key:\(#function)"
+            let dollars = PersistentKey<Int>(id, defaultValue: 0)
+            let cents = PersistentKey<Int>(id, defaultValue: 0)
+            let optional = PersistentKey<Int?>(id, defaultValue: nil)
+            let runs = Counter()
+
+            store.store.set(dollars, to: 3)
+
+            let converted = try store.store.move(
+                .key(dollars, to: cents) {
+                    runs.increment()
+                    return $0 * 100
+                },
+                to: store.store,
+                onConflict: .keepBoth,
+                tracking: .untracked
+            )
+
+            XCTAssertEqual(converted.outcomes.map(\.status), [.failed(.prepare)], store.name)
+            XCTAssertEqual(
+                converted.outcomes.first?.error as? PersistentKeyMigrationError,
+                .nonIdempotentRewrite,
+                store.name
+            )
+            XCTAssertEqual(runs.value, 2, store.name)
+            XCTAssertEqual(store.store.get(dollars), 3, store.name)
+
+            // A transform that rejects its own result cannot be repeated either.
+            let validated = try store.store.copy(
+                .key(dollars, to: cents) {
+                    guard $0 < 10 else {
+                        throw RewriteFailure()
+                    }
+
+                    return $0 * 10
+                },
+                to: store.store,
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            )
+
+            XCTAssertEqual(validated.outcomes.map(\.status), [.failed(.prepare)], store.name)
+            XCTAssertEqual(
+                validated.outcomes.first?.error as? PersistentKeyMigrationError,
+                .nonIdempotentRewrite,
+                store.name
+            )
+            XCTAssertEqual(store.store.get(dollars), 3, store.name)
+
+            let clamped = try store.store.move(
+                .key(dollars, to: cents) {
+                    min($0, 2)
+                },
+                to: store.store,
+                onConflict: .keepBoth,
+                tracking: .untracked
+            )
+
+            XCTAssertEqual(clamped.outcomes.map(\.status), [.rewritten], store.name)
+            XCTAssertEqual(store.store.get(cents), 2, store.name)
+
+            // A Foundation store removes the key for `nil`, so a retry finds no source value.
+            let cleared = try store.store.copy(
+                .key(optional, to: optional) { _ in
+                    nil
+                },
+                to: store.store,
+                onConflict: .overwriteDestination,
+                tracking: .untracked
+            )
+
+            XCTAssertEqual(cleared.outcomes.map(\.status), [.rewritten], store.name)
+            XCTAssertNil(store.store.get(optional), store.name)
+
+            if store.storesFoundationObjects {
+                XCTAssertNil(store.rawValue(id), store.name)
+            }
+
+            store.store.remove(optional)
         }
     }
 
@@ -541,6 +740,28 @@ private enum Operation {
     }
 }
 
+// MARK: - Reentrant String Codec Definition
+
+/// Stores strings unchanged and runs `onDecode` each time it decodes one.
+private struct ReentrantStringCodec: PersistentKeyValueRepresentation {
+    let onDecode: @Sendable () -> Void
+
+    // MARK: Internal Instance Interface
+
+    func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> String {
+        guard let string = storageObject as? String else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        onDecode()
+        return string
+    }
+
+    func encode(_ value: String, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        value
+    }
+}
+
 // MARK: - Rewrite Failure Definition
 
 private struct RewriteFailure: Error {
@@ -559,9 +780,9 @@ private struct TestStore {
 
 /// Carries a thread-safe store into a `@Sendable` transform that runs synchronously on the calling thread.
 private final class UncheckedStore: @unchecked Sendable {
-    let store: InMemoryPersistentKeyValueStore
+    let store: any PersistentKeyValueStore
 
-    init(_ store: InMemoryPersistentKeyValueStore) {
+    init(_ store: any PersistentKeyValueStore) {
         self.store = store
     }
 }

@@ -30,9 +30,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 
     /// Encodes a value into a stored object for the given storage format.
     ///
-    /// Returning `nil` removes the key from a store (or omits the element from a property-list collection). Callers
-    /// such as migration write validation may invoke conversion more than once for the same value; do not rely on a
-    /// specific invocation count.
+    /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
+    /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
+    /// the write; see ``set(_:to:in:)`` and ``set(_:to:)``. Callers such as migration write validation may invoke
+    /// conversion more than once for the same value; do not rely on a specific invocation count.
     ///
     /// - Parameter value: The value to encode.
     /// - Parameter format: The target storage format.
@@ -43,8 +44,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     
     /// Decodes the elements of `propertyListArray` as ``Value``.
     ///
-    /// Array reads and migration decode a stored array with this method, so it must accept the arrays that
-    /// ``set(_:to:)`` writes.
+    /// Array reads decode a stored array with this method, so it must accept the arrays that ``set(_:to:)`` writes.
+    /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for
+    /// representations defined outside this package, so an implementation that omits elements it cannot decode omits
+    /// them from migrated values too.
     ///
     /// - Parameter propertyListArray: The array to decode values from.
     /// - Returns: The decoded values, or `nil` if any element cannot be decoded as ``Value``.
@@ -56,8 +59,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// implementation may either assign the encoded array or append the encoded elements to it. The result is the
     /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
     /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
-    /// cannot be encoded: an empty result for nonempty `values` counts as a failure unless ``encode(_:format:)``
-    /// returns `nil` for every value.
+    /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
+    /// `nil`.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to write the encoded values into.
@@ -67,8 +70,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 
     /// Decodes the value at `dictionaryKey` in `propertyListDictionary`, if present and representable as ``Value``.
     ///
-    /// Dictionary reads and migration decode a stored entry with this method, so it must accept the objects that
-    /// ``set(_:to:in:)`` writes.
+    /// Dictionary reads decode a stored entry with this method, so it must accept the objects that ``set(_:to:in:)``
+    /// writes. Ordinary dictionary reads omit an entry for which this method returns `nil`. Checked conversion, which
+    /// migration and `UserDefaults.register(_:)` use, also calls this method for representations defined outside this
+    /// package and fails instead.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.
@@ -81,7 +86,7 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
     /// `dictionaryKey`. Dictionary writes, registration, and migration call this method for a `dictionaryKey` that
     /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
-    /// values cannot be encoded: an absent entry counts as a failure unless ``encode(_:format:)`` returns `nil`.
+    /// values cannot be encoded, so an absent entry counts as a failure, even if the value encodes to `nil`.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.
@@ -275,63 +280,57 @@ extension PersistentKeyValueRepresentation {
 extension PersistentKeyValueRepresentation {
     // MARK: Internal Instance Interface
 
-    /// Returns the property-list array that ``set(_:to:)`` produces for `values`, or `nil` if any element fails to
-    /// encode.
+    /// Returns the property-list array that stores `values`, or `nil` if any element fails to encode.
     @usableFromInline
     internal func propertyListArray(encoding values: [Value]) -> [Any]? {
         try? checkedPropertyListArray(encoding: values)
     }
 
-    /// Returns the property-list array that ``set(_:to:)`` produces for `values`, throwing if any element fails to
-    /// encode.
+    /// Returns the property-list array that stores `values`, throwing if it cannot be encoded.
     ///
-    /// `set(_:to:)` receives an empty array, which it may assign or append to, and reports a failed element by leaving
-    /// the array empty. An empty result for nonempty `values` is therefore a failure unless every value encodes to
-    /// `nil`, which omits it. Only that case consults ``encode(_:format:)`` element by element, so the
-    /// representation's own array format stays authoritative.
+    /// A built-in representation encodes each element with its own checked conversion and rethrows the first error.
+    /// Any other representation is encoded with ``set(_:to:)`` exactly as it implements it. That method receives an
+    /// empty array, which it may assign or append to, and reports a failure by leaving it empty, so an empty result for
+    /// nonempty `values` throws ``PersistentKeyValueConversionError/encodingFailed``.
     internal func checkedPropertyListArray(encoding values: [Value]) throws -> [Any] {
+        if let builtIn = self as? any BuiltInContainerConversion {
+            return try builtInPropertyListArray(encoding: values, with: builtIn)
+        }
+
         var objects: [Any] = []
 
         set(values, to: &objects)
 
-        guard objects.isEmpty else {
-            return objects
-        }
-
-        for value in values {
-            guard try encode(value, format: .propertyList) == nil else {
-                throw PersistentKeyValueConversionError.encodingFailed
-            }
+        guard !objects.isEmpty || values.isEmpty else {
+            throw PersistentKeyValueConversionError.encodingFailed
         }
 
         return objects
     }
 
-    /// Returns the property-list dictionary that ``set(_:to:in:)`` produces for every entry of `values`, or `nil` if
-    /// any value fails to encode.
-    ///
-    /// Entries whose value encodes to `nil` are omitted.
+    /// Returns the property-list dictionary that stores `values`, or `nil` if any value fails to encode.
     @usableFromInline
     internal func propertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
         try? checkedPropertyListDictionary(encoding: values)
     }
 
-    /// Returns the property-list dictionary that ``set(_:to:in:)`` produces for every entry of `values`, throwing if
-    /// any value fails to encode.
+    /// Returns the property-list dictionary that stores `values`, throwing if it cannot be encoded.
     ///
-    /// `set(_:to:in:)` receives a dictionary that does not yet contain the entry's key and reports a failed value by
-    /// leaving it absent. An absent entry is therefore a failure unless the value encodes to `nil`, which omits it.
+    /// A built-in representation encodes each value with its own checked conversion, omits values that encode to
+    /// `nil`, and rethrows the first error. Any other representation is encoded with ``set(_:to:in:)`` exactly as it
+    /// implements it. That method receives a dictionary that does not yet contain the entry's key and reports a
+    /// failure by leaving it absent, so an absent entry throws ``PersistentKeyValueConversionError/encodingFailed``.
     internal func checkedPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
+        if let builtIn = self as? any BuiltInContainerConversion {
+            return try builtInPropertyListDictionary(encoding: values, with: builtIn)
+        }
+
         var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
 
         for (key, value) in values {
             set(key, to: value, in: &objects)
 
-            guard objects[key] == nil else {
-                continue
-            }
-
-            guard try encode(value, format: .propertyList) == nil else {
+            guard objects[key] != nil else {
                 throw PersistentKeyValueConversionError.encodingFailed
             }
         }
@@ -339,45 +338,45 @@ extension PersistentKeyValueRepresentation {
         return objects
     }
 
-    /// Returns the values that ``get(from:)`` decodes from `propertyListArray`, throwing if it cannot decode them.
+    /// Returns the values stored in `propertyListArray`, throwing if it cannot be decoded.
     ///
-    /// Decoding runs as checked conversion, so built-in containers fail instead of omitting dictionary entries. When
-    /// `get(from:)` fails, the first error that ``decode(storageObject:format:)`` throws for an element is rethrown.
+    /// A built-in representation decodes each element with its own checked conversion, so a nested dictionary fails
+    /// instead of omitting an entry, and rethrows the first error. Any other representation is decoded with
+    /// ``get(from:)`` exactly as it implements it, and a `nil` result throws
+    /// ``PersistentKeyValueConversionError/invalidStorageValue``.
     internal func checkedValues(decoding propertyListArray: [Any]) throws -> [Value] {
-        try CheckedConversion.perform {
-            guard let values = get(from: propertyListArray) else {
-                for object in propertyListArray {
-                    _ = try decode(storageObject: object, format: .propertyList)
-                }
+        if let builtIn = self as? any BuiltInContainerConversion {
+            return try builtInValues(decoding: propertyListArray, with: builtIn)
+        }
 
+        guard let values = get(from: propertyListArray) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return values
+    }
+
+    /// Returns the values stored in `propertyListDictionary`, throwing if any entry cannot be decoded.
+    ///
+    /// A built-in representation decodes each entry with its own checked conversion and rethrows the first error. Any
+    /// other representation is decoded with ``get(_:from:)`` exactly as it implements it, and a `nil` result throws
+    /// ``PersistentKeyValueConversionError/invalidStorageValue``.
+    internal func checkedDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
+        if let builtIn = self as? any BuiltInContainerConversion {
+            return try builtInDictionary(decoding: propertyListDictionary, with: builtIn)
+        }
+
+        var values: [String: Value] = Dictionary(minimumCapacity: propertyListDictionary.count)
+
+        for key in propertyListDictionary.keys {
+            guard let value = get(key, from: propertyListDictionary) else {
                 throw PersistentKeyValueConversionError.invalidStorageValue
             }
 
-            return values
+            values[key] = value
         }
-    }
 
-    /// Returns the entries of `propertyListDictionary` that ``get(_:from:)`` decodes, throwing if any entry fails to
-    /// decode.
-    ///
-    /// Decoding runs as checked conversion, so built-in containers fail instead of omitting dictionary entries. When
-    /// `get(_:from:)` fails, the error that ``decode(storageObject:format:)`` throws for the entry is rethrown.
-    internal func checkedDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
-        try CheckedConversion.perform {
-            var values: [String: Value] = Dictionary(minimumCapacity: propertyListDictionary.count)
-
-            for (key, object) in propertyListDictionary {
-                guard let value = get(key, from: propertyListDictionary) else {
-                    _ = try decode(storageObject: object, format: .propertyList)
-
-                    throw PersistentKeyValueConversionError.invalidStorageValue
-                }
-
-                values[key] = value
-            }
-
-            return values
-        }
+        return values
     }
 
     /// Returns the entries of `propertyListDictionary` that decode with ``get(_:from:)``, omitting entries that fail
@@ -395,35 +394,63 @@ extension PersistentKeyValueRepresentation {
 
         return values
     }
+
+    // MARK: Private Instance Interface
+
+    // `builtIn` is `self`, so its `Value` is this representation's `Value`; the cast only restores the static type.
+
+    private func builtInPropertyListArray<BuiltIn: BuiltInContainerConversion>(
+        encoding values: [Value],
+        with builtIn: BuiltIn
+    ) throws -> [Any] {
+        try builtIn.builtInPropertyListArray(encoding: values as! [BuiltIn.Value])
+    }
+
+    private func builtInPropertyListDictionary<BuiltIn: BuiltInContainerConversion>(
+        encoding values: [String: Value],
+        with builtIn: BuiltIn
+    ) throws -> [String: Any] {
+        try builtIn.builtInPropertyListDictionary(encoding: values as! [String: BuiltIn.Value])
+    }
+
+    private func builtInValues<BuiltIn: BuiltInContainerConversion>(
+        decoding propertyListArray: [Any],
+        with builtIn: BuiltIn
+    ) throws -> [Value] {
+        try builtIn.builtInValues(decoding: propertyListArray) as! [Value]
+    }
+
+    private func builtInDictionary<BuiltIn: BuiltInContainerConversion>(
+        decoding propertyListDictionary: [String: Any],
+        with builtIn: BuiltIn
+    ) throws -> [String: Value] {
+        try builtIn.builtInDictionary(decoding: propertyListDictionary) as! [String: Value]
+    }
 }
 
-// MARK: - Checked Conversion Definition
+// MARK: - Built-In Container Conversion Definition
 
-/// The scope of a checked container conversion, such as the one migration uses.
+/// A representation defined by this package whose checked container conversion does not go through its public
+/// container methods.
 ///
-/// Checked conversion reads containers through the same representation hooks as ordinary reads, so a representation's
-/// own container format is honored. Within this scope, built-in dictionary reads fail instead of omitting entries that
-/// fail to decode, so a checked conversion reports the failure instead of dropping data. The scope is task-local
-/// (thread-local outside a task), so it does not affect conversions running concurrently elsewhere.
-@usableFromInline
-internal enum CheckedConversion {
-    // MARK: Internal Static Interface
+/// Built-in container methods are ordinary reads and writes: for example, a nested dictionary read omits entries that
+/// fail to decode. Checked conversion, which migration and registration use, must instead fail. A built-in
+/// representation therefore converts its elements through checked conversion directly, recursing into the checked
+/// conversion of its base or proxy representation. A representation defined outside this package does not conform, so
+/// checked conversion calls its container methods exactly as it implements them, including the protocol's default
+/// implementations.
+internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
+    /// Returns the property-list array that stores `values`, throwing the first error.
+    func builtInPropertyListArray(encoding values: [Value]) throws -> [Any]
 
-    /// Whether the current conversion is checked.
-    @usableFromInline
-    internal static var isActive: Bool {
-        isActiveValue
-    }
+    /// Returns the property-list dictionary that stores `values`, throwing the first error.
+    func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any]
 
-    /// Runs `body` as checked conversion.
-    internal static func perform<Result>(_ body: () throws -> Result) rethrows -> Result {
-        try $isActiveValue.withValue(true, operation: body)
-    }
+    /// Returns the values stored in `propertyListArray`, throwing the first error.
+    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value]
 
-    // MARK: Private Static Interface
-
-    @TaskLocal
-    private static var isActiveValue = false
+    /// Returns the values stored in `propertyListDictionary`, throwing the first error.
+    func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value]
 }
 
 /// The storage format used to encode or decode a persistent value.

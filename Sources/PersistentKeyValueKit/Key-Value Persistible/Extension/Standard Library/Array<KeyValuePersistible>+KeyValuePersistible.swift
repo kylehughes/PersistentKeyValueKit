@@ -24,14 +24,21 @@ extension Array: KeyValuePersistible where Element: KeyValuePersistible {
     }
 }
 
+// MARK: - BuiltInContainerPrimitive Extension
+
+extension Array: BuiltInContainerPrimitive where Element: KeyValuePersistible {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible {
-    /// Decodes an array of elements from a stored `[Any]` array with the element representation's
-    /// ``PersistentKeyValueRepresentation/get(from:)``, as ordinary reads do.
+    /// Decodes an array of elements from a stored `[Any]` array.
     ///
     /// Throws if the array cannot be decoded. This checked conversion is stricter than ordinary reads: a nested
     /// dictionary fails instead of omitting an entry that fails to decode or merging canonically equivalent keys.
+    /// Built-in element representations decode each element with their own checked conversion and rethrow the first
+    /// error. Other element representations decode the array with their
+    /// ``PersistentKeyValueRepresentation/get(from:)`` exactly as it is implemented, so a custom array format
+    /// round-trips, and throw ``PersistentKeyValueConversionError/invalidStorageValue`` when it returns `nil`.
     public static func decode(
         storageObject: Any,
         format: PersistentKeyValueStorageFormat
@@ -43,11 +50,12 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return try Element.persistentKeyValueRepresentation.checkedValues(decoding: objects)
     }
 
-    /// Encodes the elements into a `[Any]` array with the element representation's
-    /// ``PersistentKeyValueRepresentation/set(_:to:)``, as ordinary writes do, omitting elements whose encoding
-    /// returns `nil`.
+    /// Encodes the elements into a `[Any]` array, omitting elements whose encoding returns `nil`.
     ///
-    /// Throws if any element fails to encode.
+    /// Throws if any element fails to encode. Built-in element representations encode each element with their own
+    /// checked conversion and rethrow the first error. Other element representations encode the array with their
+    /// ``PersistentKeyValueRepresentation/set(_:to:)`` exactly as it is implemented and throw
+    /// ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the array empty for nonempty values.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         try Element.persistentKeyValueRepresentation.checkedPropertyListArray(encoding: self)
     }

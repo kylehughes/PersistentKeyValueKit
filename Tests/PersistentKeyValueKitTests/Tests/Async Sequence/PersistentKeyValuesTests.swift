@@ -516,6 +516,55 @@ extension PersistentKeyValuesTests {
 // MARK: - Lifecycle Tests
 
 extension PersistentKeyValuesTests {
+    func test_values_releasingIteratorsWhileInMemoryStoreIsWrittenDoesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let isWriting = LockedFlag(true)
+        let writersFinished = expectation(description: "Writers finished")
+        let iteratorsFinished = expectation(description: "Iterators finished")
+
+        writersFinished.expectedFulfillmentCount = 4
+        iteratorsFinished.expectedFulfillmentCount = 4
+
+        // Each write checks every registered observer on the writing thread, while the iterating threads release
+        // theirs, so a write can hold the last reference to one.
+        for writer in 0 ..< 4 {
+            let key = PersistentKey("writer\(writer):\(#function)", defaultValue: 0)
+
+            Thread.detachNewThread {
+                var value = 0
+
+                while isWriting.value {
+                    value += 1
+                    store.set(key, to: value)
+                }
+
+                writersFinished.fulfill()
+            }
+        }
+
+        for iterator in 0 ..< 4 {
+            let key = PersistentKey("iterator\(iterator):\(#function)", defaultValue: 0)
+
+            Thread.detachNewThread {
+                let deadline = Date(timeIntervalSinceNow: 2)
+
+                while Date() < deadline {
+                    let iterator = key.values(in: store).makeAsyncIterator()
+                    withExtendedLifetime(iterator) {}
+                }
+
+                iteratorsFinished.fulfill()
+            }
+        }
+
+        // A deadlock fails the waits instead of blocking the test process.
+        let result = XCTWaiter.wait(for: [iteratorsFinished], timeout: 30)
+        isWriting.value = false
+
+        XCTAssertEqual(result, .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [writersFinished], timeout: 30), .completed)
+    }
+
     func test_values_concurrentCancellationAndChangeDeregistersOnce() async {
         for iteration in 0 ..< 100 {
             let store = ObservablePersistentKeyValueStore()
@@ -595,6 +644,48 @@ extension PersistentKeyValuesTests {
         }.value
 
         XCTAssertEqual(values, [nil, nil])
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_values_finishedIteratorReleasesBufferedChanges() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey(
+            "key:\(#function)",
+            defaultValue: ReferenceValue(0),
+            representation: ProxyPersistentKeyValueRepresentation<ReferenceValue, Int>(
+                to: { $0.id },
+                from: { ReferenceValue($0) }
+            )
+        )
+
+        let (isBufferedValueReleased, values) = await Task {
+            weak var releasedValue: ReferenceValue?
+            var iterator = key.changes(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+            do {
+                let value = ReferenceValue(1)
+                releasedValue = value
+
+                store.set(key, to: value)
+            }
+
+            store.set(key, to: ReferenceValue(2))
+            store.remove(key)
+
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            let values = [await iterator.next(), await iterator.next()]
+
+            // The finished iterator is still held, but the changes it buffered are not.
+            return withExtendedLifetime(iterator) {
+                (releasedValue == nil, values.map { $0?.id })
+            }
+        }.value
+
+        XCTAssertEqual(values, [nil, nil])
+        XCTAssertTrue(isBufferedValueReleased)
         XCTAssertEqual(store.deregistrationCount, 1)
     }
 
@@ -712,5 +803,16 @@ extension PersistentKeyValuesTests {
         task.cancel()
 
         return await task.value
+    }
+}
+
+// MARK: - ReferenceValue Definition
+
+/// A value with reference identity, so tests can observe when it is released.
+private final class ReferenceValue: Sendable {
+    let id: Int
+
+    init(_ id: Int) {
+        self.id = id
     }
 }

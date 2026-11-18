@@ -71,17 +71,30 @@ extension URL: PrimitiveKeyValuePersistible {
     /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``; a relative URL without a base URL encodes as its
     /// relative reference. For
     /// ``PersistentKeyValueStorageFormat/userDefaults``, encodes file URLs as tilde-abbreviated paths and non-file
-    /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`. During migration to
-    /// `UserDefaults`, a file URL whose path encoding cannot reproduce its `absoluteString` (such as a non-existent
-    /// directory's trailing slash or a file URL host) fails at ``PersistentKeyMigrationReport/FailureStage/prepare``
-    /// with ``PersistentKeyValueConversionError/encodingFailed`` before any store is modified.
+    /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`.
+    ///
+    /// A file URL whose path cannot reproduce its `absoluteString`, such as one with a host or a non-existent
+    /// directory's trailing slash, throws ``PersistentKeyValueConversionError/encodingFailed`` for
+    /// ``PersistentKeyValueStorageFormat/userDefaults``. This applies wherever the URL is encoded for `UserDefaults`,
+    /// including through `Optional` and proxy representations, so migration to `UserDefaults` fails at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` before any store is modified, and
+    /// `UserDefaults.register(_:)` skips such a default value. Ordinary `UserDefaults` writes of such a URL keep
+    /// Foundation's behavior and store the path.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         switch format {
         case .propertyList, .ubiquitousKeyValueStore:
             return absoluteString
         case .userDefaults:
             if isFileURL {
-                return (path as NSString).abbreviatingWithTildeInPath
+                let path = (path as NSString).abbreviatingWithTildeInPath
+                let storedURL = try Self.decode(storageObject: path, format: .userDefaults)
+
+                // The path drops a host and a trailing slash that later relative resolution depends on.
+                guard storedURL.absoluteString == absoluteString else {
+                    throw PersistentKeyValueConversionError.encodingFailed
+                }
+
+                return path
             }
             return try NSKeyedArchiver.archivedData(withRootObject: self, requiringSecureCoding: true)
         }

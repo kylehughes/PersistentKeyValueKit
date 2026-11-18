@@ -148,6 +148,46 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertThrowsError(try first.removeMigrationValue(for: "other", matching: snapshot))
     }
 
+    @available(watchOS 9.0, *)
+    func testPreparedWritesDecodeAndCompareOnlyForTheirOwnKey() throws {
+        let suite = stableSuiteName("MigrationAdapterCoverageTests")
+        let defaults = UserDefaultsMigrationBackend(
+            userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: suite)),
+            domainName: suite
+        )
+        let cloud = UbiquitousKeyValueMigrationBackend(
+            store: StrictMigrationUbiquitousStore(),
+            identity: .init(namespace: "coverage", identifier: UUID().uuidString)
+        )
+
+        defer {
+            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        }
+
+        try assertPreparedWritesDecodeAndCompare(in: defaults)
+        try assertPreparedWritesDecodeAndCompare(in: cloud)
+        try assertPreparedWritesDecodeAndCompare(in: InMemoryPersistentKeyValueStore())
+
+        try assertPreparedRemovalDecodesAsAbsent(in: defaults)
+        try assertPreparedRemovalDecodesAsAbsent(in: cloud)
+
+        let memory = InMemoryPersistentKeyValueStore()
+        let stringWrite = try memory.prepareMigrationWrite("1", for: PersistentKey(intKey.id, defaultValue: ""))
+
+        XCTAssertThrowsError(try memory.migrationValue(for: intKey, writtenBy: stringWrite)) {
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .invalidValue)
+        }
+
+        // The in-memory store cannot tell whether two values that are not `Equatable` are the same.
+        let opaque = InMemoryPersistentKeyValueStore.MigrationWrite(
+            identity: memory.migrationIdentity,
+            keyID: intKey.id,
+            object: OpaqueValue()
+        )
+
+        XCTAssertFalse(memory.migrationWrite(opaque, matches: opaque))
+    }
+
     func testStandardFactoryValidationAndEmptySuite() throws {
         if let identifier = Bundle.main.bundleIdentifier {
             XCTAssertEqual(
@@ -368,6 +408,55 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertThrowsError(try store.commitMigrationWrite(write, replacing: snapshot))
         XCTAssertThrowsError(try store.removeMigrationValue(for: intKey.id, matching: snapshot))
     }
+
+    // MARK: Private Instance Interface
+
+    private func assertPreparedRemovalDecodesAsAbsent(
+        in store: some PersistentKeyValueMigrationBackend,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let removal = try store.prepareMigrationWrite(nil, for: optionalKey)
+
+        let value = try store.migrationValue(for: optionalKey, writtenBy: removal)
+
+        XCTAssertTrue(value == nil, file: file, line: line)
+        XCTAssertTrue(
+            store.migrationWrite(removal, matches: try store.prepareMigrationWrite(nil, for: optionalKey)),
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertPreparedWritesDecodeAndCompare(
+        in store: some PersistentKeyValueMigrationBackend,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let write = try store.prepareMigrationWrite(1, for: intKey)
+
+        XCTAssertEqual(try store.migrationValue(for: intKey, writtenBy: write), 1, file: file, line: line)
+        XCTAssertTrue(
+            store.migrationWrite(write, matches: try store.prepareMigrationWrite(1, for: intKey)),
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            store.migrationWrite(write, matches: try store.prepareMigrationWrite(2, for: intKey)),
+            file: file,
+            line: line
+        )
+        XCTAssertThrowsError(
+            try store.migrationValue(for: PersistentKey("coverage.other", defaultValue: 0), writtenBy: write),
+            file: file,
+            line: line
+        ) {
+            XCTAssertEqual($0 as? PersistentKeyMigrationError, .internalInconsistency, file: file, line: line)
+        }
+    }
+}
+
+private struct OpaqueValue {
 }
 
 private final class RefusingDefaults: UserDefaults {

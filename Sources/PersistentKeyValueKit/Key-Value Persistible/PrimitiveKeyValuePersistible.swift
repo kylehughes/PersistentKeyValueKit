@@ -41,7 +41,9 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
 
     /// Encodes the value into a stored object for the given storage format.
     ///
-    /// Returning `nil` removes the key from a store (or omits the element from a property-list collection).
+    /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
+    /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
+    /// the write; see ``set(_:to:in:)`` and ``set(_:to:)``.
     ///
     /// - Parameter format: The target storage format.
     /// - Returns: The encoded storage object, or `nil` to remove the key.
@@ -51,8 +53,10 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     
     /// Decodes the elements of `propertyListArray` as `Self`.
     ///
-    /// Array reads and migration decode a stored array with this method, so it must accept the arrays that
-    /// ``set(_:to:)`` writes.
+    /// Array reads decode a stored array with this method, so it must accept the arrays that ``set(_:to:)`` writes.
+    /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for types
+    /// defined outside this package, so an implementation that omits elements it cannot decode omits them from
+    /// migrated values too.
     ///
     /// - Parameter propertyListArray: The array to decode values from.
     /// - Returns: The decoded values, or `nil` if any element cannot be decoded as `Self`.
@@ -64,8 +68,8 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// implementation may either assign the encoded array or append the encoded elements to it. The result is the
     /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
     /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
-    /// cannot be encoded: an empty result for nonempty `values` counts as a failure unless ``encode(format:)``
-    /// returns `nil` for every value.
+    /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
+    /// `nil`.
     ///
     /// - Parameter values: The values to encode into `propertyListArray`.
     /// - Parameter propertyListArray: The array to write the encoded values into.
@@ -75,8 +79,10 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     
     /// Decodes the value at `dictionaryKey` in `propertyListDictionary`, if present and representable as `Self`.
     ///
-    /// Dictionary reads and migration decode a stored entry with this method, so it must accept the objects that
-    /// ``set(_:to:in:)`` writes.
+    /// Dictionary reads decode a stored entry with this method, so it must accept the objects that ``set(_:to:in:)``
+    /// writes. Ordinary dictionary reads omit an entry for which this method returns `nil`. Checked conversion, which
+    /// migration and `UserDefaults.register(_:)` use, also calls this method for types defined outside this package
+    /// and fails instead.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.
@@ -89,7 +95,7 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// If `value` fails to encode, leave `propertyListDictionary` unchanged; if it encodes to `nil`, remove
     /// `dictionaryKey`. Dictionary writes, registration, and migration call this method for a `dictionaryKey` that
     /// `propertyListDictionary` does not yet contain, and rely on this to keep the stored dictionary when one of its
-    /// values cannot be encoded: an absent entry counts as a failure unless ``encode(format:)`` returns `nil`.
+    /// values cannot be encoded, so an absent entry counts as a failure, even if the value encodes to `nil`.
     ///
     /// - Parameter dictionaryKey: The key to update.
     /// - Parameter value: The value to encode.

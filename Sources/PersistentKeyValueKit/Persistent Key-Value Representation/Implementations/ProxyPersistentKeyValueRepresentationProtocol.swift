@@ -168,3 +168,60 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
         Proxy.persistentKeyValueRepresentation.set(ubiquitousStoreKey, to: serialization, in: ubiquitousStore)
     }
 }
+
+// MARK: - Built-In Proxy Conversion Definition
+
+/// A proxy representation defined by this package, whose checked container conversion converts the proxies with the
+/// checked container conversion of `Proxy`.
+internal protocol BuiltInProxyConversion: BuiltInContainerConversion, ProxyPersistentKeyValueRepresentationProtocol {
+    /// Converts `value` into its proxy, throwing if it cannot be converted.
+    func checkedProxy(for value: Value) throws -> Proxy
+
+    /// Converts `proxy` into its value, throwing if it cannot be converted.
+    func checkedValue(for proxy: Proxy) throws -> Value
+}
+
+// MARK: - Default Implementation
+
+extension BuiltInProxyConversion {
+    // MARK: Internal Instance Interface
+
+    /// Converts `value` with ``ProxyPersistentKeyValueRepresentationProtocol/to(_:)``, throwing
+    /// ``PersistentKeyValueConversionError/encodingFailed`` when it returns `nil`.
+    func checkedProxy(for value: Value) throws -> Proxy {
+        guard let proxy = to(value) else {
+            throw PersistentKeyValueConversionError.encodingFailed
+        }
+
+        return proxy
+    }
+
+    /// Converts `proxy` with ``ProxyPersistentKeyValueRepresentationProtocol/from(_:)``, throwing
+    /// ``PersistentKeyValueConversionError/invalidValue`` when it returns `nil`.
+    func checkedValue(for proxy: Proxy) throws -> Value {
+        guard let value = from(proxy) else {
+            throw PersistentKeyValueConversionError.invalidValue
+        }
+
+        return value
+    }
+
+    func builtInPropertyListArray(encoding values: [Value]) throws -> [Any] {
+        try Proxy.persistentKeyValueRepresentation.checkedPropertyListArray(encoding: values.map(checkedProxy(for:)))
+    }
+
+    func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
+        try Proxy.persistentKeyValueRepresentation.checkedPropertyListDictionary(
+            encoding: values.mapValues(checkedProxy(for:))
+        )
+    }
+
+    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value] {
+        try Proxy.persistentKeyValueRepresentation.checkedValues(decoding: propertyListArray).map(checkedValue(for:))
+    }
+
+    func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
+        try Proxy.persistentKeyValueRepresentation.checkedDictionary(decoding: propertyListDictionary)
+            .mapValues(checkedValue(for:))
+    }
+}

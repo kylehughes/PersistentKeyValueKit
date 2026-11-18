@@ -38,6 +38,9 @@ internal protocol StoreKeyObservation: AnyObject {
 /// registrations intact. Key identifiers are compared literally, as Foundation compares keys, so canonically equivalent
 /// spellings are different keys. Registrations whose observer has been deallocated are released on the next
 /// registration or deregistration.
+///
+/// Activation, invalidation, and the release of any observer reference run after the lock is unlocked, because each
+/// can deregister from this registry again.
 internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     private let lock: NSLock
     private var observations: [any StoreKeyObservation]
@@ -85,21 +88,20 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     /// The observation is registered before it is activated, so a callback delivered during activation can deregister
     /// it.
     internal func insert(_ observation: any StoreKeyObservation) {
-        let released = withLock {
-            let released = observations.filter {
-                $0.observer == nil
-            }
-
-            observations.removeAll {
-                $0.observer == nil
+        let (removed, liveObservers) = withLock {
+            let removed = removeObservations { _, _ in
+                false
             }
 
             observations.append(observation)
 
-            return released
+            return removed
         }
 
-        for observation in released {
+        // Release the observers after the lock is unlocked.
+        withExtendedLifetime(liveObservers) {}
+
+        for observation in removed {
             observation.invalidate()
         }
 
@@ -107,23 +109,16 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     }
 
     internal func remove(_ observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
-        let removed = withLock {
-            let isRemoved: (any StoreKeyObservation) -> Bool = { observation in
-                // An observer that deregisters from its own `deinit` already reads as `nil` here.
-                guard let registeredObserver = observation.observer else {
-                    return true
-                }
-
-                return registeredObserver === observer
+        let (removed, liveObservers) = withLock {
+            removeObservations { registeredObserver, observation in
+                registeredObserver === observer
                     && Self.keyIDsMatch(observation.keyID, keyID)
                     && observation.context == context
             }
-
-            let removed = observations.filter(isRemoved)
-            observations.removeAll(where: isRemoved)
-
-            return removed
         }
+
+        // Release the observers after the lock is unlocked.
+        withExtendedLifetime(liveObservers) {}
 
         for observation in removed {
             observation.invalidate()
@@ -141,6 +136,40 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     }
 
     // MARK: Private Instance Interface
+
+    /// Removes the observations whose observer has been deallocated or that `isRemoved` selects for their live
+    /// observer, returning them and every live observer read. Must be called with the lock held.
+    ///
+    /// Reading a weak observer retains it, and that reference becomes the last one if the observer is released on
+    /// another thread. An observer's `deinit` can deregister, so the caller releases the returned observers only after
+    /// the lock is unlocked.
+    private func removeObservations(
+        where isRemoved: (NSObject, any StoreKeyObservation) -> Bool
+    ) -> (removed: [any StoreKeyObservation], liveObservers: [NSObject]) {
+        var liveObservers: [NSObject] = []
+        var removed: [any StoreKeyObservation] = []
+
+        observations.removeAll { observation in
+            // An observer that deregisters from its own `deinit` already reads as `nil` here.
+            guard let observer = observation.observer else {
+                removed.append(observation)
+
+                return true
+            }
+
+            liveObservers.append(observer)
+
+            guard isRemoved(observer, observation) else {
+                return false
+            }
+
+            removed.append(observation)
+
+            return true
+        }
+
+        return (removed, liveObservers)
+    }
 
     private func withLock<Result>(_ body: () -> Result) -> Result {
         lock.lock()

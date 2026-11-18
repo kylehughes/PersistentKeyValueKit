@@ -147,6 +147,28 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     }
 }
 
+// MARK: - BuiltInContainerConversion Extension
+
+extension OptionalPersistentKeyValueRepresentation: BuiltInContainerConversion {
+    // MARK: Internal Instance Interface
+
+    func builtInPropertyListArray(encoding values: [Value]) throws -> [Any] {
+        try base.checkedPropertyListArray(encoding: values.compactMap { $0 })
+    }
+
+    func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
+        try base.checkedPropertyListDictionary(encoding: values.compactMapValues { $0 })
+    }
+
+    func builtInValues(decoding propertyListArray: [Any]) throws -> [Value] {
+        try base.checkedValues(decoding: propertyListArray).map(Optional.some)
+    }
+
+    func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
+        try base.checkedDictionary(decoding: propertyListDictionary).mapValues(Optional.some)
+    }
+}
+
 // MARK: - Protocol Conveniences
 
 extension PersistentKeyValueRepresentation {

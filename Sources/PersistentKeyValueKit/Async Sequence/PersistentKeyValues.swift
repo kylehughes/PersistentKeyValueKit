@@ -121,11 +121,10 @@ extension PersistentKeyValues {
     public struct Iterator: AsyncIteratorProtocol {
         private let observer: Observer<Key>
 
-        private var isFinished: Bool
-
         private var pendingInitialValue: Key.Value?
 
-        private var streamIterator: AsyncStream<Key.Value>.Iterator
+        /// The iterator of buffered changes, or `nil` after iteration has ended, which releases the buffer.
+        private var streamIterator: AsyncStream<Key.Value>.Iterator?
 
         // MARK: Internal Initialization
 
@@ -143,7 +142,6 @@ extension PersistentKeyValues {
                 emitsInitialValue: emitsInitialValue
             )
 
-            isFinished = false
             pendingInitialValue = initialValue
             streamIterator = stream.makeAsyncIterator()
         }
@@ -154,9 +152,9 @@ extension PersistentKeyValues {
         ///
         /// Iteration ends when the calling task is cancelled, whether cancellation happens before the call or while it
         /// waits. A call made after cancellation returns `nil` without returning the pending initial value or any
-        /// buffered change, deregisters from the store, and every later call returns `nil`.
+        /// buffered change, deregisters from the store, and releases those values, and every later call returns `nil`.
         public mutating func next() async -> Key.Value? {
-            guard !isFinished, !Task.isCancelled else {
+            guard !Task.isCancelled else {
                 return finish()
             }
 
@@ -166,7 +164,8 @@ extension PersistentKeyValues {
                 return pendingInitialValue
             }
 
-            let value = await streamIterator.next()
+            // A finished iterator has no stream iterator, so it returns `nil` without waiting.
+            let value = await streamIterator?.next()
 
             // The stream can return a value buffered before a cancellation that happened while this call waited.
             guard let value, !Task.isCancelled else {
@@ -179,9 +178,11 @@ extension PersistentKeyValues {
         // MARK: Private Instance Interface
 
         private mutating func finish() -> Key.Value? {
-            isFinished = true
             pendingInitialValue = nil
             observer.deregister()
+
+            // Deregistration released the continuation, so this releases the stream and its buffered values.
+            streamIterator = nil
 
             return nil
         }

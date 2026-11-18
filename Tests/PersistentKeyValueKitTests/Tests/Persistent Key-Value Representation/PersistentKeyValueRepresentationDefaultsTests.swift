@@ -128,7 +128,9 @@ extension PersistentKeyValueRepresentationDefaultsTests {
         userDefaults.set(scalarKey, to: .init(2))
         userDefaults.set(arrayKey, to: [.init(3), .init(4)])
         userDefaults.set(optionalArrayKey, to: [.init(5), nil, .init(6)])
-        userDefaults.set(dictionaryKey, to: ["a": .init(7), "removed": .init(0)])
+        userDefaults.set(dictionaryKey, to: ["a": .init(7)])
+        // A dictionary whose custom value encodes to `nil` is indistinguishable from a failed write.
+        userDefaults.set(dictionaryKey, to: ["a": .init(8), "removed": .init(0)])
 
         XCTAssertEqual(userDefaults.get(scalarKey), .init(2))
         XCTAssertEqual(userDefaults.get(arrayKey), [.init(3), .init(4)])
