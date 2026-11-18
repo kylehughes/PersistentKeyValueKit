@@ -52,10 +52,6 @@ extension UserDefaultsMigrationBackend {
 extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
     // MARK: Internal Instance Interface
 
-    var migrationHandle: ObjectIdentifier {
-        ObjectIdentifier(userDefaults)
-    }
-
     func commitMigrationWrite(
         _ write: MigrationWrite,
         replacing snapshot: MigrationSnapshot?
@@ -164,35 +160,6 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         guard try migrationSnapshot(for: keyID) == nil else {
             throw PersistentKeyMigrationError.removalVerificationFailed
         }
-    }
-}
-
-// MARK: - PersistentKeyValueMigrationRewriteBackend Extension
-
-extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationRewriteBackend {
-    // MARK: Internal Instance Interface
-
-    func migrationReadings(of write: MigrationWrite) throws -> [MigrationWrite] {
-        let serialized = try write.object.map(PropertyListMigrationStorage.freeze)
-        return [write, MigrationWrite(identity: write.identity, keyID: write.keyID, object: serialized)]
-    }
-
-    /// A prepared write holds an immutable copy of the encoded object, so decoding it cannot change the write.
-    func migrationValue<Key>(
-        for key: Key,
-        writtenBy write: MigrationWrite
-    ) throws -> Key.Value? where Key: PersistentKeyProtocol {
-        guard write.identity == migrationIdentity, write.keyID == key.id else {
-            throw PersistentKeyMigrationError.internalInconsistency
-        }
-
-        return try write.object.map {
-            try decodeStorageValue(for: key, object: $0, format: .userDefaults)
-        }
-    }
-
-    func migrationWrite(_ write: MigrationWrite, matches other: MigrationWrite) -> Bool {
-        PropertyListMigrationStorage.equal(write.object, other.object)
     }
 }
 

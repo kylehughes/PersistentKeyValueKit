@@ -207,12 +207,12 @@ extension PersistentKeyValueStore where Self == UserDefaults {
     /// `UserDefaults` instance, and lasts only for the lifetime of that instance in the current process.
     ///
     /// Migration treats suite names that differ only by case or Unicode normalization as the same store, because they
-    /// can share one preferences file. Path-shaped names and names ending in `.plist` are rejected, because Foundation
-    /// can resolve them to the preferences file of another suite name.
+    /// can share one preferences file. Path-shaped names, names ending in `.plist`, and names containing NUL are
+    /// rejected, because Foundation can resolve them to the preferences of another suite name.
     ///
     /// - Parameter suiteName: The persistent domain identifier for the suite, such as an app group identifier.
-    /// - Returns: A `UserDefaults` instance configured for migration, or `nil` if `suiteName` is empty, contains `/`,
-    ///   begins with `~`, ends with `.plist` ignoring case, matches a reserved domain (`argumentDomain`,
+    /// - Returns: A `UserDefaults` instance configured for migration, or `nil` if `suiteName` is empty, contains `/` or
+    ///   NUL, begins with `~`, ends with `.plist` ignoring case, matches a reserved domain (`argumentDomain`,
     ///   `registrationDomain`, `globalDomain`, `kCFPreferencesAnyApplication`, or `kCFPreferencesCurrentApplication`)
     ///   or the main bundle identifier ignoring case and Unicode normalization, or cannot be created by Foundation.
     public static func migratable(suiteName: String) -> Self? {
@@ -262,9 +262,11 @@ extension UserDefaults {
         // Core Foundation resolves a name containing `/` as a preferences file path, and it removes a `.plist` suffix
         // in any case, so these names can open another name's preferences file under a different identity. A leading
         // `~` is rejected as path-shaped too. Core Foundation reads these delimiters as code units, while Swift's
-        // `Character` comparison would miss one followed by a combining mark.
+        // `Character` comparison would miss one followed by a combining mark. Core Foundation also ends a name at its
+        // first NUL, so names that differ only after one open the same domain under different identities.
         guard
             !name.isEmpty,
+            !name.utf8.contains(0),
             !name.utf8.contains(UInt8(ascii: "/")),
             name.utf8.first != UInt8(ascii: "~"),
             !foldedName.utf8.reversed().starts(with: ".plist".utf8.reversed())

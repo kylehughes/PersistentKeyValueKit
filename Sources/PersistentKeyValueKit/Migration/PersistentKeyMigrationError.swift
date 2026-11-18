@@ -19,17 +19,13 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     case missingMigrationDomain
 
     /// The source and destination refer to the same backing store, and at least one item migrates a key to the same
-    /// key without rewriting it in place.
+    /// key.
     ///
-    /// Migrating within one store is allowed when every item either maps its source key to a different destination key
-    /// or was created with ``PersistentKeyMigrationItem/key(_:to:transform:)``, which rewrites the value in place under
-    /// the same identifier. Keys are the same when the store treats their identifiers as one key: `UserDefaults` and
-    /// `NSUbiquitousKeyValueStore` compare identifiers by their UTF-16 code units, while
-    /// ``InMemoryPersistentKeyValueStore`` treats canonically equivalent identifiers as one key. A rewrite also
-    /// requires that the source and destination are the same instance, because different instances for one backing
-    /// store, such as `UserDefaults` instances for suite names that differ only by case, can hold different cached
-    /// values. ``InMemoryPersistentKeyValueStore`` does not support rewrites, so any item that maps a key to itself
-    /// within an in-memory store throws this error.
+    /// Migrating within one store is allowed when every item maps its source key to a different destination key,
+    /// including items created with ``PersistentKeyMigrationItem/key(_:to:transform:)``. Keys are the same when the
+    /// store treats their identifiers as one key: `UserDefaults` and `NSUbiquitousKeyValueStore` compare identifiers by
+    /// their UTF-16 code units, while ``InMemoryPersistentKeyValueStore`` treats canonically equivalent identifiers as
+    /// one key. To change how a key's value is stored, move it to a new key.
     case sameStore
 
     /// The batch contains more than one item with the given source key identifier, or more than one item with the given
@@ -63,27 +59,12 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// same store.
     case overlappingMigration
 
-    /// An in-place rewrite produced a value that still decodes with the source key's representation and that rewriting
-    /// again would change, so a retried migration would apply the transform twice.
-    ///
-    /// The item fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` before anything is written. This happens
-    /// when the source and destination representations share a storage format, including numbers that Foundation
-    /// bridges, such as an integer and an integral `Double`, when the second run of the transform throws, or when the
-    /// destination representation does not encode the same value identically on each run (for example, `JSONEncoder`
-    /// without `.sortedKeys` when the source representation can still decode the encoded result). The value must be
-    /// safe to rewrite again as every process reads it: a `UserDefaults` or `NSUbiquitousKeyValueStore` store returns
-    /// an encoded `Int32` as written only to the writing process, and other processes and later launches read a 64-bit
-    /// integer, which a source representation can accept even when it rejects the `Int32`. Migrate the value to a new
-    /// key instead; see ``PersistentKeyMigrationItem/key(_:to:transform:)``.
-    case nonIdempotentRewrite
-
     /// The source value changed between the initial snapshot and source removal during a move.
     case sourceChanged
 
     /// The destination value changed between the initial snapshot and the destination write or source cleanup,
     /// including when an observer wrote it while a write replaced it, or no longer matched the migrated value after the
-    /// source was removed during a move. For an in-place rewrite that finds its value already rewritten, the stored
-    /// value changed while it was being recognized.
+    /// source was removed during a move.
     case destinationChanged
 
     /// The destination store did not retain the expected value after writing.

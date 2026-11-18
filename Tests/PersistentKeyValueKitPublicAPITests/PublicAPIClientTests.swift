@@ -245,43 +245,49 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(destination.get(.publicLaunchCount), 0)
     }
 
-    func testItemWithTransformRewritesAKeyInPlace() throws {
-        let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.rewrite")
-        let store = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
-        let memory = InMemoryPersistentKeyValueStore()
-        let legacy = PersistentKey<Bool>("PublicAPI.rewrite", defaultValue: false)
-        let current = PersistentKey<PublicMode>("PublicAPI.rewrite", defaultValue: .off)
-        let rewrite = PersistentKeyMigrationItem.key(legacy, to: current) {
-            $0 ? .on : .off
-        }
+    func testItemThatMapsAKeyToItselfWithinOneStoreThrowsSameStore() throws {
+        let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.sameKey")
+        let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let legacy = PersistentKey<Bool>("PublicAPI.sameKey", defaultValue: false)
+        let sameID = PersistentKey<PublicMode>(legacy.id, defaultValue: .off)
+        let renamed = PersistentKey<PublicMode>("PublicAPI.sameKey.mode", defaultValue: .off)
 
         defer {
-            store.removePersistentDomain(forName: suiteName)
+            defaults.removePersistentDomain(forName: suiteName)
         }
 
-        store.set(legacy, to: true)
-        memory.set(legacy, to: true)
+        for store in [defaults, InMemoryPersistentKeyValueStore()] as [any PersistentKeyValueStore] {
+            store.set(legacy, to: true)
 
-        XCTAssertThrowsError(
-            try store.move(.key(legacy), to: store, onConflict: .overwriteDestination, tracking: .untracked)
-        ) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
+            for item in [
+                PersistentKeyMigrationItem.key(legacy),
+                .key(legacy, to: legacy),
+                .key(legacy, to: sameID) {
+                    $0 ? .on : .off
+                },
+            ] {
+                XCTAssertThrowsError(try store.move(item, to: store, onConflict: .keepBoth, tracking: .untracked)) {
+                    XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
+                }
+            }
+
+            XCTAssertTrue(store.get(legacy))
+
+            let report = try store.move(
+                .key(legacy, to: renamed) {
+                    $0 ? .on : .off
+                },
+                to: store,
+                onConflict: .keepBoth,
+                tracking: .once(id: "same-key-caf\u{E9}")
+            )
+
+            XCTAssertEqual(report.outcomes.map(\.status), [.moved])
+            XCTAssertTrue(report.isComplete)
+            XCTAssertEqual(store.get(renamed), .on)
+            XCTAssertTrue(store.get(.isMigrationCompleted(id: "same-key-caf\u{E9}")))
+            XCTAssertTrue(store.get(.isMigrationCompleted(id: "same-key-cafe\u{301}")))
         }
-
-        // An in-memory store does not support rewrites.
-        XCTAssertThrowsError(try memory.move(rewrite, to: memory, onConflict: .keepBoth, tracking: .untracked)) {
-            XCTAssertEqual($0 as? PersistentKeyMigrationError, .sameStore)
-        }
-
-        XCTAssertTrue(memory.get(legacy))
-
-        let report = try store.move(rewrite, to: store, onConflict: .keepBoth, tracking: .once(id: "rewrite-caf\u{E9}"))
-
-        XCTAssertEqual(report.outcomes.map(\.status), [.rewritten])
-        XCTAssertTrue(report.isComplete)
-        XCTAssertEqual(store.get(current), .on)
-        XCTAssertTrue(store.get(.isMigrationCompleted(id: "rewrite-caf\u{E9}")))
-        XCTAssertTrue(store.get(.isMigrationCompleted(id: "rewrite-cafe\u{301}")))
     }
 
     func testMigrationCapturesEachEndpointOnce() throws {

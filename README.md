@@ -462,24 +462,6 @@ try report.throwIfIncomplete()
 
 Same-store migrations are allowed when every item maps its source key to a different destination key (no duplicate or overlapping keys) or, in one `UserDefaults` or `NSUbiquitousKeyValueStore` instance, rewrites a key in place with `.key(source, to: destination, transform:)` using the same key ID, reporting `.rewritten` under any conflict policy (pass `transform: { $0 }` for a representation-only upgrade; `InMemoryPersistentKeyValueStore` throws `.sameStore` at setup). Before writing, a rewrite decodes its prepared result and binary-plist readback (where another process reads `Int32` as `Int64`) with the source key and, for each reading that decodes, runs `transform` and encodes again (`transform` can run up to three times), failing at `.prepare` with `PersistentKeyMigrationError.nonIdempotentRewrite` unless every reading fails the source decoder (`Int` to `String`) or reproduces the same encoded value (requiring reproducible encoding such as `JSONEncoder` with `.sortedKeys` when the source decodes the result). For overlapping formats such as `Int` to `Double` (seconds to milliseconds) or dollars to cents, migrate to a new key ID instead (on retry, a `move` that removed its source finds no source value; `.keepDestination` and `.keepBoth` keep an existing destination, including an earlier attempt's write, without running `transform` while `.keepBoth` also keeps the source; `.overwriteDestination` reconverts the source and replaces the earlier result).
 
-```swift
-let legacyColorSchemeKey = PersistentKey<Int>("RuntimeColorScheme", defaultValue: 0)
-
-let report = try userDefaults.move(
-    .key(
-        legacyColorSchemeKey,
-        to: .runtimeColorScheme,
-        transform: { rawScheme in
-            rawScheme == 1 ? .dark : .light
-        }
-    ),
-    to: userDefaults,
-    onConflict: .overwriteDestination,
-    tracking: .once(id: "runtime-color-scheme-v2")
-)
-try report.throwIfIncomplete()
-```
-
 `transform` runs when both keys are enabled (`isMigrationEnabled == true`) and the item writes; if its first call throws, the item fails at `.transform` and writes to neither store (a failure during rewrite verification fails at `.prepare` with `.nonIdempotentRewrite`). An `InMemoryPersistentKeyValueStore` source passes stored Swift values without running representation codecs, so copy a mutable reference input in `transform` before mutating it.
 
 #### Conflict Policies and Partial Changes

@@ -28,12 +28,6 @@ import Foundation
 /// fail the migration instead of removing or overwriting the value. It detects other references only when they are
 /// replaced, so do not mutate them while a migration runs.
 ///
-/// An in-memory store does not support in-place rewrites: a migration within one in-memory store that maps a key to
-/// its own identifier, even with ``PersistentKeyMigrationItem/key(_:to:transform:)``, throws
-/// ``PersistentKeyMigrationError/sameStore`` before any key is read. Checking that a retried rewrite would not
-/// convert a value twice requires a prepared value that the transform cannot change, and this store keeps the
-/// references inside Swift values without copying them. Migrate the value to a new key instead.
-///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
 ///   thread-safety requirement. The lock is not held while key identifiers are evaluated, observers are notified, or
 ///   replaced values are released, so that code can access the store again.
@@ -163,7 +157,8 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     }
 
     /// Removes the registrations whose observer has been deallocated or that `isRemoved` selects for their live
-    /// observer, returning every live observer read. Must be called with the lock held.
+    /// observer, marking the selected registrations inactive, and returns every live observer read. Must be called
+    /// with the lock held.
     ///
     /// Reading a weak observer retains it, and that reference becomes the last one if the observer is released on
     /// another thread. An observer's `deinit` can deregister, so the caller releases the returned observers only after
@@ -177,16 +172,26 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
             }
 
             liveObservers.append(observer)
+            observation.isActive = !isRemoved(observer, observation)
 
-            return isRemoved(observer, observation)
+            return !observation.isActive
         }
 
         return liveObservers
     }
 
+    /// Notifies each registration in `observations` that is still active when its turn comes.
+    ///
+    /// An observer's callback can deregister a later registration in `observations`, and that registration must not be
+    /// called after ``deregister(_:for:context:)`` returns, so each registration is checked with the lock held just
+    /// before it is called. The observer is retained by that read and released after the lock is unlocked.
     private func notify(_ observations: [Observation], keyPath: String?) {
         for observation in observations {
-            observation.observer?.observeValue(
+            let observer = withLock {
+                observation.isActive ? observation.observer : nil
+            }
+
+            observer?.observeValue(
                 forKeyPath: keyPath,
                 of: self,
                 change: nil,
@@ -210,10 +215,6 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
 
 extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     // MARK: Internal Instance Interface
-
-    var migrationHandle: ObjectIdentifier {
-        ObjectIdentifier(self)
-    }
 
     /// Commits a prepared write only when the replacement snapshot is still current.
     ///
@@ -538,6 +539,10 @@ private extension InMemoryPersistentKeyValueStore {
         weak var observer: NSObject?
         let keyID: String
         let context: UnsafeMutableRawPointer?
+        /// Whether the registration is still registered. Removing a registration with a live observer clears this, so
+        /// a notification that copied the registration earlier skips it. Read and written only with the store's lock
+        /// held.
+        var isActive = true
 
         init(observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
             self.observer = observer

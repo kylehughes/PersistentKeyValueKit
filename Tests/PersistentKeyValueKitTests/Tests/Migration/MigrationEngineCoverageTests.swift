@@ -63,10 +63,6 @@ extension ScriptedMigrationStore: PersistentKeyValueMigrationBackend {
         }
     }
 
-    var migrationHandle: ObjectIdentifier {
-        base.migrationHandle
-    }
-
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
         false
     }

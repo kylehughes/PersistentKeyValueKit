@@ -44,6 +44,29 @@ extension InMemoryPersistentKeyValueStoreTests {
         XCTAssertTrue(observer.keyPaths.isEmpty)
     }
 
+    func test_persistentKeyValueStore_deregister_byEarlierObserverStopsPendingNotification() {
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let laterObserver = PersistentKeyValueStoreObservationRecorder()
+        let earlierObserver = PersistentKeyValueStoreObservationRecorder()
+
+        earlierObserver.onObservation = { [target] in
+            target.deregister(laterObserver, for: key, context: nil)
+        }
+
+        register(earlierObserver, for: key)
+        register(laterObserver, for: key)
+        target.set(key, to: "changedValue")
+
+        XCTAssertEqual(earlierObserver.keyPaths, [key.id])
+        XCTAssertTrue(laterObserver.keyPaths.isEmpty)
+
+        register(laterObserver, for: key)
+        target.remove(key)
+
+        XCTAssertEqual(earlierObserver.keyPaths, [key.id, key.id])
+        XCTAssertTrue(laterObserver.keyPaths.isEmpty)
+    }
+
     func test_persistentKeyValueStore_register_ignoresUnrelatedKeys() {
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         let observer = PersistentKeyValueStoreObservationRecorder()
@@ -94,6 +117,9 @@ private extension InMemoryPersistentKeyValueStoreTests {
 private final class PersistentKeyValueStoreObservationRecorder: NSObject {
     private(set) var keyPaths: [String?]
 
+    /// Called after each recorded callback.
+    var onObservation: (() -> Void)?
+
     override init() {
         keyPaths = []
 
@@ -107,5 +133,6 @@ private final class PersistentKeyValueStoreObservationRecorder: NSObject {
         context: UnsafeMutableRawPointer?
     ) {
         keyPaths.append(keyPath)
+        onObservation?()
     }
 }

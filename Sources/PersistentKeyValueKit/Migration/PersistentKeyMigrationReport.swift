@@ -163,7 +163,7 @@ extension PersistentKeyMigrationReport {
         /// Decoding the source snapshot with the source key's representation failed.
         case decode
 
-        /// The initial call to the item's transform threw. The migration wrote to neither store.
+        /// The item's transform threw. The migration wrote to neither store.
         case transform
 
         /// Encoding or validating the value with the destination key's representation failed before mutating the
@@ -281,17 +281,6 @@ extension PersistentKeyMigrationReport {
 
         /// The value was written to the destination key and removed from the source key.
         case moved
-
-        /// The value was rewritten in place by an item that maps a key to its own identifier within one `UserDefaults`
-        /// or `NSUbiquitousKeyValueStore` store, under any copy or move conflict policy, or was found already
-        /// rewritten because it decodes only with the destination key's representation. A move did not remove the key
-        /// as its source. A tracked batch runs again after any item fails, so a rewrite is safe to retry only when its
-        /// result fails to decode with the source key's representation in any process or when the transform and
-        /// destination encoding are idempotent; otherwise it fails with
-        /// ``PersistentKeyMigrationError/nonIdempotentRewrite`` before writing. To change a value without changing its
-        /// representation, such as dollars to cents, move it to a new key instead. See
-        /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
-        case rewritten
 
         /// No persisted value existed for the source key in the source store.
         case sourceAbsent

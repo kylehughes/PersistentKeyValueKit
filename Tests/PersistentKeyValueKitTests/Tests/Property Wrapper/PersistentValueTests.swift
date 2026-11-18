@@ -796,6 +796,41 @@ extension PersistentValueTests {
     }
 
     @MainActor
+    func test_inputChange_explicitStore_retainedBindingWriteDoesNotRenderNewStore() async throws {
+        let viewController = ViewController()
+        let firstStore = InMemoryPersistentKeyValueStore()
+        let secondStore = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let model = SwitchingModel(keyID: key.id, store: firstStore, environmentStore: userDefaults)
+        let recorder = SwitchingRecorder()
+
+        firstStore.set(key, to: 1)
+        secondStore.set(key, to: 2)
+
+        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        await waitForRenderedValue(1, in: recorder)
+
+        let retainedBinding = recorder.binding
+
+        model.store = secondStore
+        await waitForRenderedValue(2, in: recorder)
+
+        recorder.renderedValues = []
+        retainedBinding?.wrappedValue = 7
+
+        // Give SwiftUI time to render an invalidation before the control write.
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(firstStore.get(key), 7)
+        XCTAssertEqual(recorder.renderedValues, [])
+
+        secondStore.set(key, to: 8)
+        await waitForRenderedValue(8, in: recorder)
+
+        XCTAssertEqual(recorder.renderedValues, [8])
+    }
+
+    @MainActor
     func test_inputChange_key_retainedBindingWritesOriginalKey() async {
         let viewController = ViewController()
         let store = InMemoryPersistentKeyValueStore()
@@ -1119,9 +1154,11 @@ private final class SwitchingRecorder {
     var binding: Binding<Int>?
     var onRender: ((Int) -> Void)?
     var renderedValue: Int?
+    var renderedValues: [Int] = []
 
     func record(_ value: Int, binding: Binding<Int>) {
         renderedValue = value
+        renderedValues.append(value)
         self.binding = binding
         onRender?(value)
     }

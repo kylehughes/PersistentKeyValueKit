@@ -70,10 +70,6 @@ extension MigrationFaultStore: PersistentKeyValueMigrationBackend {
         }
     }
 
-    var migrationHandle: ObjectIdentifier {
-        base.migrationHandle
-    }
-
     func migrationKeyIDExceedsLimit(_ keyID: String) -> Bool {
         keyIDLimit.map {
             keyID.count > $0

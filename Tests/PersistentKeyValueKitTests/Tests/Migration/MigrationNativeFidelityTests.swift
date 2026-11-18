@@ -182,6 +182,58 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertIntegerWidthMatchesOrdinaryAccess(from: source, to: destination)
     }
 
+    func testDefaultsOverwriteKeepsAnObserverWriteDuringFoundationEqualReplacement() throws {
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.equalReplacementObserver")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
+        let source = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
+        let observer = CallbackObserver {
+            // Replacing a Foundation-equal value removes it first, which observers see as the key being absent.
+            if destination.persistentDomain(forName: destinationName)?[key.id] == nil {
+                destination.set(key, to: 99)
+            }
+        }
+
+        defer {
+            destination.removePersistentDomain(forName: destinationName)
+        }
+
+        source.set(key, to: 1)
+        destination.set(PersistentKey<Bool>(key.id, defaultValue: false), to: true)
+        destination.register(observer: observer, for: key, with: nil, and: #selector(CallbackObserver.observeValue))
+
+        defer {
+            destination.deregister(observer, for: key, context: nil)
+        }
+
+        let report = try source.move(
+            key,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes[0].error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+        XCTAssertEqual(destination.get(key), 99)
+        XCTAssertEqual(source.get(key), 1)
+    }
+
+    func testDefaultsOverwriteReplacesFoundationEqualValueOfAnotherType() throws {
+        let destinationName = stableSuiteName("MigrationNativeFidelityTests.equalReplacement")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
+
+        defer {
+            destination.removePersistentDomain(forName: destinationName)
+        }
+
+        try assertOverwriteReplacesFoundationEqualValueOfAnotherType(in: destination) {
+            destination.persistentDomain(forName: destinationName)?[$0]
+        }
+    }
+
     func testDefaultsDestinationLookupDistinguishesNormalizationForms() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.destination")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
@@ -579,6 +631,13 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
+    func testUbiquitousOverwriteReplacesFoundationEqualValueOfAnotherType() throws {
+        let destination = StrictMigrationUbiquitousStore()
+
+        try assertOverwriteReplacesFoundationEqualValueOfAnotherType(in: destination, rawValue: destination.storedValue)
+    }
+
+    @available(watchOS 9.0, *)
     func testUbiquitousSnapshotRejectsBooleanReplacedByEqualNumber() throws {
         try assertTypeChangeIsDetected(in: StrictMigrationUbiquitousStore())
     }
@@ -740,6 +799,30 @@ final class MigrationNativeFidelityTests: XCTestCase {
     ///
     /// `UserDefaults` ignores a write that Core Foundation considers equal to the stored value, so the replacement
     /// removes the value first, as a write from another process can.
+    /// Moves the integer `1` over a stored `true`, which Foundation considers equal to it, and checks that the
+    /// destination then stores an integer.
+    private func assertOverwriteReplacesFoundationEqualValueOfAnotherType<Store>(
+        in destination: Store,
+        rawValue: (String) -> Any?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws where Store: PersistentKeyValueStore {
+        let source = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
+
+        source.set(key, to: 1)
+        destination.set(PersistentKey<Bool>(key.id, defaultValue: false), to: true)
+
+        let report = try source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved], file: file, line: line)
+        XCTAssertEqual(destination.get(key), 1, file: file, line: line)
+
+        let raw = try XCTUnwrap(rawValue(key.id) as? NSNumber, file: file, line: line)
+
+        XCTAssertNotEqual(CFGetTypeID(raw), CFBooleanGetTypeID(), file: file, line: line)
+    }
+
     private func assertReplacementIsDetected<Store, Value>(
         in source: Store,
         original: Value,

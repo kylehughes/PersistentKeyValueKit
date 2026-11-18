@@ -60,9 +60,6 @@ enum PersistentKeyMigrationOperation {
 protocol PersistentKeyMigrationMappingProtocol: Sendable {
     var destinationKeyID: String { get }
 
-    /// Whether the item was created with an explicit transform, which permits an in-place rewrite within one store.
-    var hasTransform: Bool { get }
-
     var sourceKeyID: String { get }
 
     func migrate<SourceStore, DestinationStore>(
@@ -75,20 +72,9 @@ protocol PersistentKeyMigrationMappingProtocol: Sendable {
         DestinationStore: PersistentKeyValueMigrationBackend
 }
 
-extension PersistentKeyMigrationMappingProtocol {
-    /// Whether the item rewrites its key in place when the source and destination are the same store.
-    ///
-    /// A rewrite requires a transform and literally identical identifiers. Identifiers that Swift considers equal but
-    /// that differ in Unicode normalization name different native keys, so they do not form a rewrite.
-    var rewritesInPlace: Bool {
-        hasTransform && sourceKeyID.utf8.elementsEqual(destinationKeyID.utf8)
-    }
-}
-
 struct PersistentKeyMigrationMapping<SourceKey, DestinationKey>: PersistentKeyMigrationMappingProtocol
 where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     let destination: DestinationKey
-    let hasTransform: Bool
     let source: SourceKey
     let transform: @Sendable (SourceKey.Value) throws -> DestinationKey.Value
 
@@ -97,12 +83,10 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
     init(
         source: SourceKey,
         destination: DestinationKey,
-        hasTransform: Bool,
         transform: @escaping @Sendable (SourceKey.Value) throws -> DestinationKey.Value
     ) {
         self.source = source
         self.destination = destination
-        self.hasTransform = hasTransform
         self.transform = transform
     }
 
@@ -129,14 +113,6 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
         let destinationID = destination.id
         guard source.isMigrationEnabled, destination.isMigrationEnabled else {
             return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .keyDisabled)
-        }
-
-        // Setup rejects a rewrite in a store that does not support rewrites, so the cast fails only for other items.
-        if rewritesInPlace,
-            sourceStore.migrationIdentity == destinationStore.migrationIdentity,
-            let rewritingStore = destinationStore as? any PersistentKeyValueMigrationRewriteBackend
-        {
-            return rewrite(in: rewritingStore)
         }
 
         var stage: PersistentKeyMigrationReport.FailureStage = .snapshot
@@ -247,99 +223,6 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
 
         return try store.migrationSnapshotIsCurrent(snapshot, for: keyID)
     }
-
-    // MARK: Private Instance Interface
-
-    /// Whether a retry that finds `write`'s value stored would leave it unchanged.
-    ///
-    /// A retry rewrites a stored value again when it still decodes with the source key's representation. That is safe
-    /// only when rewriting it again prepares the same write; otherwise the retry would convert the value twice. The
-    /// retry can run in the writing process or in another process or launch, which read the stored value differently,
-    /// so every reading must be safe.
-    private func isRepeatable<Store>(_ write: Store.MigrationWrite, in store: Store) -> Bool
-    where Store: PersistentKeyValueMigrationRewriteBackend {
-        do {
-            for reading in try store.migrationReadings(of: write) {
-                // A retry recognizes a reading that does not decode as a source value as already rewritten, and finds
-                // no source value after a write that removes the key.
-                guard let storedValue = try? store.migrationValue(for: source, writtenBy: reading) else {
-                    continue
-                }
-
-                let repeatedWrite = try store.prepareMigrationWrite(try transform(storedValue), for: destination)
-                guard store.migrationWrite(write, matches: repeatedWrite) else {
-                    return false
-                }
-            }
-
-            return true
-        } catch {
-            return false
-        }
-    }
-
-    /// Whether `snapshot` decodes with the destination key's representation, which identifies a value that an earlier
-    /// attempt of a rewrite already converted.
-    private func isRewritten<Store>(_ snapshot: Store.MigrationSnapshot, in store: Store) -> Bool
-    where Store: PersistentKeyValueMigrationBackend {
-        do {
-            _ = try store.migrationValue(for: destination, in: snapshot)
-            return true
-        } catch {
-            return false
-        }
-    }
-
-    /// Rewrites the item's value in place under its shared key identifier, without a conflict check or source removal.
-    ///
-    /// The existing value is the source, so no conflict policy applies. The write replaces only the snapshot that was
-    /// decoded. A stored value that fails to decode with the source key's representation but decodes with the
-    /// destination key's representation was already rewritten, typically by an earlier attempt of a tracked batch
-    /// whose later item failed, so it is reported as rewritten without being written again. A rewrite whose result a
-    /// retry would convert again fails before writing, so a retry can never apply the transform twice.
-    private func rewrite<Store>(in store: Store) -> PersistentKeyMigrationReport.Outcome
-    where Store: PersistentKeyValueMigrationRewriteBackend {
-        let id = source.id
-        var stage: PersistentKeyMigrationReport.FailureStage = .snapshot
-        do {
-            guard let snapshot = try store.migrationSnapshot(for: id) else {
-                return .init(sourceKeyID: id, status: .sourceAbsent)
-            }
-
-            stage = .decode
-            let value: SourceKey.Value
-            do {
-                value = try store.migrationValue(for: source, in: snapshot)
-            } catch {
-                guard isRewritten(snapshot, in: store) else {
-                    throw error
-                }
-
-                // A decoder can change the stored value, and the recognized value must still be the stored one.
-                stage = .write
-                guard try store.migrationSnapshotIsCurrent(snapshot, for: id) else {
-                    throw PersistentKeyMigrationError.destinationChanged
-                }
-
-                return .init(sourceKeyID: id, status: .rewritten)
-            }
-
-            stage = .transform
-            let rewrittenValue = try transform(value)
-            stage = .prepare
-            let write = try store.prepareMigrationWrite(rewrittenValue, for: destination)
-            guard isRepeatable(write, in: store) else {
-                throw PersistentKeyMigrationError.nonIdempotentRewrite
-            }
-
-            stage = .write
-            _ = try Self.commit(write, replacing: snapshot, in: store, for: id)
-
-            return .init(sourceKeyID: id, status: .rewritten)
-        } catch {
-            return .init(sourceKeyID: id, failedAt: stage, error: error)
-        }
-    }
 }
 
 // MARK: - PersistentKeyValueStore Extension
@@ -420,17 +303,13 @@ extension PersistentKeyValueStore {
     /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither copied nor treated as destination conflicts.
     ///
-    /// `destination` can be this store when every item maps its source key to a different key identifier or, in a
-    /// `UserDefaults` or `NSUbiquitousKeyValueStore` store, rewrites a key in place through
-    /// ``PersistentKeyMigrationItem/key(_:to:transform:)``.
+    /// `destination` can be this store when every item maps its source key to a different key identifier.
     ///
-    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item without a
-    /// transform that maps a key to itself within one store, an in-place rewrite between two different instances of
-    /// one store or in an ``InMemoryPersistentKeyValueStore``, duplicate source or destination key identifiers, a
-    /// destination that is another item's source within one store, reserved completion-marker keys, key identifiers
-    /// that exceed a store's limit, an empty migration identifier, or an overlapping in-process migration of the same
-    /// keys or marker. Errors thrown by a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the
-    /// completion marker propagate unchanged.
+    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
+    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
+    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
+    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
+    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
     /// Completed writes are not rolled back if a later item fails. An empty batch is valid; with completion tracking,
@@ -534,16 +413,13 @@ extension PersistentKeyValueStore {
     /// added suites, and key default values are neither moved nor treated as destination conflicts.
     ///
     /// `destination` can be this store when every item maps its source key to a different key identifier, which
-    /// renames keys within the store, or, in a `UserDefaults` or `NSUbiquitousKeyValueStore` store, rewrites a key in
-    /// place through ``PersistentKeyMigrationItem/key(_:to:transform:)``, which keeps the key.
+    /// renames keys within the store.
     ///
-    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item without a
-    /// transform that maps a key to itself within one store, an in-place rewrite between two different instances of
-    /// one store or in an ``InMemoryPersistentKeyValueStore``, duplicate source or destination key identifiers, a
-    /// destination that is another item's source within one store, reserved completion-marker keys, key identifiers
-    /// that exceed a store's limit, an empty migration identifier, or an overlapping in-process migration of the same
-    /// keys or marker. Errors thrown by a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the
-    /// completion marker propagate unchanged.
+    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
+    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
+    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
+    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
+    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
     /// On a failure before the destination write, including a transform failure, the migration writes to neither
@@ -614,15 +490,10 @@ extension PersistentKeyValueMigrationBackend {
         let mappings = items.map(\.mapping)
         let isSameStore = migrationIdentity == destination.migrationIdentity
         // Key identity is the store's own: Foundation stores keep literally different spellings apart, while the
-        // in-memory store treats canonically equivalent spellings as one key. A rewrite reads and writes through one
-        // object, because distinct objects for one backing store can cache different values, and needs a store that
-        // supports rewrites.
-        let supportsRewrites = migrationHandle == destination.migrationHandle
-            && destination is any PersistentKeyValueMigrationRewriteBackend
+        // in-memory store treats canonically equivalent spellings as one key.
         if isSameStore,
             mappings.contains(where: {
                 migrationKeyIdentity($0.sourceKeyID) == migrationKeyIdentity($0.destinationKeyID)
-                    && (!$0.rewritesInPlace || !supportsRewrites)
             })
         {
             throw PersistentKeyMigrationError.sameStore
@@ -655,12 +526,10 @@ extension PersistentKeyValueMigrationBackend {
             }
         }
 
-        // Source identifiers are unique, so a destination that matches a source other than its own item's is another
-        // item's source. An in-place rewrite is its own source and cannot overlap another item.
+        // No item maps a key to itself within one store, so a destination that matches a source is another item's.
         if isSameStore,
             let overlap = mappings.first(where: {
-                let destinationID = migrationKeyIdentity($0.destinationKeyID)
-                return destinationID != migrationKeyIdentity($0.sourceKeyID) && sourceIDs.contains(destinationID)
+                sourceIDs.contains(migrationKeyIdentity($0.destinationKeyID))
             })
         {
             throw PersistentKeyMigrationError.overlappingKeys(overlap.destinationKeyID)

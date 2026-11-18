@@ -211,6 +211,46 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertNotNil(UserDefaults.migratable(suiteName: "\(suiteName).plistx"))
     }
 
+    /// Foundation ends a suite name at its first NUL, so names that differ only after one share a domain.
+    func testMigratableFactoryRejectsNamesContainingNUL() throws {
+        let suiteName = stableSuiteName("MigrationNativeStoreTests.nul")
+        let names = [
+            "\(suiteName)\u{0}first",
+            "\(suiteName)\u{0}second",
+            "\(suiteName)\u{0}",
+            "\u{0}\(suiteName)",
+            "\(suiteName)\u{0}\u{301}",
+        ]
+
+        for name in names {
+            var called = false
+
+            XCTAssertNil(
+                UserDefaults.migratable(
+                    suiteName: name,
+                    makeUserDefaults: { _ in
+                        called = true
+
+                        return UserDefaults()
+                    }
+                ),
+                name.debugDescription
+            )
+
+            XCTAssertFalse(called, name.debugDescription)
+            XCTAssertNil(UserDefaults.migratable(suiteName: name), name.debugDescription)
+        }
+
+        // Foundation keeps other control characters in the domain name, so names containing them are accepted.
+        for name in ["\(suiteName)\u{1}first", "\(suiteName)\tfirst", "\(suiteName)\u{7F}first"] {
+            defer {
+                UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+            }
+
+            XCTAssertNotNil(UserDefaults.migratable(suiteName: name), name.debugDescription)
+        }
+    }
+
     func testMigratableFactoryReportsFoundationInitializationFailure() {
         var called = false
 

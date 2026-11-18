@@ -1,9 +1,6 @@
 import Foundation
 
 /// Determines how a copy operation handles a key that already has a persisted value in the destination store.
-///
-/// The policy does not apply to an item that rewrites a key in place within one store, because the existing value is
-/// the value being rewritten; see ``PersistentKeyMigrationItem/key(_:to:transform:)``.
 public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
     /// Preserves the existing destination value and leaves the source value unchanged, reporting
     /// ``PersistentKeyMigrationReport/Status/keptDestination``.
@@ -15,9 +12,6 @@ public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
 }
 
 /// Determines how a move operation handles a key that already has a persisted value in the destination store.
-///
-/// The policy does not apply to an item that rewrites a key in place within one store, because the existing value is
-/// the value being rewritten; see ``PersistentKeyMigrationItem/key(_:to:transform:)``. Such an item keeps its key.
 public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
     /// Preserves both the existing destination value and the source value, reporting
     /// ``PersistentKeyMigrationReport/Status/keptDestination``.

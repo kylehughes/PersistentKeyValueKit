@@ -38,8 +38,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     private var observation: StoreObservation<Key>?
 
     /// The number of registrations started, which tells a registration whether it is still current when it returns
-    /// and when its store reports a change.
-    private var registrationCount: Int
+    /// and when its store reports a change, and tells a ``PersistentValue`` binding whether the key and store it
+    /// writes are still the ones observed.
+    internal private(set) var registrationCount: Int
     
     // MARK: Public Initialization
     
