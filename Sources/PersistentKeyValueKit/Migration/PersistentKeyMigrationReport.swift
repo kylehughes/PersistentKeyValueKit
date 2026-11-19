@@ -93,7 +93,8 @@ public struct PersistentKeyMigrationReport: Sendable {
     ///
     /// For an item that maps one key to another, pass the source key. Identifiers match by their UTF-16 code units, as
     /// Foundation stores compare keys, so composed and decomposed spellings of the same text match different outcomes.
-    /// Because a batch cannot contain duplicate source key identifiers, at most one outcome matches.
+    /// A report returned by `copy` or `move` has at most one matching outcome, because a batch cannot contain duplicate
+    /// source key identifiers. For a manually constructed report, the lookup returns the first literal match.
     ///
     /// - Parameter key: The source key of the item.
     /// - Returns: The matching outcome, or `nil` if the batch did not contain `key` or the migration was skipped
@@ -160,10 +161,12 @@ extension PersistentKeyMigrationReport {
         /// Reading the initial persisted snapshot from the source or destination store failed.
         case snapshot
 
-        /// Decoding the source snapshot with the source key's representation failed.
+        /// Reading a typed value from the source snapshot failed. Foundation sources use the key's representation.
+        /// In-memory sources check the stored Swift type.
         case decode
 
-        /// The item's transform threw. The migration wrote to neither store.
+        /// The item's transform threw. The migration wrote to neither store for this item, and earlier items retain
+        /// their results.
         case transform
 
         /// Encoding or validating the value with the destination key's representation failed before mutating the
@@ -273,7 +276,8 @@ extension PersistentKeyMigrationReport {
 extension PersistentKeyMigrationReport {
     /// The resolution or failure status for a single migrated item.
     public enum Status: Sendable, Hashable {
-        /// The value was written to the destination key and left in the source key.
+        /// The destination operation succeeded and the source value was left in place. For an optional value encoded as
+        /// `nil`, the operation removes the destination entry instead of writing one.
         case copied
 
         /// The existing destination value was kept and the source value was removed under
@@ -294,7 +298,8 @@ extension PersistentKeyMigrationReport {
         case failed(FailureStage)
 
         /// The existing destination value was preserved under ``PersistentKeyCopyConflictPolicy/keepDestination`` or
-        /// ``PersistentKeyMoveConflictPolicy/keepBoth``, and the source value was left in place.
+        /// ``PersistentKeyMoveConflictPolicy/keepBoth``, and the source value was left in place. The destination is
+        /// verified without decoding either value.
         case keptDestination
 
         /// The item did not participate because ``PersistentKeyProtocol/isMigrationEnabled`` was `false` for its

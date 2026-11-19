@@ -446,7 +446,8 @@ principles:
   Core Foundation treats boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)`
   as equal under `==` and `CFEqual`, even though a representation can
   distinguish stored numeric types and widths. Migration verification checks
-  those distinctions according to the destination store's rules. Snapshots in
+  those distinctions. Each snapshot is verified according to the rules of the
+  store that holds it. Snapshots in
   `UserDefaultsMigrationBackend` and `UbiquitousKeyValueMigrationBackend` capture
   `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
   number's `CFNumber` type, including integer width and `NSDecimalNumber`), so
@@ -579,11 +580,11 @@ principles:
   so snapshots verify them by revision only. Those immutable snapshots (along
   with ordinary write snapshots) are a defense rather than a guarantee of the
   handover contract.
-- **Verification releases and post-cleanup checks on `move`**: Migrations release
-  replaced destination snapshots, prepared writes, replaced completion marker
-  snapshots, and copied or removed source snapshots at their last use before
-  verifying the result, so deinitializers run before verification rather than
-  masking side effects. Under `.keepDestination` (copy) and `.keepBoth` (move),
+- **Verification releases and post-cleanup checks on `move`**: The backend
+  verifies the commit. The engine then releases replaced destination snapshots,
+  prepared writes, replaced completion marker snapshots, and copied or removed
+  source snapshots at their last use and rechecks the result, so deinitializers
+  can affect the final verification. Under `.keepDestination` (copy) and `.keepBoth` (move),
   the migration releases the source snapshot and rechecks the kept destination
   at `.write`, failing with `PersistentKeyMigrationError.destinationChanged` (and
   suppressing completion recording) if the destination changed or vanished. Any
@@ -605,12 +606,10 @@ principles:
   and then rechecks that the source key is still absent (failing at `.cleanup` with
   `PersistentKeyMigrationError.removalVerificationFailed` if the source still
   holds a value, such as when restored by a deinitializer or by the destination
-  comparison). Under `.keepDestinationAndRemoveSource`, verifying that the
-  preserved destination value has not changed before removing the source runs at
-  stage `.write` (reporting `.failed(.write)` with `.destinationChanged` without
-  removing the source), because a typed read of the source key cannot
-  distinguish a remaining stored value equal to `defaultValue` from a removed
-  entry. Consequently, `.failed(.cleanup)` with `.destinationChanged` always
+  comparison). Under `.keepDestinationAndRemoveSource`, the retained destination
+  is verified at `.write`, before source cleanup begins. A mismatch at that point
+  reports `.failed(.write)` with `.destinationChanged` and leaves the source in
+  place. Consequently, `.failed(.cleanup)` with `.destinationChanged` always
   means the move removed the source and the destination then no longer matched
   its expected snapshot, `.failed(.cleanup)` with `.removalVerificationFailed`
   means the source key still held a value after the removal attempt (without
@@ -712,11 +711,13 @@ principles:
   encoding, which fails the item at `.prepare` before either store changes while
   the other items in the batch proceed independently. A custom `Int?` representation
   that encodes `nil` as an object writes that object, so a `nil` value does not
-  always remove the entry. The rule covers the top-level encoding only: a `nil`
-  element inside a collection is omitted by the collection write, so a move can
-  succeed with fewer elements. Ordinary
-  `set` is unchanged: `nil` from `encode` still removes the key, as the optional
-  representation relies on. An in-memory destination does not call the
+  always remove the entry. The rule covers the top-level encoding only.
+  Collections apply their own encoding rules: an array write can omit an element
+  and still succeed, so a move can succeed with fewer elements, while an external
+  hook that produces no output for a nonempty array or required dictionary entry
+  fails encoding. Ordinary `set` is unchanged: the default Foundation setters
+  remove the entry when `encode` returns `nil`, as the optional representation
+  relies on, and a custom setter can do otherwise. An in-memory destination does not call the
   representation, so it is unaffected. `MigrationNilEncodingTests` covers the
   `UserDefaults`, iCloud, wrapped-value, nested-`nil`, and in-memory cases.
 - **Dictionary-read leniency versus strict migration (and all-or-nothing writes)**:

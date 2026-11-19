@@ -47,7 +47,8 @@ import Foundation
 /// inherit it. A custom primitive's default `UserDefaults` read does not coerce launch arguments.
 ///
 /// In a target whose default isolation is `MainActor`, a conforming type's conversion members must be usable from
-/// nonisolated code, so declare the conformance's extension and type `nonisolated`.
+/// nonisolated code. Declaring the type and its conformance extension `nonisolated` does this; declaring each
+/// conversion member, and the members it calls, `nonisolated` also works.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Decodes a value from a stored object for the given storage format.
     ///
@@ -58,13 +59,14 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
 
     /// Encodes the value into a stored object for the given storage format.
     ///
-    /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
-    /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
-    /// the write; see ``set(_:to:in:)-1ccdn`` and ``set(_:to:)``. Do not mutate the returned object, or any object it
-    /// contains, after returning it.
+    /// The default Foundation setters remove the entry when this method returns `nil`; a custom setter can do
+    /// otherwise. Collections apply their own rules. The default container methods omit such a value from a
+    /// property-list collection, so an array can omit an element and still succeed, but an omission that leaves a
+    /// dictionary entry absent or a nonempty array empty fails the write; see ``set(_:to:in:)-1ccdn`` and
+    /// ``set(_:to:)``. Do not mutate the returned object, or any object it contains, after returning it.
     ///
     /// - Parameter format: The target storage format.
-    /// - Returns: The encoded storage object, or `nil` to remove the key.
+    /// - Returns: The encoded storage object, or `nil` for no stored object.
     func encode(format: PersistentKeyValueStorageFormat) throws -> Any?
 
     // MARK: Interfacing with Property List Array

@@ -357,24 +357,27 @@ extension PersistentKeyValueStore {
     /// ``PersistentKeyProtocol/representation``, converted by the item's transform if it has one, encoded with the
     /// destination key's representation, and written to the destination key in `destination`. The source value is left
     /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
-    /// added suites, and key default values are neither copied nor treated as destination conflicts.
+    /// added suites, and key default values are neither copied nor treated as destination conflicts. When an existing
+    /// destination value makes ``PersistentKeyCopyConflictPolicy/keepDestination`` keep it, neither value is decoded.
     ///
     /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
     /// destination entry is removed only when the destination key's top-level encoding is `nil` and the value written
-    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes
-    /// such a value as `nil`. A value that is not `nil` at an `Optional` layer but whose top-level encoding is `nil`
-    /// fails the item at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
-    /// ``PersistentKeyValueConversionError/encodingFailed`` and writes neither entry, while the other items in the
-    /// batch proceed independently. A custom optional representation that encodes `nil` as an object, such as a marker
-    /// string, writes that object, so a `nil` value does not always remove the entry.
+    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes its
+    /// own `.none` as `nil` and delegates `.some` to its base representation. A value that is not `nil` at an
+    /// `Optional` layer but whose top-level encoding is `nil` fails the item at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
+    /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
+    /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
+    /// does not always remove the entry.
     ///
-    /// `destination` can be this store when every item maps its source key to a different key identifier.
+    /// `destination` can be this store when the items' source identifiers are unique, their destination identifiers are
+    /// unique, and the two sets are disjoint.
     ///
-    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
-    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
-    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
-    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
-    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    /// Setup failures are thrown before any item runs: missing domain metadata, an item that maps a key to itself
+    /// within one store, duplicate source or destination key identifiers, a destination that is another item's source
+    /// within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an empty
+    /// migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by a
+    /// store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue,
     /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``.
@@ -493,21 +496,22 @@ extension PersistentKeyValueStore {
     ///
     /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
     /// destination entry is removed only when the destination key's top-level encoding is `nil` and the value written
-    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes
-    /// such a value as `nil`. A value that is not `nil` at an `Optional` layer but whose top-level encoding is `nil`
-    /// fails the item at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
-    /// ``PersistentKeyValueConversionError/encodingFailed`` and writes neither entry, while the other items in the
-    /// batch proceed independently. A custom optional representation that encodes `nil` as an object, such as a marker
-    /// string, writes that object, so a `nil` value does not always remove the entry. A failed move item removes neither value.
+    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes its
+    /// own `.none` as `nil` and delegates `.some` to its base representation. A value that is not `nil` at an
+    /// `Optional` layer but whose top-level encoding is `nil` fails the item at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
+    /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
+    /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
+    /// does not always remove the entry. A move item can fail at a stage after its destination write or source removal.
     ///
-    /// `destination` can be this store when every item maps its source key to a different key identifier, which
-    /// renames keys within the store.
+    /// `destination` can be this store when the items' source identifiers are unique, their destination identifiers are
+    /// unique, and the two sets are disjoint. A same-store move renames keys within the store.
     ///
-    /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
-    /// to itself within one store, duplicate source or destination key identifiers, a destination that is another
-    /// item's source within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an
-    /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
-    /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    /// Setup failures are thrown before any item runs: missing domain metadata, an item that maps a key to itself
+    /// within one store, duplicate source or destination key identifiers, a destination that is another item's source
+    /// within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an empty
+    /// migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by a
+    /// store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue,
     /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``.

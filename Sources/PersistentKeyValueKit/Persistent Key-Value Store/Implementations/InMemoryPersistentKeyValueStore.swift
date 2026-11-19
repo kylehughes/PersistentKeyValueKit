@@ -42,7 +42,9 @@ import Foundation
 /// integer's width, before it overwrites a destination value, removes a move's source, or verifies a write, so an
 /// in-place edit fails the migration at that step instead of the value being replaced or removed. A `copy` does not
 /// recheck its source after reading it. The migration detects other references only when they are replaced, so do not
-/// mutate them while a migration runs.
+/// mutate them while a migration runs. A destination verification failure can leave the new value stored. When a move
+/// removes its source, the store checks the entry's revision under the lock that removes it, so an intervening
+/// replacement fails the item with ``PersistentKeyMigrationError/sourceChanged`` and is preserved.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
 ///   thread-safety requirement. The lock is not held while key identifiers are evaluated, an identifier bridged from an
@@ -78,8 +80,8 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// Returns the stored value for the given key, or `nil` if the store has no entry for the key.
     ///
     /// An entry recorded by setting an optional value to `nil` is returned as a non-`nil` `Any` that wraps `nil`;
-    /// cast the result to the optional type to read it. Swift arrays and dictionaries of optionals are returned without
-    /// their `nil` elements.
+    /// cast the result to the optional type to read it. A stored array or dictionary of optionals keeps its `nil`
+    /// elements when compacting it would change the stored value's type; see ``set(_:forKey:)``.
     ///
     /// Use this method to implement a custom key's in-memory `get(from:)` requirement of ``PersistentKeyProtocol``,
     /// passing the key's ``PersistentKeyProtocol/id``, because observation and migration find the key's entry by its
@@ -118,11 +120,12 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
 
     /// Stores the given value for the given key and notifies observers of the key.
     ///
-    /// The store keeps the Swift value itself, without converting it to a property-list type. It removes `nil`
-    /// elements from a top-level Swift array or `String`-keyed dictionary of optionals when the result is still a
-    /// `Value`, so a read of the same type returns the stored value; other values, including Foundation collections
-    /// such as `NSMutableArray`, are stored unchanged. Passing an optional that is `nil` records an explicit entry that
-    /// ``object(forKey:)`` returns; call ``removeObject(forKey:)`` to delete the entry.
+    /// The store keeps the Swift value itself, without converting it to a property-list type. It removes `nil` elements
+    /// from a top-level Swift array or `String`-keyed dictionary of optionals, including one boxed as `Any` or
+    /// `AnyHashable`, when the result is still a `Value`, so a read of the same type returns the stored value; other
+    /// values, including Foundation collections such as `NSMutableArray`, are stored unchanged. Passing an optional
+    /// that is `nil` records an explicit entry that ``object(forKey:)`` returns; call ``removeObject(forKey:)`` to
+    /// delete the entry.
     ///
     /// Use this method to implement a custom key's in-memory `set(to:in:)` requirement of ``PersistentKeyProtocol``,
     /// passing the key's ``PersistentKeyProtocol/id``, because observation and migration find the key's entry by its

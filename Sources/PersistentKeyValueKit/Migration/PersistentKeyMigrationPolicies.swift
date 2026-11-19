@@ -10,7 +10,8 @@ import Foundation
 /// preferences, wait for the current account's initial data before seeding.
 public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
     /// Preserves the existing destination value after verifying that the destination snapshot has not changed, and
-    /// leaves the source value unchanged, reporting ``PersistentKeyMigrationReport/Status/keptDestination``.
+    /// leaves the source value unchanged, reporting ``PersistentKeyMigrationReport/Status/keptDestination``. Neither
+    /// value is decoded, so an undecodable source does not fail the item.
     case keepDestination
 
     /// Replaces the destination value with the source value after verifying that the destination snapshot has not

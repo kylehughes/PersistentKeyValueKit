@@ -33,7 +33,8 @@ import Foundation
 ///   deliver nothing themselves. When the subscribing thread requests demand or reports a store change during that
 ///   call, it delivers values until none is deliverable, including values that other threads made deliverable, before
 ///   `receive(subscription:)` returns. When `receive(subscription:)` returns, the subscribing thread delivers any
-///   deliverable values still queued. Use `receive(on: DispatchQueue.main)` before updating UI.
+///   deliverable values still queued. Blocking in `receive(subscription:)` while waiting for another thread to deliver
+///   a value will deadlock. Use `receive(on: DispatchQueue.main)` before updating UI.
 /// - Important: Each subscription registers with the store. It deregisters when the subscription is cancelled or
 ///   released.
 /// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit

@@ -12,8 +12,9 @@ extension PersistentKeyValueStore {
 
     /// Returns a Combine `Publisher` that produces subsequent values for the given key as changes occur.
     ///
-    /// The publisher does not emit the current value when demand is first requested. Use
-    /// ``publisher(for:emitsInitialValue:)`` when the subscriber also needs the current value.
+    /// The publisher skips the subscription-time value. If a change is reported before demand arrives, first demand can
+    /// deliver the latest value. Use ``publisher(for:emitsInitialValue:)`` when the subscriber also needs the current
+    /// value.
     ///
     /// e.g.
     ///
@@ -40,9 +41,8 @@ extension PersistentKeyValueStore {
     ///
     /// By default, each subscription reads the current value when the publisher receives its subscriber and delivers
     /// it when demand is first requested, followed by subsequent changes. If downstream demand is exhausted, later
-    /// changes are coalesced and the latest current value is emitted when more demand is requested. Values are
-    /// delivered synchronously on the thread that requests demand or reports each change, so schedule UI work on the
-    /// main queue.
+    /// changes are coalesced and the latest current value is emitted when more demand is requested. Delivery is serial
+    /// per subscription and can occur on a background thread, so schedule UI work on the main queue.
     ///
     /// e.g.
     ///

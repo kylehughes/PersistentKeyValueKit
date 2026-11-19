@@ -48,11 +48,13 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 
     /// Encodes a value into a stored object for the given storage format.
     ///
-    /// Returning `nil` removes the key from a store. The default container methods omit such a value from a
-    /// property-list collection, but an omission that leaves a dictionary entry absent or a nonempty array empty fails
-    /// the write; see ``set(_:to:in:)-91w4n`` and ``set(_:to:)``. Callers such as migration write validation may
-    /// invoke conversion more than once for the same value; do not rely on a specific invocation count. Do not mutate
-    /// the returned object, or any object it contains, after returning it.
+    /// The default Foundation setters remove the entry when this method returns `nil`; a custom setter can do
+    /// otherwise. Collections apply their own rules. The default container methods omit such a value from a
+    /// property-list collection, so an array can omit an element and still succeed, but an omission that leaves a
+    /// dictionary entry absent or a nonempty array empty fails the write; see ``set(_:to:in:)-91w4n`` and
+    /// ``set(_:to:)``. Callers such as migration write validation may invoke conversion more than once for the same
+    /// value; do not rely on a specific invocation count. Do not mutate the returned object, or any object it contains,
+    /// after returning it.
     ///
     /// Migration to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes the destination entry only
     /// when this method returns `nil` for the key's top-level value and that value is `nil` at an actual `Optional`
@@ -65,7 +67,7 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     ///
     /// - Parameter value: The value to encode.
     /// - Parameter format: The target storage format.
-    /// - Returns: The encoded storage object, or `nil` to remove the key.
+    /// - Returns: The encoded storage object, or `nil` for no stored object.
     func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any?
     
     // MARK: Interfacing with Property List Array

@@ -72,8 +72,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     ///
     /// Setting the same store instance, or `nil` when there is no store, does nothing: the existing observation
     /// continues and nothing is sent. A value-type store has no identity, so setting one always observes it again and
-    /// sends `objectWillChange`. The new observation starts before the previous one ends, so a change made while the
-    /// store is replaced is still observed.
+    /// sends `objectWillChange`. The new observation registers before the previous one deregisters, but the previous
+    /// observation stops notifying when the replacement begins, so a change made during the replacement is not reported
+    /// on its own. The `objectWillChange` that follows prompts subscribers to read the current value.
     ///
     /// If code that runs during the replacement sets the store again, the latest store is observed and the earlier
     /// observations end. That code includes subscribers to `objectWillChange`, the stores' observer registration and

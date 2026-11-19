@@ -78,9 +78,11 @@ public struct PersistentKeyMigrationItem: Sendable {
     /// Migrates `source` to `destination`, converting each value with `transform`.
     ///
     /// `transform` runs synchronously during the migration, in input order, after the source value is decoded and
-    /// before anything is written. A later failure at ``PersistentKeyMigrationReport/FailureStage/prepare`` or
-    /// ``PersistentKeyMigrationReport/FailureStage/write`` can still prevent the write. If it throws, the item fails at ``PersistentKeyMigrationReport/FailureStage/transform`` with the
-    /// thrown error, and the migration writes to neither store for this item, so a move keeps the source. An
+    /// before this item's destination write. A later failure at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` or ``PersistentKeyMigrationReport/FailureStage/write`` can
+    /// still prevent the write. If it throws, the item fails at ``PersistentKeyMigrationReport/FailureStage/transform``
+    /// with the thrown error, and the migration writes to neither store for this item, so a move keeps the source.
+    /// Earlier items in the batch retain their results. An
     /// ``InMemoryPersistentKeyValueStore`` source passes `transform` the stored value itself rather than a decoded
     /// copy, so mutating a reference that `transform` receives, such as an `NSMutableArray`, changes the stored source
     /// even if `transform` then throws. Copy a mutable input before changing it. `transform` does not run when the

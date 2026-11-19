@@ -217,7 +217,7 @@ When you list keys in `ForEach`, use `ForEach(keys, id: \.id.utf8CString)` so id
 
 ### Observation
 
-`PersistentKeyValues` is an `AsyncSequence` that emits a key's current value when iteration starts, followed by each change. Entry points are on both the store and the key. Each loop runs until its task is cancelled, so run it in a task you can cancel. This one updates a UIKit label, so run it on the main actor:
+`PersistentKeyValues` is an `AsyncSequence` that emits a key's current value when iteration starts, followed by values read in response to change notifications. Entry points are on both the store and the key. Each loop runs until its task is cancelled, so run it in a task you can cancel. This one updates a UIKit label, so run it on the main actor:
 
 ```swift
 for await username in UserDefaults.standard.values(for: .username) {
@@ -235,7 +235,7 @@ for await username in UserDefaults.standard.changes(for: .username) {
 
 Pending changes default to `.bufferingNewest(1)`, so a slow consumer sees the latest value. Pass `bufferingPolicy: .unbounded` to keep every emitted value. Each emission reads the latest value from the store, so changes made close together can arrive as one value and consecutive values can be equal.
 
-`PersistentKeyValuePublisher` is the Combine equivalent. `publisher(for:)` and `publisher(in:)` deliver the current value first, and `changesPublisher(for:)` and `changesPublisher(in:)` skip it. Retain each returned `AnyCancellable` for as long as the observation should run. Delivery is synchronous on whichever thread reports the change, which can be a background thread, so use `.receive(on: DispatchQueue.main)` before updating UI. This example runs in a `@MainActor` view controller that has `usernameLabel` and `cancellables` (a `Set<AnyCancellable>`) as stored properties:
+`PersistentKeyValuePublisher` is the Combine equivalent. `publisher(for:)` and `publisher(in:)` deliver the current value first, and `changesPublisher(for:)` and `changesPublisher(in:)` skip it. Retain each returned `AnyCancellable` for as long as the observation should run. Delivery is serial per subscription and can occur on a background thread, so use `.receive(on: DispatchQueue.main)` before updating UI. This example runs in a `@MainActor` view controller that has `usernameLabel` and `cancellables` (a `Set<AnyCancellable>`) as stored properties:
 
 ```swift
 UserDefaults.standard.publisher(for: .username)
@@ -352,7 +352,7 @@ func makeAppGroupDefaults() throws -> UserDefaults? {
 
 Call this helper only from the target that owns the legacy defaults. A target with nothing to move still records the shared marker, so the owning target's later call returns `.alreadyRecorded` and skips its migration. Other targets can open the suite directly, and one that also migrates values needs its own marker `id`.
 
-Pass `PersistentKeyMigrationItem` values when keys change name or value type. A same-store migration works when every item maps to a different key, so changing how a key is stored means moving it to a new key:
+Pass `PersistentKeyMigrationItem` values when keys change name or value type. Within one store, source identifiers must be unique, destination identifiers must be unique, and the two sets must be disjoint, so changing how a key is stored means moving it to a new key:
 
 ```swift
 let report = try UserDefaults.standard.move(
@@ -445,7 +445,7 @@ Only homogeneous collections are persistible:
 
 For structured heterogeneous data, use `CodablePersistentKeyValueRepresentation` or implement `PrimitiveKeyValuePersistible`.
 
-Collection writes are all or nothing. An array read fails as a whole if one element cannot decode, and the key then returns its default. A dictionary read omits entries it cannot decode, and saving the decoded dictionary back deletes those entries from the writable store, so an older client can erase an entry that a newer client wrote. The `Array` and `Dictionary` documentation has the details.
+Collection writes are all or nothing. With built-in element readers, an array read falls back to the key's default if an element cannot decode. A dictionary read omits entries it cannot decode, and saving the decoded dictionary back deletes those entries from the writable store, so an older client can erase an entry that a newer client wrote. The `Array` and `Dictionary` documentation has the details.
 
 ## Contributions
 

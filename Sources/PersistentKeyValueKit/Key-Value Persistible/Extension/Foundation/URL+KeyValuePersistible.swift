@@ -93,7 +93,7 @@ extension URL: PrimitiveKeyValuePersistible {
     /// directory's trailing slash, throws ``PersistentKeyValueConversionError/encodingFailed`` for
     /// ``PersistentKeyValueStorageFormat/userDefaults``. This applies wherever the URL is encoded for `UserDefaults`,
     /// including through `Optional` and proxy representations, so migration to `UserDefaults` fails at
-    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` before any store is modified, and
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` before that item modifies either store, and
     /// `UserDefaults.register(_:)` skips such a default value. Ordinary `UserDefaults` writes use Foundation's URL
     /// setter and keep its behavior, which stores the path of a file URL. That setter can remove the existing entry
     /// for a file URL with no path, such as `file:`, and stores an unreadable empty path for `file://localhost`, so

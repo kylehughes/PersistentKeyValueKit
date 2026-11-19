@@ -65,8 +65,9 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
 
     /// Whether this key participates in migration operations.
     ///
-    /// When `false`, migration skips the key without accessing the source or destination store and reports
-    /// ``PersistentKeyMigrationReport/Status/keyDisabled``. The default implementation returns `true`.
+    /// When `false`, an item that uses the key reports ``PersistentKeyMigrationReport/Status/keyDisabled`` and skips
+    /// its value reads and writes. Setup validation and completion-marker checks still run. The default implementation
+    /// returns `true`.
     var isMigrationEnabled: Bool { get }
     
     /// The representation of the key-value pair in the ``PersistentKeyValueStore``.
@@ -152,11 +153,11 @@ extension PersistentKeyProtocol {
 
     /// Registers the default value for the key in the given registration dictionary for `UserDefaults`.
     ///
-    /// This is intended for use by `UserDefaults.register(_:)` to register the default values for the keys. The
-    /// default value is encoded with ``PersistentKeyValueStorageFormat/userDefaults``, the same form that a write to
-    /// `UserDefaults` stores, so reading an unset key returns the registered default through the ordinary read path.
-    /// Leaves `propertyListDictionary` unchanged when encoding the default value fails, and removes the entry when it
-    /// encodes to `nil`.
+    /// This is intended for use by `UserDefaults.register(_:)` to register the default values for the keys. Fills the
+    /// registration dictionary using checked ``PersistentKeyValueStorageFormat/userDefaults`` encoding. A custom
+    /// ordinary setter can use a different format. When the registered object is visible, the ordinary getter
+    /// determines the typed value. Leaves `propertyListDictionary` unchanged when encoding the default value fails, and
+    /// removes the entry when it encodes to `nil`.
     ///
     /// A Swift dictionary treats identifiers that are canonically equivalent but spelled differently, such as composed
     /// and decomposed "café", as one key. `UserDefaults.register(_:)` keeps such identifiers separate, as
