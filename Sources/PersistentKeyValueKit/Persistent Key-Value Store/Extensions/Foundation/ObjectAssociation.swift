@@ -28,10 +28,10 @@ internal final class ObjectAssociation<Value>: Sendable where Value: AnyObject {
     /// Returns the value associated with `object`, associating the one `makeValue` creates the first time it is
     /// requested.
     ///
-    /// Creation is serialized across every association, so concurrent first requests for the same object return the
-    /// same value.
+    /// Creation is serialized per association, so concurrent first requests for the same object return the same value.
+    /// Each association has its own lock, so creating one association's value never waits on another's.
     internal func value(for object: AnyObject, creatingWith makeValue: () -> Value) -> Value {
-        objectAssociationCreationLock.withLockHeld {
+        creationLock.withLockHeld {
             if let existingValue = value(for: object) {
                 return existingValue
             }
@@ -50,10 +50,9 @@ internal final class ObjectAssociation<Value>: Sendable where Value: AnyObject {
 
     // MARK: Private Instance Interface
 
+    private let creationLock = NSLock()
+
     private var address: UnsafeRawPointer {
         UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
     }
 }
-
-/// Serializes the creation of associated values. A generic class cannot have a static stored property.
-private let objectAssociationCreationLock = NSLock()
