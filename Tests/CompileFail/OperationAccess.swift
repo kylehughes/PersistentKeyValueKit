@@ -1,4 +1,4 @@
 import PersistentKeyValueKit
 
 let store = InMemoryPersistentKeyValueStore()
-_ = try! store.migrationEndpoint.commitWrite()
+_ = store.commitMigrationWrite

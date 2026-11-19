@@ -6,6 +6,7 @@
 //
 
 import Foundation
+@testable import PersistentKeyValueKit
 
 /// An observer for ``PersistentKeyValueStore/register(observer:for:with:and:)`` that records every callback it
 /// receives, from either key-value observation or notification selectors.
@@ -23,14 +24,14 @@ final class RecordingKeyObserver: NSObject, @unchecked Sendable {
 
     /// The notifications delivered through ``didReceive(_:)``.
     var notifications: [Notification] {
-        withLock {
+        lock.withLockHeld {
             recordedNotifications
         }
     }
 
     /// The callbacks delivered through `observeValue(forKeyPath:of:change:context:)`.
     var observations: [Observation] {
-        withLock {
+        lock.withLockHeld {
             recordedObservations
         }
     }
@@ -39,13 +40,13 @@ final class RecordingKeyObserver: NSObject, @unchecked Sendable {
 
     @objc
     func didReceive(_ notification: Notification) {
-        withLock {
+        lock.withLockHeld {
             recordedNotifications.append(notification)
         }
     }
 
     func reset() {
-        withLock {
+        lock.withLockHeld {
             recordedNotifications.removeAll()
             recordedObservations.removeAll()
         }
@@ -59,21 +60,10 @@ final class RecordingKeyObserver: NSObject, @unchecked Sendable {
         change: [NSKeyValueChangeKey: Any]?,
         context: UnsafeMutableRawPointer?
     ) {
-        withLock {
+        lock.withLockHeld {
             recordedObservations.append(
                 Observation(context: context, keyPath: keyPath, object: object as AnyObject?)
             )
         }
-    }
-
-    // MARK: Private Instance Interface
-
-    private func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
     }
 }

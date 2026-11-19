@@ -1,3 +1,10 @@
+//
+//  MigrationObservationTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Combine
 import Foundation
 import XCTest
@@ -8,7 +15,7 @@ final class MigrationObservationTests: XCTestCase {
     // MARK: Tests
 
     @available(watchOS 9.0, *)
-    func testCloudCopyPublishesOneRelatedNotification() throws {
+    func test_cloudCopy_publishesOneRelatedNotification() throws {
         let source = InMemoryPersistentKeyValueStore()
         let raw = StrictMigrationUbiquitousStore()
         let destination = UbiquitousKeyValueMigrationBackend(
@@ -36,7 +43,7 @@ final class MigrationObservationTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testCloudDestinationObserverCausesWriteFailure() throws {
+    func test_cloudDestinationObserver_causesWriteFailure() throws {
         let source = InMemoryPersistentKeyValueStore()
         let raw = StrictMigrationUbiquitousStore()
         let destination = UbiquitousKeyValueMigrationBackend(
@@ -66,7 +73,7 @@ final class MigrationObservationTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testCloudSourceObserverRefillCausesRemovalFailure() throws {
+    func test_cloudSourceObserverRefill_causesRemovalFailure() throws {
         let raw = StrictMigrationUbiquitousStore()
         let source = UbiquitousKeyValueMigrationBackend(
             store: raw,
@@ -95,7 +102,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(raw.storedValue(for: key.id) as? Int64, 2)
     }
 
-    func testDestinationMemoryObservationCanChangeSourceBeforeCleanup() throws {
+    func test_destinationMemoryObservation_canChangeSourceBeforeCleanup() throws {
         let suiteName = stableSuiteName("MigrationObservation")
         let source = UserDefaults(suiteName: suiteName)!
 
@@ -131,7 +138,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(destination.get(key), 1)
     }
 
-    func testMemoryCommittedReferenceMutatedByObserverFailsVerification() throws {
+    func test_memoryCommittedReferenceMutatedByObserver_failsVerification() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = MutableArrayKey(id: "key:\(#function)")
@@ -150,7 +157,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(source.get(key), NSMutableArray(array: [1, 2, 3]))
     }
 
-    func testMemoryPreparedCollectionChangedAfterPublishingFailsVerification() throws {
+    func test_memoryPreparedCollectionChangedAfterPublishing_failsVerification() throws {
         let suiteName = stableSuiteName("MigrationObservation")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let destination = InMemoryPersistentKeyValueStore()
@@ -191,7 +198,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testMemoryCopyKeptDestinationRemovedByReleasedSourceDeinitFailsWrite() throws {
+    func test_memoryCopy_keptDestinationRemovedByReleasedSourceDeinit_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let sourceKey = DeinitHookEntry.key("source:\(#function)")
@@ -231,7 +238,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testMemoryCopyKeptDestinationRemovedWhileCapturingSnapshotFailsWrite() throws {
+    func test_memoryCopy_keptDestinationRemovedWhileCapturingSnapshot_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PublishedRowsKey(id: "key:\(#function)")
@@ -260,7 +267,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(destination.object(forKey: key.id) as? NSArray, NSArray(array: [[7]]))
     }
 
-    func testMemoryCopyPublishesExactlyOneDestinationChange() throws {
+    func test_memoryCopy_publishesExactlyOneDestinationChange() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>(#function, defaultValue: 0)
@@ -277,7 +284,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(values, [9])
     }
 
-    func testMemoryCopyReplacedDestinationDeinitRemovingCopyFailsWrite() throws {
+    func test_memoryCopy_replacedDestinationDeinitRemovingCopy_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = DeinitHookEntry.key("key:\(#function)")
@@ -310,7 +317,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(marker))
     }
 
-    func testMemoryCopySourceDeinitRemovingDestinationFailsWrite() throws {
+    func test_memoryCopy_sourceDeinitRemovingDestination_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suiteName = stableSuiteName("MigrationObservation")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
@@ -370,7 +377,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertNil(destination.object(forKey: destinationKey.id))
     }
 
-    func testMemoryDestinationRemovedWhileVerifyingKeptValueKeepsSource() throws {
+    func test_memoryDestinationRemovedWhileVerifyingKeptValue_keepsSource() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PublishedRowsKey(id: "key:\(#function)")
@@ -412,7 +419,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testMemoryDestinationRemovedWhileVerifyingMoveFailsCleanup() throws {
+    func test_memoryDestinationRemovedWhileVerifyingMove_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
@@ -450,7 +457,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testMemoryDestinationVerificationRestoringSourceFailsMoveCleanup() throws {
+    func test_memoryDestinationVerificationRestoringSource_failsMoveCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
@@ -486,7 +493,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testMemoryKeptDestinationRemovedByDiscardedSourceDeinitFailsCleanup() throws {
+    func test_memoryKeptDestinationRemovedByDiscardedSourceDeinit_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = DeinitHookEntry.key("key:\(#function)")
@@ -517,7 +524,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(marker))
     }
 
-    func testMemoryKeptDestinationVerificationRestoringSourceFailsCleanup() throws {
+    func test_memoryKeptDestinationVerificationRestoringSource_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
@@ -556,7 +563,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testMemoryMoveKeptBothDestinationRemovedByReleasedSourceDeinitFailsWrite() throws {
+    func test_memoryMoveKeptBoth_destinationRemovedByReleasedSourceDeinit_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let sourceKey = DeinitHookEntry.key("source:\(#function)")
@@ -596,7 +603,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testMemoryMoveKeptBothDestinationRemovedWhileCapturingSnapshotFailsWrite() throws {
+    func test_memoryMoveKeptBoth_destinationRemovedWhileCapturingSnapshot_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PublishedRowsKey(id: "key:\(#function)")
@@ -626,7 +633,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(destination.object(forKey: key.id) as? NSArray, NSArray(array: [[7]]))
     }
 
-    func testMemoryMovePublishesSourceRemovalAndDestinationTransfer() throws {
+    func test_memoryMove_publishesSourceRemovalAndDestinationTransfer() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>(#function, defaultValue: 0)
@@ -658,7 +665,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertTrue(unrelatedValues.isEmpty)
     }
 
-    func testMemoryMoveRemovedSourceDeinitRemovingDestinationFailsCleanup() throws {
+    func test_memoryMove_removedSourceDeinitRemovingDestination_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = DeinitHookEntry.key("key:\(#function)")
@@ -690,7 +697,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(marker))
     }
 
-    func testMemoryMoveRemovedSourceDeinitRestoringSourceFailsCleanup() throws {
+    func test_memoryMove_removedSourceDeinitRestoringSource_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = DeinitHookEntry.key("key:\(#function)")
@@ -723,7 +730,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(marker))
     }
 
-    func testMemoryMoveReplacedDestinationDeinitRemovingMoveKeepsSource() throws {
+    func test_memoryMove_replacedDestinationDeinitRemovingMove_keepsSource() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = DeinitHookEntry.key("key:\(#function)")
@@ -756,7 +763,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(marker))
     }
 
-    func testMemoryReplacedFalseMarkerDeinitRemovingRecordFailsCompletion() throws {
+    func test_memoryReplacedFalseMarkerDeinitRemovingRecord_failsCompletion() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
@@ -801,7 +808,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertNil(source.object(forKey: key.id))
     }
 
-    func testMemorySourceReferenceMutatedByDestinationObserverFailsCleanup() throws {
+    func test_memorySourceReferenceMutatedByDestinationObserver_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suiteName = stableSuiteName("MigrationObservation")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
@@ -831,7 +838,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(destination.get(key), NSMutableArray(array: [1, 2]))
     }
 
-    func testUnrelatedMemoryObservationStaysQuiet() throws {
+    func test_unrelatedMemoryObservation_staysQuiet() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>(#function, defaultValue: 0)
@@ -849,7 +856,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertTrue(values.isEmpty)
     }
 
-    func testUserDefaultsCopyPreparedWriteReleaseRemovingDestinationFailsWrite() throws {
+    func test_userDefaultsCopy_preparedWriteReleaseRemovingDestination_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suiteName = stableSuiteName("MigrationObservation")
         // `UserDefaults` is thread-safe but not declared `Sendable`.
@@ -889,7 +896,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testUserDefaultsCopySharedSourceAndWriteReleaseRemovingDestinationFailsWrite() throws {
+    func test_userDefaultsCopy_sharedSourceAndWriteReleaseRemovingDestination_failsWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suiteName = stableSuiteName("MigrationObservation")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
@@ -938,7 +945,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testUserDefaultsDestinationObserverCausesWriteFailure() throws {
+    func test_userDefaultsDestinationObserver_causesWriteFailure() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suite = stableSuiteName("MigrationObservation")
         let defaults = UserDefaults(suiteName: suite)!
@@ -970,7 +977,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(source.get(key), 1)
     }
 
-    func testUserDefaultsMovePreparedWriteReleaseRemovingDestinationKeepsSource() throws {
+    func test_userDefaultsMove_preparedWriteReleaseRemovingDestination_keepsSource() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suiteName = stableSuiteName("MigrationObservation")
         // `UserDefaults` is thread-safe but not declared `Sendable`.
@@ -1010,7 +1017,7 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testUserDefaultsMovePublishesDestinationChange() throws {
+    func test_userDefaultsMove_publishesDestinationChange() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suite = "MigrationObservation.\(#function)"
         let defaults = UserDefaults(suiteName: suite)!

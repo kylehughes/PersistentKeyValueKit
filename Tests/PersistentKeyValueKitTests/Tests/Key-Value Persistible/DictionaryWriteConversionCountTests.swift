@@ -21,8 +21,7 @@ final class DictionaryWriteConversionCountTests: XCTestCase {
     // MARK: XCTestCase Implementation
 
     override func setUpWithError() throws {
-        suiteName = stableSuiteName("PersistentKeyValueKitTests.DictionaryWriteConversionCount", function: name)
-        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValueKitTests.DictionaryWriteConversionCount", function: name)
     }
 
     override func tearDown() {

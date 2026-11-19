@@ -1,3 +1,10 @@
+//
+//  MigrationNativeStoreTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -6,7 +13,7 @@ import XCTest
 final class MigrationNativeStoreTests: XCTestCase {
     // MARK: Tests
 
-    func testConcurrentFactoryAndEndpointAccess() throws {
+    func test_factoryAndEndpoint_concurrentAccess() throws {
         let queue = DispatchQueue(label: #function, attributes: .concurrent)
         let group = DispatchGroup()
         let errors = LockedErrors()
@@ -75,7 +82,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertTrue(errors.isEmpty, "Unexpected errors: \(errors.snapshot())")
     }
 
-    func testFactoryLeavesPreexistingPersistentDataUntouched() throws {
+    func test_factory_leavesPreexistingPersistentDataUntouched() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.existing")
         let raw = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
@@ -91,7 +98,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertEqual(configured.persistentDomain(forName: suiteName) as NSDictionary?, before as NSDictionary?)
     }
 
-    func testFactoryRejectsBundleIdentifierBeforeConstructorRuns() {
+    func test_factory_rejectsBundleIdentifierBeforeConstructorRuns() {
         guard let identifier = Bundle.main.bundleIdentifier else {
             return
         }
@@ -112,7 +119,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertFalse(called)
     }
 
-    func testMigratableFactoryPassesNameVerbatimAndReturnsInjectedInstance() throws {
+    func test_migratableFactory_passesNameVerbatimAndReturnsInjectedInstance() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.verbatim")
         let injected = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         let result = try XCTUnwrap(
@@ -131,7 +138,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         result.removePersistentDomain(forName: suiteName)
     }
 
-    func testMigratableFactoryRejectsReservedAndEmptyNames() {
+    func test_migratableFactory_rejectsReservedAndEmptyNames() {
         let names = [
             "",
             UserDefaults.argumentDomain,
@@ -163,7 +170,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         }
     }
 
-    func testMigratableFactoryRejectsPathAndPropertyListAliases() throws {
+    func test_migratableFactory_rejectsPathAndPropertyListAliases() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.alias")
         let preferences = try XCTUnwrap(
             FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
@@ -212,7 +219,7 @@ final class MigrationNativeStoreTests: XCTestCase {
     }
 
     /// Foundation ends a suite name at its first NUL, so names that differ only after one share a domain.
-    func testMigratableFactoryRejectsNamesContainingNUL() throws {
+    func test_migratableFactory_rejectsNamesContainingNUL() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.nul")
         let names = [
             "\(suiteName)\u{0}first",
@@ -251,7 +258,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         }
     }
 
-    func testMigratableFactoryReportsFoundationInitializationFailure() {
+    func test_migratableFactory_reportsFoundationInitializationFailure() {
         var called = false
 
         XCTAssertNil(
@@ -268,7 +275,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertTrue(called)
     }
 
-    func testMigratableFactoryReturnsNativeObjectAndAssociatesDomain() throws {
+    func test_migratableFactory_returnsNativeObjectAndAssociatesDomain() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.native")
 
         defer {
@@ -292,7 +299,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         )
     }
 
-    func testMigrationDomainValidationUsesProvidedApplicationIdentifier() {
+    func test_migrationDomainValidation_usesProvidedApplicationIdentifier() {
         XCTAssertFalse(UserDefaults.isValidMigrationDomain("test.bundle", applicationIdentifier: "test.bundle"))
         XCTAssertFalse(
             UserDefaults.isValidMigrationDomain(
@@ -309,7 +316,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertTrue(UserDefaults.isValidMigrationDomain("test.other", applicationIdentifier: "test.bundle"))
     }
 
-    func testMigrationDomainValidationIgnoresCase() {
+    func test_migrationDomainValidation_ignoresCase() {
         XCTAssertFalse(UserDefaults.isValidMigrationDomain("Test.Bundle", applicationIdentifier: "test.bundle"))
         XCTAssertFalse(UserDefaults.isValidMigrationDomain("test.bundle", applicationIdentifier: "Test.Bundle"))
         XCTAssertFalse(
@@ -326,7 +333,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         )
     }
 
-    func testSuitesThatDifferOnlyByCaseAreTheSameStore() throws {
+    func test_suitesThatDifferOnlyByCase_areTheSameStore() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.case")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName.lowercased()))
@@ -348,7 +355,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertEqual(source.persistentDomain(forName: suiteName)?[key.id] as? Int, 42)
     }
 
-    func testSuitesThatDifferOnlyByNormalizationAreTheSameStore() throws {
+    func test_suitesThatDifferOnlyByNormalization_areTheSameStore() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.caf\u{E9}")
         let decomposedName = suiteName.decomposedStringWithCanonicalMapping
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
@@ -379,7 +386,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         )
     }
 
-    func testMigrationMetadataLifetimeFollowsNativeObject() throws {
+    func test_migrationMetadataLifetime_followsNativeObject() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.lifetime")
 
         defer {
@@ -401,7 +408,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertNil(weakMetadata)
     }
 
-    func testRealStandardEndpointMatchesBundleAvailability() {
+    func test_realStandardEndpoint_matchesBundleAvailability() {
         if Bundle.main.bundleIdentifier == nil {
             XCTAssertThrowsError(try UserDefaults.standard.migrationEndpoint) {
                 XCTAssertEqual($0 as? PersistentKeyMigrationError, .missingApplicationIdentifier)
@@ -411,7 +418,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         }
     }
 
-    func testSeparateRawInstancesDoNotShareMigrationMetadata() throws {
+    func test_separateRawInstances_doNotShareMigrationMetadata() throws {
         let suiteName = stableSuiteName("MigrationNativeStoreTests.unconfigured")
 
         defer {
@@ -437,7 +444,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         XCTAssertEqual(configured.get(key), 7)
     }
 
-    func testStandardDomainResolution() throws {
+    func test_standardDomain_resolution() throws {
         let identifier = "MigrationNativeStoreTests.standard"
 
         XCTAssertEqual(
@@ -458,7 +465,7 @@ final class MigrationNativeStoreTests: XCTestCase {
         }
     }
 
-    func testUnknownUserDefaultsFailsBeforeMutation() throws {
+    func test_unknownUserDefaults_failsBeforeMutation() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suiteName = stableSuiteName("MigrationNativeStoreTests.unknown")
 

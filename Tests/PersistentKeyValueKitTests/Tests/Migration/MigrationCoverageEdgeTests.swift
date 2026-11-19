@@ -1,3 +1,10 @@
+//
+//  MigrationCoverageEdgeTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -7,7 +14,7 @@ final class MigrationCoverageEdgeTests: XCTestCase {
     // MARK: Tests
 
     @available(watchOS 9.0, *)
-    func testCloudDestinationRacePreservesNewValue() throws {
+    func test_cloudDestinationRace_preservesNewValue() throws {
         let raw = StrictMigrationUbiquitousStore()
         let destination = UbiquitousKeyValueMigrationBackend(
             store: raw,
@@ -25,7 +32,7 @@ final class MigrationCoverageEdgeTests: XCTestCase {
         XCTAssertEqual(raw.storedValue(for: key.id) as? Int64, 7)
     }
 
-    func testIntentionalNilMoveRemovesDestination() throws {
+    func test_intentionalNilMove_removesDestination() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suite = stableSuiteName("MigrationCoverageEdge")
         let defaults = UserDefaults(suiteName: suite)!
@@ -49,7 +56,7 @@ final class MigrationCoverageEdgeTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: key.id))
     }
 
-    func testPrimitiveArrayRejectsNonArrayStorage() {
+    func test_primitiveArray_rejectsNonArrayStorage() {
         let representation = PrimitivePersistentKeyValueRepresentation<[Int]>()
 
         XCTAssertThrowsError(

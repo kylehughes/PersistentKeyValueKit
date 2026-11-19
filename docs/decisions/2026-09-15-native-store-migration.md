@@ -225,7 +225,7 @@ principles:
   not resolve static key accessors constrained with `where Self == PersistentKey<T>`.
   Labeling the item overload `items:` lets `copy([], ...)` resolve unambiguously
   to `[any PersistentKeyProtocol]` (exercised by
-  `MigrationReportTests.testEmptyBatchWithTrackingRecordsMarker`) and reports
+  `MigrationReportTests.test_emptyBatchWithTracking_recordsMarker`) and reports
   `"missing argument label 'items:'"` when `.key(...)` items are passed without
   the label (enforced by `Tests/CompileFail/UnlabeledItemBatch.swift` via
   `Scripts/check-public-api.sh`). The `"failed to produce diagnostic"` behavior

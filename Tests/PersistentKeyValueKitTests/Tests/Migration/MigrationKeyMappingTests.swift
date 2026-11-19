@@ -1,3 +1,10 @@
+//
+//  MigrationKeyMappingTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/17/26.
+//
+
 import Foundation
 import XCTest
 
@@ -7,7 +14,7 @@ import XCTest
 final class MigrationKeyMappingTests: XCTestCase {
     // MARK: Tests
 
-    func testConflictPolicyAppliesToDestinationKey() throws {
+    func test_conflictPolicy_appliesToDestinationKey() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let keys = MappingKeys(#function)
@@ -50,7 +57,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         XCTAssertNil(try source.migrationSnapshot(for: keys.oldCount.id))
     }
 
-    func testDisabledSourceOrDestinationKeyIsNotAccessed() throws {
+    func test_disabledSourceOrDestinationKey_isNotAccessed() throws {
         let enabled = PersistentKey<Int>("\(#function).enabled", defaultValue: 0)
         let disabled = DisabledKey(id: "\(#function).disabled")
         let other = PersistentKey<Int>("\(#function).other", defaultValue: 0)
@@ -81,7 +88,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         }
     }
 
-    func testMappedCopyAcrossStorePairs() throws {
+    func test_mappedCopy_acrossStorePairs() throws {
         for (source, destination) in try storePairs() {
             let scenario = "\(source.name) -> \(destination.name)"
             let keys = MappingKeys(#function)
@@ -107,7 +114,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         }
     }
 
-    func testMappedMoveAcrossStorePairs() throws {
+    func test_mappedMove_acrossStorePairs() throws {
         for (source, destination) in try storePairs() {
             let scenario = "\(source.name) -> \(destination.name)"
             let keys = MappingKeys(#function)
@@ -129,7 +136,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         }
     }
 
-    func testMappedPrepareFailureUsesDestinationKeyAndPreservesSource() throws {
+    func test_mappedPrepareFailure_usesDestinationKeyAndPreservesSource() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = MigrationFaultStore()
         let keys = MappingKeys(#function)
@@ -154,7 +161,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         XCTAssertNil(try destination.migrationSnapshot(for: keys.launchCount.id))
     }
 
-    func testSameStoreRenameCopy() throws {
+    func test_sameStoreRename_copy() throws {
         for store in try sameStores() {
             let keys = MappingKeys(#function)
 
@@ -174,7 +181,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         }
     }
 
-    func testSameStoreRenameMove() throws {
+    func test_sameStoreRename_move() throws {
         for store in try sameStores() {
             let keys = MappingKeys(#function)
 
@@ -196,7 +203,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         }
     }
 
-    func testSameStoreRenameResolvesConflictsWithDestinationKey() throws {
+    func test_sameStoreRename_resolvesConflictsWithDestinationKey() throws {
         let store = InMemoryPersistentKeyValueStore()
         let keys = MappingKeys(#function)
 
@@ -224,7 +231,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         XCTAssertNil(try store.migrationSnapshot(for: keys.oldCount.id))
     }
 
-    func testTransformDoesNotRunWithoutAWrite() throws {
+    func test_transform_doesNotRunWithoutAWrite() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let keys = MappingKeys(#function)
@@ -260,7 +267,7 @@ final class MigrationKeyMappingTests: XCTestCase {
         XCTAssertEqual(counter.count, 0)
     }
 
-    func testTransformFailureLeavesSourceUntouched() throws {
+    func test_transformFailure_leavesSourceUntouched() throws {
         for (source, destination) in try storePairs() {
             let scenario = "\(source.name) -> \(destination.name)"
             let keys = MappingKeys(#function)

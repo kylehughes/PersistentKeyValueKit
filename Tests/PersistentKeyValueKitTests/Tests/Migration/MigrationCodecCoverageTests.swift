@@ -1,3 +1,10 @@
+//
+//  MigrationCodecCoverageTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -72,7 +79,7 @@ extension FailingPrimitive: PrimitiveKeyValuePersistible {
 final class MigrationCodecCoverageTests: XCTestCase {
     // MARK: Tests
 
-    func testCustomPrimitiveFailuresAndProxyRepresentationHelpers() throws {
+    func test_customPrimitive_failuresAndProxyRepresentationHelpers() throws {
         let primitive = PrimitivePersistentKeyValueRepresentation<FailingPrimitive>()
 
         XCTAssertThrowsError(try primitive.decode(storageObject: 1, format: .propertyList))
@@ -96,7 +103,7 @@ final class MigrationCodecCoverageTests: XCTestCase {
         XCTAssertEqual(try encodeStorageValue(1, for: key, format: .propertyList) as? String, "value")
     }
 
-    func testDictionaryRoundTripAndInvalidInput() throws {
+    func test_dictionary_roundTripAndInvalidInput() throws {
         let representation = PrimitivePersistentKeyValueRepresentation<[String: String?]>()
         let object = try XCTUnwrap(
             try representation.encode(["a": "one", "b": nil], format: .propertyList)
@@ -117,7 +124,7 @@ final class MigrationCodecCoverageTests: XCTestCase {
         )
     }
 
-    func testInvalidScalarObjectsThrow() {
+    func test_invalidScalarObjects_throw() {
         XCTAssertThrowsError(
             try PrimitivePersistentKeyValueRepresentation<Bool>().decode(
                 storageObject: "true",
@@ -161,7 +168,7 @@ final class MigrationCodecCoverageTests: XCTestCase {
         )
     }
 
-    func testOptionalPrimitiveDirectCodec() throws {
+    func test_optionalPrimitive_directCodec() throws {
         let representation = OptionalPersistentKeyValueRepresentation(
             PrimitivePersistentKeyValueRepresentation<String>()
         )
@@ -177,7 +184,7 @@ final class MigrationCodecCoverageTests: XCTestCase {
         XCTAssertNil(try representation.encode(nil, format: .propertyList))
     }
 
-    func testPropertyListStorageFreezeEqualityAndByteCount() throws {
+    func test_propertyListStorage_freezeEqualityAndByteCount() throws {
         let url = URL(string: "https://example.com")!
 
         XCTAssertNoThrow(try PropertyListStorage.exactCopy(url, allowingLegacyURL: true))
@@ -197,7 +204,7 @@ final class MigrationCodecCoverageTests: XCTestCase {
         XCTAssertThrowsError(try PropertyListStorage.byteCount(NSObject()))
     }
 
-    func testSuccessfulProxyRawAndLosslessCodecs() throws {
+    func test_proxyRawAndLosslessCodecs_succeed() throws {
         let proxy = ProxyPersistentKeyValueRepresentation<Int, Int>(
             to: {
                 $0
@@ -223,7 +230,7 @@ final class MigrationCodecCoverageTests: XCTestCase {
         XCTAssertEqual(try lossless.encode(3, format: .propertyList) as? String, "3")
     }
 
-    func testURLInvalidObjectsAndWrongArchiveRootThrow() throws {
+    func test_urlInvalidObjectsAndWrongArchiveRoot_throw() throws {
         let representation = PrimitivePersistentKeyValueRepresentation<URL>()
 
         XCTAssertThrowsError(try representation.decode(storageObject: 1, format: .propertyList))

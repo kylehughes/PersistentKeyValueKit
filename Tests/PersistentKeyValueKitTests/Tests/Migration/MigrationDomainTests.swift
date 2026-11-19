@@ -1,3 +1,10 @@
+//
+//  MigrationDomainTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -6,7 +13,7 @@ import XCTest
 final class MigrationDomainTests: XCTestCase {
     // MARK: Tests
 
-    func testAddedSuiteOnlyValueIsExcludedFromSource() throws {
+    func test_addedSuiteOnlyValue_isExcludedFromSource() throws {
         let (sourceDefaults, sourceName) = suite("source")
         let (addedDefaults, addedName) = suite("added")
         let (destinationDefaults, destinationName) = suite("destination")
@@ -38,7 +45,7 @@ final class MigrationDomainTests: XCTestCase {
         XCTAssertNil(destinationDefaults.persistentDomain(forName: destinationName)?[key.id])
     }
 
-    func testCompletionMarkerIgnoresRegisteredAndArgumentValues() throws {
+    func test_completionMarker_ignoresRegisteredAndArgumentValues() throws {
         let (sourceDefaults, sourceName) = suite("source")
         let (destinationDefaults, destinationName) = suite("destination")
         let previousArguments = destinationDefaults.volatileDomain(forName: UserDefaults.argumentDomain)
@@ -105,7 +112,7 @@ final class MigrationDomainTests: XCTestCase {
         XCTAssertNil(destinationDefaults.persistentDomain(forName: destinationName)?[marker.id])
     }
 
-    func testDestinationRegistrationAndArgumentsDoNotCountAsConflict() throws {
+    func test_destinationRegistrationAndArguments_doNotCountAsConflict() throws {
         let (sourceDefaults, sourceName) = suite("source")
         let (destinationDefaults, destinationName) = suite("destination")
         let previousArguments = destinationDefaults.volatileDomain(forName: UserDefaults.argumentDomain)
@@ -137,7 +144,7 @@ final class MigrationDomainTests: XCTestCase {
         XCTAssertEqual(destinationDefaults.integer(forKey: key.id), 99)
     }
 
-    func testRegistrationAndArgumentsAreNotCopiedFromSource() throws {
+    func test_registrationAndArguments_areNotCopiedFromSource() throws {
         let (sourceDefaults, sourceName) = suite("source")
         let (destinationDefaults, destinationName) = suite("destination")
         let previousArguments = sourceDefaults.volatileDomain(forName: UserDefaults.argumentDomain)

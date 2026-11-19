@@ -1,3 +1,10 @@
+//
+//  MigrationRepresentationTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Combine
 import Foundation
 import XCTest
@@ -66,7 +73,7 @@ final class MigrationRepresentationTests: XCTestCase {
     // MARK: Tests
 
     @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
-    func testCodableDecodePreservesUnderlyingError() throws {
+    func test_codableDecode_preservesUnderlyingError() throws {
         let representation = CodablePersistentKeyValueRepresentation<MigrationPayload, JSONEncoder, JSONDecoder>()
 
         XCTAssertThrowsError(
@@ -79,7 +86,7 @@ final class MigrationRepresentationTests: XCTestCase {
     }
 
     @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
-    func testCodableEncodePreservesUnderlyingError() {
+    func test_codableEncode_preservesUnderlyingError() {
         let representation = CodablePersistentKeyValueRepresentation<
             MigrationPayload, MigrationThrowingEncoder, JSONDecoder
         >(
@@ -95,20 +102,20 @@ final class MigrationRepresentationTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testLegacyCloudURLObjectDecodes() throws {
+    func test_legacyCloudURLObject_decodes() throws {
         let representation = PrimitivePersistentKeyValueRepresentation<URL>()
         let value = URL(string: "https://example.com/legacy")!
 
         XCTAssertEqual(try representation.decode(storageObject: value, format: .ubiquitousKeyValueStore), value)
     }
 
-    func testMalformedURLArchiveThrows() {
+    func test_malformedURLArchive_throws() {
         let representation = PrimitivePersistentKeyValueRepresentation<URL>()
 
         XCTAssertThrowsError(try representation.decode(storageObject: Data([1, 2, 3]), format: .userDefaults))
     }
 
-    func testNestedFailingProxyInArrayThrows() {
+    func test_nestedFailingProxyInArray_throws() {
         let representation = PrimitivePersistentKeyValueRepresentation<[MigrationUnencodableValue]>()
 
         XCTAssertThrowsError(
@@ -119,7 +126,7 @@ final class MigrationRepresentationTests: XCTestCase {
         )
     }
 
-    func testNestedFailingProxyInDictionaryThrows() {
+    func test_nestedFailingProxyInDictionary_throws() {
         let representation = PrimitivePersistentKeyValueRepresentation<[String: MigrationUnencodableValue]>()
 
         XCTAssertThrowsError(
@@ -130,7 +137,7 @@ final class MigrationRepresentationTests: XCTestCase {
         )
     }
 
-    func testNestedOptionalCollectionsRoundTrip() throws {
+    func test_nestedOptionalCollections_roundTrip() throws {
         let representation = PrimitivePersistentKeyValueRepresentation<[[String?]]>()
         let value = [["one", nil, "three"]]
         let object = try XCTUnwrap(try representation.encode(value, format: .propertyList))
@@ -139,7 +146,7 @@ final class MigrationRepresentationTests: XCTestCase {
         XCTAssertEqual(decoded, [["one", "three"]])
     }
 
-    func testOptionalNilEncodesAsRemoval() throws {
+    func test_optionalNil_encodesAsRemoval() throws {
         let representation = OptionalPersistentKeyValueRepresentation(
             PrimitivePersistentKeyValueRepresentation<String>()
         )
@@ -147,7 +154,7 @@ final class MigrationRepresentationTests: XCTestCase {
         XCTAssertNil(try representation.encode(nil, format: .propertyList))
     }
 
-    func testPrimitiveScalarsRoundTripAcrossFormats() throws {
+    func test_primitiveScalars_roundTripAcrossFormats() throws {
         let formats: [PersistentKeyValueStorageFormat] = [
             .propertyList, .userDefaults, .ubiquitousKeyValueStore,
         ]
@@ -165,7 +172,7 @@ final class MigrationRepresentationTests: XCTestCase {
         }
     }
 
-    func testURLFilePathContainingColonIsDecodedAsFilePath() throws {
+    func test_urlFilePathContainingColon_isDecodedAsFilePath() throws {
         let representation = PrimitivePersistentKeyValueRepresentation<URL>()
         let value = try representation.decode(storageObject: "folder:name/file", format: .userDefaults)
 
@@ -175,7 +182,7 @@ final class MigrationRepresentationTests: XCTestCase {
         XCTAssertEqual(value.path, URL(fileURLWithPath: "folder:name/file").path)
     }
 
-    func testURLWebValueRoundTripsThroughUserDefaultsFormat() throws {
+    func test_urlWebValue_roundTripsThroughUserDefaultsFormat() throws {
         let value = URL(string: "https://example.com/path")!
         let representation = PrimitivePersistentKeyValueRepresentation<URL>()
         let object = try representation.encode(value, format: .userDefaults)
@@ -184,7 +191,7 @@ final class MigrationRepresentationTests: XCTestCase {
         XCTAssertEqual(try representation.decode(storageObject: data, format: .userDefaults), value)
     }
 
-    func testUnreadableProxyFailsDecode() {
+    func test_unreadableProxy_failsDecode() {
         let representation = MigrationUnreadableValue.persistentKeyValueRepresentation
 
         XCTAssertThrowsError(try representation.decode(storageObject: "value", format: .propertyList))

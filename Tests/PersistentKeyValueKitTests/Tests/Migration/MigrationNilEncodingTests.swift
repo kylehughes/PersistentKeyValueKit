@@ -1,3 +1,10 @@
+//
+//  MigrationNilEncodingTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/19/26.
+//
+
 import Foundation
 import XCTest
 
@@ -8,7 +15,7 @@ import XCTest
 final class MigrationNilEncodingTests: XCTestCase {
     // MARK: Tests
 
-    func testUserDefaultsDestinationFailsAtPrepare() throws {
+    func test_userDefaultsDestination_failsAtPrepare() throws {
         let suite = stableSuiteName("MigrationNilEncodingTests")
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
 
@@ -30,7 +37,7 @@ final class MigrationNilEncodingTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousDestinationFailsAtPrepare() throws {
+    func test_ubiquitousDestination_failsAtPrepare() throws {
         let raw = StrictMigrationUbiquitousStore()
         let destination = UbiquitousKeyValueMigrationBackend(
             store: raw,
@@ -48,7 +55,7 @@ final class MigrationNilEncodingTests: XCTestCase {
         )
     }
 
-    func testOptionalWrappingNonNilValueFailsAtPrepare() throws {
+    func test_optionalWrappingNonNilValue_failsAtPrepare() throws {
         let suite = stableSuiteName("MigrationNilEncodingTests.optional")
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
 
@@ -75,7 +82,7 @@ final class MigrationNilEncodingTests: XCTestCase {
         XCTAssertEqual(defaults.object(forKey: key.id) as? Int, 5)
     }
 
-    func testNestedNilOptionalStillRemovesDestination() throws {
+    func test_nestedNilOptional_stillRemovesDestination() throws {
         let suite = stableSuiteName("MigrationNilEncodingTests.nested")
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
 
@@ -100,21 +107,21 @@ final class MigrationNilEncodingTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: key.id))
     }
 
-    func testBoxedNilDoesNotCountAsNilOptional() throws {
+    func test_boxedNil_doesNotCountAsNilOptional() throws {
         try assertBoxedNilFailsAtPrepare(
             destinationKey: NilEncodingKey(id: "key:\(#function)"),
             transform: { _ in AnyHashable(Int?.none) }
         )
     }
 
-    func testOptionalWrappingBoxedNilDoesNotCountAsNilOptional() throws {
+    func test_optionalWrappingBoxedNil_doesNotCountAsNilOptional() throws {
         try assertBoxedNilFailsAtPrepare(
             destinationKey: OptionalNilEncodingKey(id: "key:\(#function)"),
             transform: { _ in .some(AnyHashable(Int?.none)) }
         )
     }
 
-    func testNilOptionalOfBoxedTypeStillRemovesDestination() throws {
+    func test_nilOptionalOfBoxedType_stillRemovesDestination() throws {
         let suite = stableSuiteName("MigrationNilEncodingTests.nilBoxed")
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
 
@@ -144,7 +151,7 @@ final class MigrationNilEncodingTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: destinationKey.id))
     }
 
-    func testInMemoryDestinationStoresValueDirectly() throws {
+    func test_inMemoryDestination_storesValueDirectly() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: ConversionOnlyValue(1))

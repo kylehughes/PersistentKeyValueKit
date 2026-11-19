@@ -1,3 +1,10 @@
+//
+//  MigrationConcurrencyTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -118,38 +125,9 @@ extension GateMigrationStore: PersistentKeyValueMigrationBackend {
 
 // MARK: - PersistentKeyValueStore Extension
 
-extension GateMigrationStore: PersistentKeyValueStore {
+extension GateMigrationStore: ForwardingPersistentKeyValueStore {
     var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         .init(backend: self)
-    }
-
-    func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        base.deregister(observer, for: key, context: context)
-    }
-
-    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        base.get(key)
-    }
-
-    func register<Key>(
-        observer: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        base.register(observer: observer, for: key, with: context, and: selector)
-    }
-
-    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        base.remove(key)
-    }
-
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        base.set(key, to: value)
     }
 }
 
@@ -160,7 +138,7 @@ private enum TestError: Error {
 final class MigrationConcurrencyTests: XCTestCase {
     // MARK: Tests
 
-    func testDisjointKeyCanMigrateWhileAnotherKeyIsBlocked() throws {
+    func test_disjointKey_canMigrateWhileAnotherKeyIsBlocked() throws {
         let source = InMemoryPersistentKeyValueStore()
         let backing = InMemoryPersistentKeyValueStore()
         let blocked = PersistentKey<Int>("blocked-\(#function)", defaultValue: 0)
@@ -218,7 +196,7 @@ final class MigrationConcurrencyTests: XCTestCase {
         XCTAssertFalse(firstReport.hasFailures)
     }
 
-    func testSameKeyOverlapRejectedAndRetrySucceeds() throws {
+    func test_sameKeyOverlap_isRejectedAndRetrySucceeds() throws {
         let source = InMemoryPersistentKeyValueStore()
         let backing = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>(#function, defaultValue: 0)
@@ -285,7 +263,7 @@ final class MigrationConcurrencyTests: XCTestCase {
         XCTAssertNoThrow(try source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked))
     }
 
-    func testSharedCompletionMarkerOverlapsDisjointMigrations() throws {
+    func test_sharedCompletionMarker_overlapsDisjointMigrations() throws {
         let recorder = InMemoryPersistentKeyValueStore()
         let firstSource = InMemoryPersistentKeyValueStore()
         let secondSource = InMemoryPersistentKeyValueStore()

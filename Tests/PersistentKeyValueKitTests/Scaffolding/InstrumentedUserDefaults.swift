@@ -6,6 +6,7 @@
 //
 
 import Foundation
+@testable import PersistentKeyValueKit
 
 /// A `UserDefaults` subclass that counts reads of one key and can run an action after the next read of it.
 ///
@@ -19,7 +20,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
 
     /// The number of reads of the instrumented key since it was set.
     var readCount: Int {
-        withLock {
+        lock.withLockHeld {
             reads
         }
     }
@@ -28,7 +29,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
 
     /// Counts reads of `keyID` from now on.
     func instrument(_ keyID: String) {
-        withLock {
+        lock.withLockHeld {
             observedKeyID = keyID
             reads = 0
         }
@@ -36,7 +37,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
 
     /// Runs `action` once, after the next read of the instrumented key.
     func afterNextRead(_ action: @escaping () -> Void) {
-        withLock {
+        lock.withLockHeld {
             nextReadAction = action
         }
     }
@@ -46,7 +47,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
     override func object(forKey defaultName: String) -> Any? {
         let object = super.object(forKey: defaultName)
 
-        let action: (() -> Void)? = withLock {
+        let action: (() -> Void)? = lock.withLockHeld {
             guard let observedKeyID, observedKeyID.utf16.elementsEqual(defaultName.utf16) else {
                 return nil
             }
@@ -62,16 +63,5 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
         action?()
 
         return object
-    }
-
-    // MARK: Private Instance Interface
-
-    private func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
     }
 }

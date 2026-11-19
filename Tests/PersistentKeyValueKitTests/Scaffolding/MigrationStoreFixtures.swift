@@ -1,3 +1,10 @@
+//
+//  MigrationStoreFixtures.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 @testable import PersistentKeyValueKit
@@ -16,12 +23,12 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
 
     var rejectRemovals: Bool {
         get {
-            lock.withLock {
+            lock.withLockHeld {
                 shouldRejectRemovals
             }
         }
         set {
-            lock.withLock {
+            lock.withLockHeld {
                 shouldRejectRemovals = newValue
             }
         }
@@ -29,19 +36,19 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
 
     var rejectWrites: Bool {
         get {
-            lock.withLock {
+            lock.withLockHeld {
                 shouldRejectWrites
             }
         }
         set {
-            lock.withLock {
+            lock.withLockHeld {
                 shouldRejectWrites = newValue
             }
         }
     }
 
     var synchronizeCount: Int {
-        lock.withLock {
+        lock.withLockHeld {
             synchronizationCount
         }
     }
@@ -71,13 +78,13 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
     }
 
     override func object(forKey key: String) -> Any? {
-        lock.withLock {
+        lock.withLockHeld {
             values[key]
         }
     }
 
     override func removeObject(forKey key: String) {
-        lock.withLock {
+        lock.withLockHeld {
             if !shouldRejectRemovals {
                 values.removeValue(forKey: key)
             }
@@ -85,7 +92,7 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
     }
 
     override func set(_ object: Any?, forKey key: String) {
-        lock.withLock {
+        lock.withLockHeld {
             if !shouldRejectWrites, let object, PropertyListSerialization.propertyList(object, isValidFor: .binary) {
                 values[key] = object
             }
@@ -129,7 +136,7 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
     }
 
     override func synchronize() -> Bool {
-        lock.withLock {
+        lock.withLockHeld {
             synchronizationCount += 1
 
             return true
@@ -137,22 +144,10 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
     }
 }
 
-// MARK: - NSLock Extension
-
-extension NSLock {
-    fileprivate func withLock<Result>(_ body: () -> Result) -> Result {
-        lock()
-
-        defer {
-            unlock()
-        }
-
-        return body()
-    }
-}
-
 // MARK: - UserDefaultsMigrationBackend PersistentKeyValueStore Extension
 
+// These conformances exist so tests can unit-test the internal backends directly. A ubiquitous backend built with an
+// injected identity also keeps parallel tests from sharing the default iCloud store's identity.
 extension UserDefaultsMigrationBackend: PersistentKeyValueStore {
     public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         .init(backend: self)

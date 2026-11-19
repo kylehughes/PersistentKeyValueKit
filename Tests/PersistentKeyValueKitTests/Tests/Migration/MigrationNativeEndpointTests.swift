@@ -1,3 +1,10 @@
+//
+//  MigrationNativeEndpointTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -6,7 +13,7 @@ import XCTest
 final class MigrationNativeEndpointTests: XCTestCase {
     // MARK: Tests
 
-    func testAddedSuiteSourceValueIsAbsentAndDestinationFallbackIsNotAConflict() throws {
+    func test_addedSuite_sourceValueIsAbsentAndDestinationFallbackIsNotAConflict() throws {
         let sourceName = stableSuiteName("MigrationNativeEndpointTests.addedOnlySource")
         let destinationName = stableSuiteName("MigrationNativeEndpointTests.addedOnlyDestination")
         let addedName = stableSuiteName("MigrationNativeEndpointTests.addedOnly")
@@ -38,7 +45,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
         XCTAssertEqual(destination.get(key), 11)
     }
 
-    func testAddedSuiteValuesDoNotMaskMigrationOrCompletionMarker() throws {
+    func test_addedSuiteValues_doNotMaskMigrationOrCompletionMarker() throws {
         let sourceName = stableSuiteName("MigrationNativeEndpointTests.addedSource")
         let destinationName = stableSuiteName("MigrationNativeEndpointTests.addedDestination")
         let addedName = stableSuiteName("MigrationNativeEndpointTests.added")
@@ -90,7 +97,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
         )
     }
 
-    func testDistinctNativeInstancesForSameSuiteAreRejectedForEveryPolicy() throws {
+    func test_distinctNativeInstancesForSameSuite_areRejectedForEveryPolicy() throws {
         let key = PersistentKey<Int>(#function, defaultValue: 0)
 
         for policy in [PersistentKeyCopyConflictPolicy.keepDestination, .overwriteDestination] {
@@ -130,7 +137,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
         }
     }
 
-    func testEndpointFailureMatrixCoversAllRolesAndInputStates() throws {
+    func test_endpointFailureMatrix_coversAllRolesAndInputStates() throws {
         for tracking in EndpointFailureTracking.allCases {
             for role in EndpointFailureRole.allCases where tracking != .untracked || role != .recorder {
                 for operation in EndpointFailureOperation.allCases {
@@ -208,7 +215,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testNativeCloudAndMemoryStoresUseOrdinaryGenericAndExistentialContracts() throws {
+    func test_nativeCloudAndMemoryStores_useOrdinaryGenericAndExistentialContracts() throws {
         var nativeStoreCount = 0
         let factories: [() throws -> any PersistentKeyValueStore] = [
             {
@@ -277,7 +284,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
         }
     }
 
-    func testRawUserDefaultsCannotParticipateInAnyEndpointRole() throws {
+    func test_rawUserDefaults_cannotParticipateInAnyEndpointRole() throws {
         let key = PersistentKey<Int>(#function, defaultValue: 0)
         let sourceName = stableSuiteName("MigrationNativeEndpointTests.rawSource")
         let destinationName = stableSuiteName("MigrationNativeEndpointTests.rawDestination")
@@ -324,7 +331,7 @@ final class MigrationNativeEndpointTests: XCTestCase {
         XCTAssertEqual(rawDestination.persistentDomain(forName: destinationName) as NSDictionary?, destinationBefore)
     }
 
-    func testSuccessfulMigrationResolvesEachEndpointOnce() throws {
+    func test_successfulMigration_resolvesEachEndpointOnce() throws {
         let source = CountingEndpointStore(InMemoryPersistentKeyValueStore())
         let destination = CountingEndpointStore(InMemoryPersistentKeyValueStore())
         let recorder = CountingEndpointStore(InMemoryPersistentKeyValueStore())
@@ -464,9 +471,9 @@ private final class CountingEndpointStore {
     }
 }
 
-// MARK: - PersistentKeyValueStore Extension
+// MARK: - ForwardingPersistentKeyValueStore Extension
 
-extension CountingEndpointStore: PersistentKeyValueStore {
+extension CountingEndpointStore: ForwardingPersistentKeyValueStore {
     var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         get throws {
             endpointAccessCount += 1
@@ -477,37 +484,6 @@ extension CountingEndpointStore: PersistentKeyValueStore {
 
             return backend.migrationEndpoint
         }
-    }
-
-    func deregister<Key>(
-        _ observer: NSObject,
-
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        base.deregister(observer, for: key, context: context)
-    }
-
-    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        base.get(key)
-    }
-
-    func register<Key>(
-        observer: NSObject,
-
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        base.register(observer: observer, for: key, with: context, and: selector)
-    }
-
-    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        base.remove(key)
-    }
-
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        base.set(key, to: value)
     }
 }
 

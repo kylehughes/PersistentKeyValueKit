@@ -486,8 +486,18 @@ extension CheckedContainerConversionTests {
             outcome.finish(Swift.Result(catching: body))
         }
 
-        return try outcome.wait().get()
+        guard let result = outcome.wait() else {
+            throw WorkerThreadTimeoutError()
+        }
+
+        return try result.get()
     }
+}
+
+// MARK: - Worker Thread Timeout Error Definition
+
+/// Thrown when a worker thread does not finish in time, so a deadlock fails the test instead of hanging it.
+private struct WorkerThreadTimeoutError: Error {
 }
 
 // MARK: - Worker Thread Outcome Definition
@@ -508,11 +518,14 @@ private final class WorkerThreadOutcome<Value>: @unchecked Sendable {
         semaphore.signal()
     }
 
-    func wait() -> Result<Value, any Error> {
-        semaphore.wait()
+    /// Returns the result, or `nil` when the work does not finish within five seconds.
+    func wait() -> Result<Value, any Error>? {
+        guard semaphore.wait(timeout: .now() + 5) == .success else {
+            return nil
+        }
 
         return lock.withLock {
-            result!
+            result
         }
     }
 }
@@ -576,6 +589,9 @@ private struct HookRowRepresentation<Row: HookRow>: ProxyPersistentKeyValueRepre
         case let .success(rows):
             return rows.value
         case .failure:
+            return nil
+        case nil:
+            XCTFail("The worker thread did not decode rows within five seconds")
             return nil
         }
     }
@@ -667,8 +683,12 @@ private final class SettingsReadRecorder: @unchecked Sendable {
         }
     }
 
+    /// Returns the task's read, or `nil` after failing the test when the task does not read within five seconds.
     func waitForTaskRead() -> [[String: Int]]? {
-        taskRead.wait()
+        guard taskRead.wait(timeout: .now() + 5) == .success else {
+            XCTFail("The task did not read the settings within five seconds")
+            return nil
+        }
 
         return lock.withLock {
             taskReads.first

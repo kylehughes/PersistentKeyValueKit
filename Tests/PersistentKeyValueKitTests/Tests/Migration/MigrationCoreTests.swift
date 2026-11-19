@@ -1,3 +1,10 @@
+//
+//  MigrationCoreTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import XCTest
 
 @testable import PersistentKeyValueKit
@@ -5,7 +12,7 @@ import XCTest
 final class MigrationCoreTests: XCTestCase {
     // MARK: Tests
 
-    func testAbsentOnlyBatchRecordsCompletion() throws {
+    func test_absentOnlyBatch_recordsCompletion() throws {
         let (source, destination) = stores()
         let k = key()
         let report = try source.copy(
@@ -22,7 +29,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertTrue(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testAbsentSourceLeavesDestination() throws {
+    func test_absentSource_leavesDestination() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -34,7 +41,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "destination")
     }
 
-    func testAlreadyRecordedMarkerSkips() throws {
+    func test_alreadyRecordedMarker_skips() throws {
         let (s, d) = stores()
         let k = key()
         let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
@@ -52,7 +59,7 @@ final class MigrationCoreTests: XCTestCase {
         }
     }
 
-    func testBatchPreservesOrder() throws {
+    func test_batch_preservesOrder() throws {
         let (s, d) = stores()
         let a = key("a-\(#function)")
         let b = key("b-\(#function)")
@@ -66,7 +73,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(b), "b")
     }
 
-    func testCleanupFailureReportsFailure() throws {
+    func test_cleanupFailure_reportsFailure() throws {
         let s = MigrationFaultStore()
         let d = InMemoryPersistentKeyValueStore()
         let k = key()
@@ -82,7 +89,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "source")
     }
 
-    func testCompletionCommitFailurePreservesTransferOutcome() throws {
+    func test_completionCommitFailure_preservesTransferOutcome() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let recorder = MigrationFaultStore()
@@ -106,7 +113,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertTrue(report.hasFailures)
     }
 
-    func testCompletionIDsAreInjectiveForUnicodeAndPunctuation() {
+    func test_completionIDs_areInjectiveForUnicodeAndPunctuation() {
         let a = PersistentKey<Bool>.isMigrationCompleted(id: "é/one?\n")
         let b = PersistentKey<Bool>.isMigrationCompleted(id: "é/one?\r")
 
@@ -117,7 +124,7 @@ final class MigrationCoreTests: XCTestCase {
         )
     }
 
-    func testCompletionMarkerIdentifierContainsNoDots() {
+    func test_completionMarkerIdentifier_containsNoDots() {
         let marker = PersistentKey<Bool>.isMigrationCompleted(id: "app-group.v1")
 
         XCTAssertTrue(marker.id.hasPrefix("PersistentKeyValueKit_MigrationCompleted_"))
@@ -125,7 +132,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(marker.id.utf16.count, 84)
     }
 
-    func testCompletionMarkerIsObservableInUserDefaults() throws {
+    func test_completionMarker_isObservableInUserDefaults() throws {
         let suiteName = stableSuiteName("MigrationCoreTests.observable")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let marker = PersistentKey<Bool>.isMigrationCompleted(id: #function)
@@ -153,7 +160,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(observer.count, 1)
     }
 
-    func testCompletionMarkerTreatsCanonicallyEquivalentIDsAsOneMigration() throws {
+    func test_completionMarker_treatsCanonicallyEquivalentIDsAsOneMigration() throws {
         let (s, d) = stores()
         let k = key()
         let composed = "caf\u{E9}"
@@ -178,7 +185,7 @@ final class MigrationCoreTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testLongCompletionIDIsRecordedInUbiquitousStore() throws {
+    func test_longCompletionID_isRecordedInUbiquitousStore() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = StrictMigrationUbiquitousStore()
         let k = key()
@@ -201,7 +208,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertTrue(destination.get(.isMigrationCompleted(id: id)))
     }
 
-    func testCompletionMarkerIsWrittenAfterMoveCleanup() throws {
+    func test_completionMarker_isWrittenAfterMoveCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = MigrationFaultStore()
         let k = key()
@@ -227,7 +234,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertTrue(markerObserved)
     }
 
-    func testCompletionMarkerResetAllowsRerun() throws {
+    func test_completionMarkerReset_allowsRerun() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -254,7 +261,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "two")
     }
 
-    func testCompletionSnapshotFailurePrecedesTransfer() throws {
+    func test_completionSnapshotFailure_precedesTransfer() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let recorder = MigrationFaultStore()
@@ -275,7 +282,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(destination.get(k), "default")
     }
 
-    func testConflictOnlyBatchRecordsAndPreservesDestination() throws {
+    func test_conflictOnlyBatch_recordsAndPreservesDestination() throws {
         let (source, destination) = stores()
         let k = key()
 
@@ -296,7 +303,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(destination.get(k), "destination")
     }
 
-    func testCopyKeepDestination() throws {
+    func test_copy_keepDestination() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -309,7 +316,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "destination")
     }
 
-    func testCopyOverwriteDestination() throws {
+    func test_copy_overwriteDestination() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -322,7 +329,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "source")
     }
 
-    func testDecodeFailureReportsDecodeStage() throws {
+    func test_decodeFailure_reportsDecodeStage() throws {
         let s = MigrationFaultStore()
         let d = InMemoryPersistentKeyValueStore()
         let k = key()
@@ -336,7 +343,7 @@ final class MigrationCoreTests: XCTestCase {
         }
     }
 
-    func testDisabledDebugKeyDoesNotTransfer() throws {
+    func test_disabledDebugKey_doesNotTransfer() throws {
         let (s, d) = stores()
         let k = PersistentDebugKey<String>(
             #function,
@@ -353,14 +360,14 @@ final class MigrationCoreTests: XCTestCase {
         #endif
     }
 
-    func testDuplicateIdentifiersRejected() throws {
+    func test_duplicateIdentifiers_areRejected() throws {
         let (s, d) = stores()
         let k = key()
 
         XCTAssertThrowsError(try s.copy([k, k], to: d, onConflict: .keepDestination, tracking: .untracked))
     }
 
-    func testEmptyIdentifierRejected() throws {
+    func test_emptyIdentifier_isRejected() throws {
         let (s, d) = stores()
 
         XCTAssertThrowsError(
@@ -373,7 +380,7 @@ final class MigrationCoreTests: XCTestCase {
         )
     }
 
-    func testExplicitDefaultValueMigrates() throws {
+    func test_explicitDefaultValue_migrates() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -385,7 +392,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), k.defaultValue)
     }
 
-    func testFalseCompletionMarkerRerunsMigration() throws {
+    func test_falseCompletionMarker_rerunsMigration() throws {
         let (source, destination) = stores()
         let k = key()
 
@@ -405,7 +412,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(destination.get(k), "one")
     }
 
-    func testHeterogeneousBatchTransfersDifferentValueTypes() throws {
+    func test_heterogeneousBatch_transfersDifferentValueTypes() throws {
         let (s, d) = stores()
         let number = PersistentKey<Int>("number-\(#function)", defaultValue: 0)
         let text = PersistentKey<String>("text-\(#function)", defaultValue: "")
@@ -419,14 +426,14 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(text), "answer")
     }
 
-    func testInvalidIdentityRejected() throws {
+    func test_invalidIdentity_isRejected() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore(identifier: "")
 
         XCTAssertThrowsError(try s.copy(key(), to: d, onConflict: .keepDestination, tracking: .untracked))
     }
 
-    func testMalformedCompletionRecordPrecedesTransfer() throws {
+    func test_malformedCompletionRecord_precedesTransfer() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let recorder = MigrationFaultStore()
@@ -450,7 +457,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(destination.get(k), "default")
     }
 
-    func testMoveKeepBoth() throws {
+    func test_move_keepBoth() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -463,7 +470,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(s.get(k), "source")
     }
 
-    func testMoveKeepDestinationAndRemoveSource() throws {
+    func test_move_keepDestinationAndRemoveSource() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -476,7 +483,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(s.get(k), "default")
     }
 
-    func testMoveOverwriteDestination() throws {
+    func test_move_overwriteDestination() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -490,7 +497,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "source")
     }
 
-    func testOptionalNilSourceIsAbsent() throws {
+    func test_optionalNilSource_isAbsent() throws {
         let (s, d) = stores()
         let k = PersistentKey<String?>(#function, defaultValue: nil)
         let r = try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked)
@@ -500,7 +507,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertNil(d.get(k))
     }
 
-    func testPartialBatchContinues() throws {
+    func test_partialBatch_continues() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore()
         let a = key("a-\(#function)")
@@ -521,7 +528,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(b), "b")
     }
 
-    func testPrepareFailureReportsPrepareStage() throws {
+    func test_prepareFailure_reportsPrepareStage() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore()
         let k = key()
@@ -535,7 +542,7 @@ final class MigrationCoreTests: XCTestCase {
         }
     }
 
-    func testReentrantMigrationIsRejectedAndRegistryReleases() throws {
+    func test_reentrantMigration_isRejectedAndRegistryReleases() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore()
         let k = key()
@@ -559,7 +566,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertNoThrow(try s.copy(k, to: d, onConflict: .overwriteDestination, tracking: .untracked))
     }
 
-    func testRegistryReleasesAfterFailure() throws {
+    func test_registry_releasesAfterFailure() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore()
         let k = key()
@@ -573,20 +580,20 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertFalse(r.hasFailures)
     }
 
-    func testReservedIdentifierRejected() throws {
+    func test_reservedIdentifier_isRejected() throws {
         let (s, d) = stores()
         let k = PersistentKey<String>("PersistentKeyValueKit_MigrationCompleted_bad", defaultValue: "")
 
         XCTAssertThrowsError(try s.copy(k, to: d, onConflict: .keepDestination, tracking: .untracked))
     }
 
-    func testSameStoreRejected() throws {
+    func test_sameStore_isRejected() throws {
         let s = InMemoryPersistentKeyValueStore()
 
         XCTAssertThrowsError(try s.copy(key(), to: s, onConflict: .keepDestination, tracking: .untracked))
     }
 
-    func testSnapshotFailureReportsSnapshotStage() throws {
+    func test_snapshotFailure_reportsSnapshotStage() throws {
         let s = MigrationFaultStore()
         let d = InMemoryPersistentKeyValueStore()
         let k = key()
@@ -600,7 +607,7 @@ final class MigrationCoreTests: XCTestCase {
         }
     }
 
-    func testSourceChangeDuringCommitPreservesSource() throws {
+    func test_sourceChangeDuringCommit_preservesSource() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore()
         let k = key()
@@ -619,7 +626,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(s.get(k), "new")
     }
 
-    func testTrackedFailureCanRetryAndRecord() throws {
+    func test_trackedFailure_canRetryAndRecord() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore()
         let k = key()
@@ -650,7 +657,7 @@ final class MigrationCoreTests: XCTestCase {
         }
     }
 
-    func testTrackedMigrationRecordsMarker() throws {
+    func test_trackedMigration_recordsMarker() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -669,7 +676,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertTrue(d.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testTrackedSecondRunSkips() throws {
+    func test_trackedSecondRun_skips() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -695,7 +702,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "one")
     }
 
-    func testUntrackedMigrationRepeats() throws {
+    func test_untrackedMigration_repeats() throws {
         let (s, d) = stores()
         let k = key()
 
@@ -707,7 +714,7 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "two")
     }
 
-    func testWriteFailureRetainsSource() throws {
+    func test_writeFailure_retainsSource() throws {
         let s = InMemoryPersistentKeyValueStore()
         let d = MigrationFaultStore()
         let k = key()

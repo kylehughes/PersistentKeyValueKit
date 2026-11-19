@@ -1,16 +1,23 @@
+//
+//  MigrationBackendCoverageTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Combine
 import Foundation
 import XCTest
 
 @testable import PersistentKeyValueKit
 
-final class MigrationAdapterCoverageTests: XCTestCase {
+final class MigrationBackendCoverageTests: XCTestCase {
     private let intKey = PersistentKey("coverage.int", defaultValue: 0)
     private let optionalKey = PersistentKey<Int?>("coverage.optional", defaultValue: nil)
 
     // MARK: Tests
 
-    func testMemoryDictionaryNormalizationDropsOptionalValues() throws {
+    func test_memoryDictionaryNormalization_dropsOptionalValues() throws {
         let store = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<[String: Int?]>("coverage.dictionary", defaultValue: [:])
 
@@ -26,7 +33,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertEqual(destination.get(key), ["kept": 2])
     }
 
-    func testMemoryObserverRefillFailsRemovalVerification() throws {
+    func test_memoryObserverRefill_failsRemovalVerification() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
 
@@ -44,14 +51,14 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         let report = try source.move(intKey, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         guard case .failed(_) = report.outcomes[0].status, let error = report.outcomes[0].error else {
-            return XCTFail()
+            return XCTFail("Expected a failed outcome with an error, got \(report.outcomes[0])")
         }
 
         XCTAssertEqual(error as? PersistentKeyMigrationError, .removalVerificationFailed)
         XCTAssertEqual(source.get(intKey), 99)
     }
 
-    func testMemoryObserverReplacementFailsCommitVerification() throws {
+    func test_memoryObserverReplacement_failsCommitVerification() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
 
@@ -69,14 +76,14 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         let report = try source.copy(intKey, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         guard case .failed(_) = report.outcomes[0].status, let error = report.outcomes[0].error else {
-            return XCTFail()
+            return XCTFail("Expected a failed outcome with an error, got \(report.outcomes[0])")
         }
 
         XCTAssertEqual(error as? PersistentKeyMigrationError, .writeVerificationFailed)
         XCTAssertEqual(destination.get(intKey), 99)
     }
 
-    func testMemoryOptionalNormalizationPreservesBoxedNil() throws {
+    func test_memoryOptionalNormalization_preservesBoxedNil() throws {
         let store = InMemoryPersistentKeyValueStore()
 
         store.set(optionalKey, to: nil)
@@ -86,7 +93,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertTrue(try store.migrationSnapshotIsCurrent(snapshot, for: optionalKey.id))
     }
 
-    func testMemoryPreparePreservesFoundationCollection() throws {
+    func test_memoryPrepare_preservesFoundationCollection() throws {
         let key = MutableArrayKey(id: "coverage.proxy")
         let store = InMemoryPersistentKeyValueStore()
 
@@ -96,7 +103,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertEqual(store.get(key), NSMutableArray(array: [1]))
     }
 
-    func testMemoryPreparedNilStoresBoxedNilAndPreservesOtherKey() throws {
+    func test_memoryPreparedNil_storesBoxedNilAndPreservesOtherKey() throws {
         let store = InMemoryPersistentKeyValueStore()
 
         store.set(intKey, to: 4)
@@ -109,7 +116,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertEqual(store.get(intKey), 4)
     }
 
-    func testMemoryStaleWriteAndRemovalAreRejected() throws {
+    func test_memoryStaleWriteAndRemoval_areRejected() throws {
         let store = InMemoryPersistentKeyValueStore()
 
         store.set(intKey, to: 1)
@@ -122,7 +129,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertThrowsError(try store.removeMigrationValue(for: intKey.id, matching: snapshot))
     }
 
-    func testMemoryWrongReplacementSnapshotIsRejected() throws {
+    func test_memoryWrongReplacementSnapshot_isRejected() throws {
         let store = InMemoryPersistentKeyValueStore()
         let otherKey = PersistentKey("coverage.other", defaultValue: 0)
 
@@ -134,7 +141,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertThrowsError(try store.commitMigrationWrite(write, replacing: other))
     }
 
-    func testMemoryWrongStoreAndKeyTokensAreRejected() throws {
+    func test_memoryWrongStoreAndKeyTokens_areRejected() throws {
         let first = InMemoryPersistentKeyValueStore()
         let second = InMemoryPersistentKeyValueStore()
 
@@ -148,7 +155,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertThrowsError(try first.removeMigrationValue(for: "other", matching: snapshot))
     }
 
-    func testStandardFactoryValidationAndEmptySuite() throws {
+    func test_standardFactory_validationAndEmptySuite() throws {
         if let identifier = Bundle.main.bundleIdentifier {
             XCTAssertEqual(
                 try UserDefaults.migrationDomainName(for: .standard, applicationIdentifier: identifier),
@@ -185,7 +192,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousPublicConstructorUsesCanonicalIdentity() {
+    func test_ubiquitousPublicConstructor_usesCanonicalIdentity() {
         let store = UbiquitousKeyValueMigrationBackend(StrictMigrationUbiquitousStore())
 
         XCTAssertEqual(store.migrationIdentity.namespace, "NSUbiquitousKeyValueStore")
@@ -193,7 +200,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousRefusingRemovalReportsFailureAndPreservesValue() throws {
+    func test_ubiquitousRefusingRemoval_reportsFailureAndPreservesValue() throws {
         let raw = StrictMigrationUbiquitousStore()
         let store = UbiquitousKeyValueMigrationBackend(
             store: raw,
@@ -214,7 +221,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousStaleAndWrongStoreTokensAreRejected() throws {
+    func test_ubiquitousStaleAndWrongStoreTokens_areRejected() throws {
         let firstRaw = StrictMigrationUbiquitousStore()
         let secondRaw = StrictMigrationUbiquitousStore()
         let first = UbiquitousKeyValueMigrationBackend(
@@ -250,7 +257,7 @@ final class MigrationAdapterCoverageTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousWrongTokensAndNilRemoval() throws {
+    func test_ubiquitous_wrongTokensAndNilRemoval() throws {
         let raw = StrictMigrationUbiquitousStore()
         let store = UbiquitousKeyValueMigrationBackend(
             store: raw,
@@ -270,8 +277,8 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertNil(raw.storedValue(for: optionalKey.id))
     }
 
-    func testUserDefaultsConstructorsAndNilWrite() throws {
-        let suite = stableSuiteName("MigrationAdapterCoverageTests")
+    func test_userDefaults_constructorsAndNilWrite() throws {
+        let suite = stableSuiteName("MigrationBackendCoverageTests")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suite))
         let store = UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite)
 
@@ -291,8 +298,8 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertNil(try store.migrationSnapshot(for: optionalKey.id))
     }
 
-    func testUserDefaultsRefusingStoreReportsWriteAndRemovalFailures() throws {
-        let name = stableSuiteName("MigrationAdapterCoverageTests.refusing")
+    func test_userDefaultsRefusingStore_reportsWriteAndRemovalFailures() throws {
+        let name = stableSuiteName("MigrationBackendCoverageTests.refusing")
         let raw = RefusingDefaults(suiteName: name)!
         let store = UserDefaultsMigrationBackend(userDefaults: raw, domainName: name)
 
@@ -317,9 +324,9 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         }
     }
 
-    func testUserDefaultsSnapshotAndWriteTokensRejectWrongKeyOrStore() throws {
-        let firstName = stableSuiteName("MigrationAdapterCoverageTests.first")
-        let secondName = stableSuiteName("MigrationAdapterCoverageTests.second")
+    func test_userDefaultsSnapshotAndWriteTokens_rejectWrongKeyOrStore() throws {
+        let firstName = stableSuiteName("MigrationBackendCoverageTests.first")
+        let secondName = stableSuiteName("MigrationBackendCoverageTests.second")
         let first = UserDefaultsMigrationBackend(
             userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: firstName)),
             domainName: firstName
@@ -344,8 +351,8 @@ final class MigrationAdapterCoverageTests: XCTestCase {
         XCTAssertThrowsError(try first.removeMigrationValue(for: "other", matching: snapshot))
     }
 
-    func testUserDefaultsStaleSnapshotAndAbsentInsertion() throws {
-        let name = stableSuiteName("MigrationAdapterCoverageTests.stale")
+    func test_userDefaults_staleSnapshotAndAbsentInsertion() throws {
+        let name = stableSuiteName("MigrationBackendCoverageTests.stale")
         let store = UserDefaultsMigrationBackend(
             userDefaults: try XCTUnwrap(UserDefaults.migratable(suiteName: name)),
             domainName: name

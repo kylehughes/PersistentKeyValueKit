@@ -48,8 +48,7 @@ where
     }
     
     override public func setUpWithError() throws {
-        suiteName = stableSuiteName("AbstractKeyValuePersistibleTests", function: name)
-        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        (userDefaults, suiteName) = try makeStableUserDefaults("AbstractKeyValuePersistibleTests", function: name)
     }
     
     override public func tearDown() {

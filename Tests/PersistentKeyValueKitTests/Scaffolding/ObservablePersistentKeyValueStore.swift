@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import PersistentKeyValueKit
+@testable import PersistentKeyValueKit
 
 final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @unchecked Sendable {
     private var deregistrationHandler: (() -> Void)?
@@ -22,12 +22,12 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     /// can deliver a notification that races deregistration.
     var retainsObservers: Bool {
         get {
-            withLock {
+            lock.withLockHeld {
                 isRetainingObservers
             }
         }
         set {
-            withLock {
+            lock.withLockHeld {
                 isRetainingObservers = newValue
             }
         }
@@ -54,13 +54,13 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     }
 
     var deregistrationCount: Int {
-        withLock {
+        lock.withLockHeld {
             deregistrations
         }
     }
 
     var registrationCount: Int {
-        withLock {
+        lock.withLockHeld {
             registrations
         }
     }
@@ -70,7 +70,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
         for key: Key,
         context: UnsafeMutableRawPointer?
     ) where Key: PersistentKeyProtocol {
-        let handler = withLock {
+        let handler = lock.withLockHeld {
             deregistrations += 1
             observations.removeAll {
                 $0.observer === observer && $0.keyID == key.id && $0.context == context
@@ -86,7 +86,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     }
 
     func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        let storedValue = withLock {
+        let storedValue = lock.withLockHeld {
             storage[key.id]
         }
 
@@ -95,7 +95,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
 
     /// Notifies every observer retained by ``retainsObservers``, including deregistered ones.
     func notifyRetainedObservers(keyPath: String?) {
-        let observers = withLock {
+        let observers = lock.withLockHeld {
             retainedObservers
         }
 
@@ -106,19 +106,19 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
 
     /// Runs `handler` once, after the next deregistration is removed.
     func onNextDeregistration(_ handler: @escaping () -> Void) {
-        withLock {
+        lock.withLockHeld {
             deregistrationHandler = handler
         }
     }
 
     func onNextRegistration(_ handler: @escaping () -> Void) {
-        withLock {
+        lock.withLockHeld {
             registrationHandler = handler
         }
     }
 
     func notifyObservers(keyPath: String?) {
-        let observations = withLock {
+        let observations = lock.withLockHeld {
             liveObservations()
         }
 
@@ -127,7 +127,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
 
     /// Delivers `notification` to every live observer through the selector it registered, without filtering by key.
     func postToObservers(_ notification: Notification) {
-        let observations = withLock {
+        let observations = lock.withLockHeld {
             liveObservations()
         }
 
@@ -142,7 +142,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
         with context: UnsafeMutableRawPointer?,
         and selector: Selector
     ) where Key: PersistentKeyProtocol {
-        let handler = withLock {
+        let handler = lock.withLockHeld {
             registrations += 1
             if isRetainingObservers {
                 retainedObservers.append(observer)
@@ -166,7 +166,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     }
 
     func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        let observations = withLock {
+        let observations = lock.withLockHeld {
             storage.removeValue(forKey: key.id)
 
             return liveObservations(for: key.id)
@@ -176,7 +176,7 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
     }
 
     func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        let observations = withLock {
+        let observations = lock.withLockHeld {
             storage[key.id] = value
 
             return liveObservations(for: key.id)
@@ -206,15 +206,6 @@ final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @uncheck
                 context: observation.context
             )
         }
-    }
-
-    private func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
     }
 }
 

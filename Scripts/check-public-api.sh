@@ -9,13 +9,28 @@ build_path=$(swift build --show-bin-path)
 # The native build system emits modules under `Modules`; Swift Build emits them in the bin path itself.
 module_path="$build_path/Modules"
 
+typecheck() {
+    swiftc -warnings-as-errors -typecheck -I "$module_path" -I "$build_path" "$1" 2>&1
+}
+
+# Fails unless the fixture compiles, which shows that the flags and module paths work.
+check_compiles() {
+    local fixture="$1"
+    local output
+    if ! output=$(typecheck "$fixture"); then
+        echo "Expected compilation to succeed: $fixture" >&2
+        echo "$output" >&2
+        exit 1
+    fi
+}
+
 # Fails unless compiling the fixture fails with every expected diagnostic substring.
 check_fixture() {
     local fixture="$1"
     shift
     local expected
     local output
-    if output=$(swiftc -warnings-as-errors -typecheck -I "$module_path" -I "$build_path" "$fixture" 2>&1); then
+    if output=$(typecheck "$fixture"); then
         echo "Expected compilation to fail: $fixture" >&2
         exit 1
     fi
@@ -28,6 +43,7 @@ check_fixture() {
     done
 }
 
+check_compiles Tests/CompileFail/PublicMigrationUsage.swift
 check_fixture Tests/CompileFail/MissingRepresentation.swift \
     "does not conform to protocol 'PersistentKeyValueRepresentation'" \
     "protocol requires function 'decode(storageObject:format:)'" \
@@ -38,11 +54,13 @@ check_fixture Tests/CompileFail/MissingPrimitive.swift \
     "protocol requires function 'encode(format:)'"
 check_fixture Tests/CompileFail/EndpointConstruction.swift "initializer is inaccessible"
 check_fixture Tests/CompileFail/BackendAccess.swift "'backend' is inaccessible due to 'internal' protection level"
-check_fixture Tests/CompileFail/IdentityAccess.swift "has no member 'identity'"
-check_fixture Tests/CompileFail/SnapshotAccess.swift "has no member 'snapshot'"
-check_fixture Tests/CompileFail/WriteAccess.swift "has no member 'prepareWrite'"
-check_fixture Tests/CompileFail/OperationAccess.swift "has no member 'commitWrite'"
-check_fixture Tests/CompileFail/MissingMigrationEndpoint.swift "does not conform to protocol 'PersistentKeyValueStore'"
+check_fixture Tests/CompileFail/IdentityAccess.swift "'migrationIdentity' is inaccessible due to 'internal' protection level"
+check_fixture Tests/CompileFail/SnapshotAccess.swift "'migrationSnapshot' is inaccessible due to 'internal' protection level"
+check_fixture Tests/CompileFail/WriteAccess.swift "'prepareMigrationWrite' is inaccessible due to 'internal' protection level"
+check_fixture Tests/CompileFail/OperationAccess.swift "'commitMigrationWrite' is inaccessible due to 'internal' protection level"
+check_fixture Tests/CompileFail/MissingMigrationEndpoint.swift \
+    "does not conform to protocol 'PersistentKeyValueStore'" \
+    "protocol requires property 'migrationEndpoint'"
 check_fixture Tests/CompileFail/MissingTracking.swift "missing argument for parameter 'tracking'"
 check_fixture Tests/CompileFail/UnlabeledItemBatch.swift "missing argument label 'items:'"
 

@@ -1,3 +1,10 @@
+//
+//  PublicAPIClientTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Combine
 import Foundation
 import PersistentKeyValueKit
@@ -6,7 +13,7 @@ import XCTest
 final class PublicAPIClientTests: XCTestCase {
     // MARK: Tests
 
-    func testCompletionRecorderCanBeSelectedIndependentlyOfDestination() throws {
+    func test_completionRecorder_canBeSelectedIndependentlyOfDestination() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let recorder = InMemoryPersistentKeyValueStore()
@@ -26,7 +33,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertTrue(recorder.get(.isMigrationCompleted(id: "migration")))
     }
 
-    func testConsumerAbstractionCanForwardMigrationEndpoint() throws {
+    func test_consumerAbstraction_canForwardMigrationEndpoint() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = EndpointForwardingStore(InMemoryPersistentKeyValueStore())
         let key = PersistentKey<Int>("forwarded", defaultValue: 0)
@@ -39,7 +46,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(destination.base.get(key), 7)
     }
 
-    func testConsumerDefinedPrimitiveProvidesCheckedConversion() throws {
+    func test_consumerDefinedPrimitive_providesCheckedConversion() throws {
         let representation = PublicPrimitive.persistentKeyValueRepresentation
         let object = try representation.encode(PublicPrimitive(rawValue: 31), format: .userDefaults)
 
@@ -49,7 +56,7 @@ final class PublicAPIClientTests: XCTestCase {
         )
     }
 
-    func testConsumerDefinedProxyRepresentationUsesCheckedConversion() throws {
+    func test_consumerDefinedProxyRepresentation_usesCheckedConversion() throws {
         let representation = PublicProxyRepresentation<String, Int>(
             to: {
                 Int($0)
@@ -63,7 +70,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(try representation.decode(storageObject: object as Any, format: .propertyList), "23")
     }
 
-    func testConversionOnlyConformancesWorkWithEveryStore() throws {
+    func test_conversionOnlyConformances_workWithEveryStore() throws {
         let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.conversionOnly")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
 
@@ -120,7 +127,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(defaults.get(scalarKey), PublicLayout(columns: 7))
     }
 
-    func testCustomKeyHooksShareTheStorageLocationWithObservationAndMigration() throws {
+    func test_customKeyHooks_shareTheStorageLocationWithObservationAndMigration() throws {
         let store = InMemoryPersistentKeyValueStore()
         let key = PublicClampedKey(id: "PublicAPI.clamped", defaultValue: 50, range: 0...100)
         let existentialKey: any PersistentKeyProtocol<Int> = key
@@ -180,7 +187,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(emissions, [100, 0, 70, 50])
     }
 
-    func testGenericMigrationAndExistentialMigrationUseTheSameContract() throws {
+    func test_genericAndExistentialMigration_useTheSameContract() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>("value", defaultValue: 0)
@@ -206,7 +213,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(secondDestination.get(key), 42)
     }
 
-    func testItemBatchesMixSameKeysMappedKeysAndTransforms() throws {
+    func test_itemBatches_mixSameKeysMappedKeysAndTransforms() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
 
@@ -245,7 +252,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(destination.get(.publicLaunchCount), 0)
     }
 
-    func testItemThatMapsAKeyToItselfWithinOneStoreThrowsSameStore() throws {
+    func test_itemThatMapsAKeyToItselfWithinOneStore_throwsSameStore() throws {
         let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.sameKey")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let legacy = PersistentKey<Bool>("PublicAPI.sameKey", defaultValue: false)
@@ -290,7 +297,7 @@ final class PublicAPIClientTests: XCTestCase {
         }
     }
 
-    func testMigrationCapturesEachEndpointOnce() throws {
+    func test_migration_capturesEachEndpointOnce() throws {
         for operation in 0..<8 {
             let source = EndpointForwardingStore(InMemoryPersistentKeyValueStore())
             let destination = EndpointForwardingStore(InMemoryPersistentKeyValueStore())
@@ -349,7 +356,7 @@ final class PublicAPIClientTests: XCTestCase {
         }
     }
 
-    func testReportFixturesCanBeBuiltWithPublicInitializers() {
+    func test_reportFixtures_canBeBuiltWithPublicInitializers() {
         let failure = PersistentKeyMigrationReport.Outcome(
             sourceKeyID: "old",
             destinationKeyID: "new",
@@ -370,14 +377,14 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(PersistentKeyMigrationIncompleteError(report: report).report.outcomes.count, 2)
     }
 
-    func testRepresentationCheckedConversionIsPublicAndFormatAware() throws {
+    func test_representationCheckedConversion_isPublicAndFormatAware() throws {
         let representation = Int.persistentKeyValueRepresentation
         let object = try representation.encode(21, format: .propertyList)
 
         XCTAssertEqual(try representation.decode(storageObject: object as Any, format: .propertyList), 21)
     }
 
-    func testSendableItemBatchCanMigrateInsideTask() async throws {
+    func test_sendableItemBatch_canMigrateInsideTask() async throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let items: [PersistentKeyMigrationItem] = [
@@ -398,7 +405,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(destination.get(.publicLaunchCount), 5)
     }
 
-    func testThrowIfIncompleteSurfacesTheReport() throws {
+    func test_throwIfIncomplete_surfacesTheReport() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
 
@@ -439,7 +446,7 @@ final class PublicAPIClientTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousNativeStoreForwardsOrdinaryAccessAndMigration() throws {
+    func test_ubiquitousNativeStore_forwardsOrdinaryAccessAndMigration() throws {
         let store = PublicMockUbiquitousKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>("cloud-adapter", defaultValue: 0)
@@ -473,7 +480,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(values, [0, 19, 0, 20, 21])
     }
 
-    func testUserDefaultsMigratableFactoryIsFailableAndNonthrowing() throws {
+    func test_userDefaultsMigratableFactory_isFailableAndNonthrowing() throws {
         let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.factory")
         let factory: (String) -> UserDefaults? = UserDefaults.migratable(suiteName:)
         let defaults = try XCTUnwrap(factory(suiteName))
@@ -493,7 +500,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertNotNil(contextualDefaults)
     }
 
-    func testUserDefaultsNativeStoreForwardsOrdinaryAccessAndObservation() throws {
+    func test_userDefaultsNativeStore_forwardsOrdinaryAccessAndObservation() throws {
         let suiteName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI")
         let plainDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
@@ -535,7 +542,7 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(values, [0, 12, 0, 13, 14])
     }
 
-    func testUserDefaultsNativeStoreMigrationUsesCustomRepresentations() throws {
+    func test_userDefaultsNativeStoreMigration_usesCustomRepresentations() throws {
         let sourceName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.source")
         let destinationName = publicAPISuiteName("PersistentKeyValueKit.PublicAPI.destination")
 

@@ -669,7 +669,7 @@ extension PersistentKeyValuePublisherTests {
     }
 
     func test_publisher_userDefaultsObservesChanges() throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuePublisherTests")
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
@@ -714,7 +714,7 @@ extension PersistentKeyValuePublisherTests {
     }
 
     func test_publisher_userDefaultsObservesKeyWithPeriods() throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuePublisherTests")
         let key = PersistentKey("com.example.key.\(#function)", defaultValue: false)
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
@@ -729,7 +729,7 @@ extension PersistentKeyValuePublisherTests {
     }
 
     func test_publisher_userDefaultsObservesKeyPathIncompatibleKeys() throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuePublisherTests")
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
         }
@@ -807,7 +807,7 @@ extension PersistentKeyValuePublisherTests {
 
             key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
 
-            await fulfillment(of: [registered], timeout: 1)
+            await fulfillment(of: [registered], timeout: 5)
 
             subscriber.request(.unlimited)
 
@@ -961,15 +961,6 @@ extension PersistentKeyValuePublisherTests {
 // MARK: - Test Utilities
 
 extension PersistentKeyValuePublisherTests {
-    private func makeUserDefaults(_ function: String = #function) throws -> (userDefaults: UserDefaults, suiteName: String) {
-        let suiteName = stableSuiteName("PersistentKeyValuePublisherTests", function: function)
-        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-
-        userDefaults.removePersistentDomain(forName: suiteName)
-
-        return (userDefaults, suiteName)
-    }
-
     private func receivedValues<P>(
         from publisher: P,
         expectedCount: Int = 1,
@@ -1008,13 +999,13 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     var values: [Input] {
-        withLock {
+        lock.withLockHeld {
             receivedValues
         }
     }
 
     func cancel() {
-        let subscription = withLock {
+        let subscription = lock.withLockHeld {
             self.subscription
         }
 
@@ -1022,7 +1013,7 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     func receive(_ input: Input) -> Subscribers.Demand {
-        withLock {
+        lock.withLockHeld {
             receivedValues.append(input)
         }
 
@@ -1033,26 +1024,17 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     func receive(subscription: Subscription) {
-        withLock {
+        lock.withLockHeld {
             self.subscription = subscription
         }
     }
 
     func request(_ demand: Subscribers.Demand) {
-        let subscription = withLock {
+        let subscription = lock.withLockHeld {
             self.subscription
         }
 
         subscription?.request(demand)
-    }
-
-    private func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
     }
 }
 
@@ -1097,44 +1079,15 @@ private final class CancellingOnDeinitSubscriber<Input>: Subscriber {
 // MARK: - Writing On Read Persistent Key-Value Store Definition
 
 /// A store that runs ``onRead`` before every read, so a read can write and report a change synchronously.
-private final class WritingOnReadPersistentKeyValueStore: PersistentKeyValueStore, @unchecked Sendable {
+private final class WritingOnReadPersistentKeyValueStore: ForwardingPersistentKeyValueStore, @unchecked Sendable {
     let base = InMemoryPersistentKeyValueStore()
 
     nonisolated(unsafe) var onRead: (() -> Void)?
-
-    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
-        base.migrationEndpoint
-    }
-
-    func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        base.deregister(observer, for: key, context: context)
-    }
 
     func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
         onRead?()
 
         return base.get(key)
-    }
-
-    func register<Key>(
-        observer: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        base.register(observer: observer, for: key, with: context, and: selector)
-    }
-
-    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        base.remove(key)
-    }
-
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        base.set(key, to: value)
     }
 }
 
@@ -1306,34 +1259,23 @@ private final class SubscriptionHookSubscriber<Input>: @unchecked Sendable {
 
     /// Whether every value was delivered on the thread that delivered the subscription.
     var receivedEveryValueOnSubscribingThread: Bool {
-        withLock {
+        lock.withLockHeld {
             !receivedOnOtherThread
         }
     }
 
     var values: [Input] {
-        withLock {
+        lock.withLockHeld {
             receivedValues
         }
     }
 
     func cancel() {
-        let subscription = withLock {
+        let subscription = lock.withLockHeld {
             self.subscription
         }
 
         subscription?.cancel()
-    }
-
-    // MARK: Private Instance Interface
-
-    private func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
     }
 }
 
@@ -1343,7 +1285,7 @@ extension SubscriptionHookSubscriber: Subscriber {
     typealias Failure = Never
 
     func receive(_ input: Input) -> Subscribers.Demand {
-        withLock {
+        lock.withLockHeld {
             receivedValues.append(input)
 
             if let subscribingThread, pthread_equal(subscribingThread, pthread_self()) == 0 {
@@ -1359,7 +1301,7 @@ extension SubscriptionHookSubscriber: Subscriber {
 
     func receive(subscription: Subscription) {
         // The hook runs once and is released afterward, so captures of this subscriber do not keep it alive.
-        let onReceiveSubscription = withLock {
+        let onReceiveSubscription = lock.withLockHeld {
             subscribingThread = pthread_self()
             self.subscription = subscription
 

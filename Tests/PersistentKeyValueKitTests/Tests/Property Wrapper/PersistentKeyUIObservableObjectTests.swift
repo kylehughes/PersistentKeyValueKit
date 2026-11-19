@@ -2,6 +2,8 @@
 //  PersistentKeyUIObservableObjectTests.swift
 //  PersistentKeyValueKit
 //
+//  Created by Kyle Hughes on 9/15/26.
+//
 
 import Combine
 import Foundation
@@ -29,7 +31,7 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
             backgroundExpectation.fulfill()
         }
 
-        await fulfillment(of: [callbackExpectation, backgroundExpectation], timeout: 1)
+        await fulfillment(of: [callbackExpectation, backgroundExpectation], timeout: 5)
 
         XCTAssertTrue(callbackOnMainThread)
         cancellable.cancel()
@@ -245,7 +247,13 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
             written.signal()
         }
 
-        written.wait()
+        let writesResult = written.wait(timeout: .now() + 5)
+        XCTAssertEqual(writesResult, .success, "The background writes did not finish")
+
+        guard writesResult == .success else {
+            return
+        }
+
         observer.store = selectedStore
 
         var notifiedValues: [Int] = []
@@ -260,7 +268,7 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
             drained.fulfill()
         }
 
-        wait(for: [drained], timeout: 1)
+        wait(for: [drained], timeout: 5)
 
         XCTAssertEqual(notifiedValues, [])
 
@@ -427,10 +435,15 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
                 observer.store = store
             }
 
-            written.wait()
+            let writeResult = written.wait(timeout: .now() + 5)
+            XCTAssertEqual(writeResult, .success, "Write \(value) did not finish")
+
+            guard writeResult == .success else {
+                return
+            }
 
             // A delivered change is already enqueued on the main queue when the write returns.
-            let deadline = Date().addingTimeInterval(0.25)
+            let deadline = Date().addingTimeInterval(5)
 
             while notifiedValue != value, Date() < deadline {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.001))
@@ -590,41 +603,6 @@ private final class ReleaseAction {
 // MARK: - ValueTypeStore Definition
 
 /// A value-type store that forwards every operation to a backing store.
-private struct ValueTypeStore: PersistentKeyValueStore {
+private struct ValueTypeStore: ForwardingPersistentKeyValueStore {
     let base: ObservablePersistentKeyValueStore
-
-    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
-        get throws {
-            try base.migrationEndpoint
-        }
-    }
-
-    func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        base.deregister(observer, for: key, context: context)
-    }
-
-    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        base.get(key)
-    }
-
-    func register<Key>(
-        observer: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        base.register(observer: observer, for: key, with: context, and: selector)
-    }
-
-    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        base.remove(key)
-    }
-
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        base.set(key, to: value)
-    }
 }

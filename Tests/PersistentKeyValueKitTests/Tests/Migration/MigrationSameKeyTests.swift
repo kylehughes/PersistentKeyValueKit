@@ -1,3 +1,10 @@
+//
+//  MigrationSameKeyTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/18/26.
+//
+
 import Foundation
 import XCTest
 
@@ -8,7 +15,7 @@ import XCTest
 final class MigrationSameKeyTests: XCTestCase {
     // MARK: Tests
 
-    func testSameKeyItemsBetweenDistinctInstancesOfOneStoreThrowSameStore() throws {
+    func test_sameKeyItemsBetweenDistinctInstancesOfOneStore_throwSameStore() throws {
         let suiteName = stableSuiteName("MigrationSameKeyTests", function: #function)
         let aliasName = suiteName.uppercased()
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
@@ -51,7 +58,7 @@ final class MigrationSameKeyTests: XCTestCase {
         }
     }
 
-    func testSameKeyItemsThrowSameStoreBeforeReadingAnyKey() throws {
+    func test_sameKeyItems_throwSameStoreBeforeReadingAnyKey() throws {
         let decodes = Counter()
         let transforms = Counter()
         let legacy = PersistentKey<Int>(
@@ -124,7 +131,7 @@ final class MigrationSameKeyTests: XCTestCase {
         XCTAssertEqual(transforms.value, 0)
     }
 
-    func testTransformItemsBetweenNormalizationVariantsFollowTheStoreKeyIdentity() throws {
+    func test_transformItemsBetweenNormalizationVariants_followTheStoreKeyIdentity() throws {
         let composed = PersistentKey<Int>("key:\(#function).caf\u{E9}", defaultValue: 0)
         let decomposed = PersistentKey<Int>("key:\(#function).cafe\u{301}", defaultValue: 0)
         let other = PersistentKey<Int>("key:\(#function).other", defaultValue: 0)

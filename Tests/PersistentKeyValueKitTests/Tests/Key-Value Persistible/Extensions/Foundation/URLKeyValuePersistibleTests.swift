@@ -33,7 +33,7 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
 
     @available(watchOS 9.0, *)
     @MainActor
-    func testRelativeReferenceRoundTrips() throws {
+    func test_relativeReference_roundTrips() throws {
         let representation = URL.persistentKeyValueRepresentation
         let value = try XCTUnwrap(URL(string: "relative/path?query=1"))
 
@@ -57,7 +57,7 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
 
     @available(watchOS 9.0, *)
     @MainActor
-    func testUbiquitousStoreReadsLegacyURLObject() {
+    func test_ubiquitousStore_readsLegacyURLObject() {
         let store = MockUbiquitousKeyValueStore()
         let value = URL(string: "https://kylehugh.es/legacy")!
         store.set(value, forKey: "url")
@@ -67,7 +67,7 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
 
     @available(watchOS 9.0, *)
     @MainActor
-    func testUbiquitousStoreSetterStoresAbsoluteString() {
+    func test_ubiquitousStoreSet_storesAbsoluteString() {
         let store = MockUbiquitousKeyValueStore()
         let webURL = URL(string: "https://kylehugh.es/web")!
         URL.set("web", to: webURL, in: store)

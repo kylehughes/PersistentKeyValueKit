@@ -16,8 +16,7 @@ final class PrimitiveKeyValuePersistibleDefaultsTests: XCTestCase {
     // MARK: XCTestCase Implementation
 
     override func setUpWithError() throws {
-        suiteName = stableSuiteName("PersistentKeyValueKitTests.PrimitiveDefaults", function: name)
-        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValueKitTests.PrimitiveDefaults", function: name)
     }
 
     override func tearDown() {

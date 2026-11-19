@@ -24,8 +24,7 @@ final class PrimitiveCollectionConversionFailureTests: XCTestCase {
     // MARK: XCTestCase Implementation
 
     override func setUpWithError() throws {
-        suiteName = stableSuiteName("PersistentKeyValueKitTests.PrimitiveCollectionConversionFailure", function: name)
-        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValueKitTests.PrimitiveCollectionConversionFailure", function: name)
     }
 
     override func tearDown() {

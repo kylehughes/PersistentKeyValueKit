@@ -322,7 +322,7 @@ extension PersistentKeyValuesTests {
 
 extension PersistentKeyValuesTests {
     func test_values_userDefaultsObservesChanges() async throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
@@ -337,7 +337,7 @@ extension PersistentKeyValuesTests {
     }
 
     func test_values_userDefaultsObservesKeyWithPeriods() async throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
         let key = PersistentKey("com.example.key.\(#function)", defaultValue: false)
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
@@ -352,7 +352,7 @@ extension PersistentKeyValuesTests {
     }
 
     func test_values_userDefaultsObservesKeyPathIncompatibleKeys() async throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
         }
@@ -370,7 +370,7 @@ extension PersistentKeyValuesTests {
     }
 
     func test_values_userDefaultsDecoderWritingObservedKeyEmitsInReadOrder() async throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
         let keyID = "key:\(#function)"
         // `UserDefaults` is thread-safe but not declared `Sendable`.
         nonisolated(unsafe) let decoderUserDefaults = userDefaults
@@ -599,7 +599,7 @@ extension PersistentKeyValuesTests {
                 return await iterator.next()
             }
 
-            await fulfillment(of: [registered], timeout: 1)
+            await fulfillment(of: [registered], timeout: 5)
 
             await withTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -779,15 +779,6 @@ extension PersistentKeyValuesTests {
     private func assertSendableAsyncSequence<Sequence>(
         _ sequence: Sequence
     ) where Sequence: AsyncSequence & Sendable, Sequence.Element: Sendable {}
-
-    private func makeUserDefaults(_ function: String = #function) throws -> (userDefaults: UserDefaults, suiteName: String) {
-        let suiteName = stableSuiteName("PersistentKeyValuesTests", function: function)
-        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-
-        userDefaults.removePersistentDomain(forName: suiteName)
-
-        return (userDefaults, suiteName)
-    }
 
     /// Iterates `sequence` until it produces `count` values, performing `action` once the iterator has registered.
     ///

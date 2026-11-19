@@ -796,7 +796,7 @@ extension PersistentValueTests {
     }
 
     @MainActor
-    func test_inputChange_explicitStore_retainedBindingWriteDoesNotRenderNewStore() async throws {
+    func test_inputChange_explicitStore_retainedBindingWriteDoesNotRenderNewStore() async {
         let viewController = ViewController()
         let firstStore = InMemoryPersistentKeyValueStore()
         let secondStore = InMemoryPersistentKeyValueStore()
@@ -818,16 +818,17 @@ extension PersistentValueTests {
         recorder.renderedValues = []
         retainedBinding?.wrappedValue = 7
 
-        // Give SwiftUI time to render an invalidation before the control write.
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // The marker changes after the write, so SwiftUI renders any invalidation from the write no later than it.
+        model.renderMarker += 1
+        await waitForRenderedMarker(1, in: recorder)
 
         XCTAssertEqual(firstStore.get(key), 7)
-        XCTAssertEqual(recorder.renderedValues, [])
+        XCTAssertEqual(recorder.renderedValues, [2], "Only the marker change should render the row")
 
         secondStore.set(key, to: 8)
         await waitForRenderedValue(8, in: recorder)
 
-        XCTAssertEqual(recorder.renderedValues, [8])
+        XCTAssertEqual(recorder.renderedValues, [2, 8])
     }
 
     @MainActor
@@ -931,6 +932,28 @@ extension PersistentValueTests {
         }
     }
 
+    /// Waits until the row renders with `marker`, failing after a bounded timeout.
+    @MainActor
+    private func waitForRenderedMarker(_ marker: Int, in recorder: SwitchingRecorder) async {
+        guard recorder.renderedMarker != marker else {
+            return
+        }
+
+        let rendered = expectation(description: "Rendered marker \(marker)")
+
+        recorder.onRender = { _ in
+            guard recorder.renderedMarker == marker else {
+                return
+            }
+
+            recorder.onRender = nil
+            rendered.fulfill()
+        }
+
+        await fulfillment(of: [rendered], timeout: 5)
+        recorder.onRender = nil
+    }
+
     /// Waits until the row renders `value`, failing after a bounded timeout.
     @MainActor
     private func waitForRenderedValue(_ value: Int, in recorder: SwitchingRecorder) async {
@@ -988,12 +1011,21 @@ extension PersistentValueTests {
 
     // MARK: Private Instance Interface
 
-    /// Waits until the rendered rows satisfy `predicate`, giving up after a bounded timeout.
+    /// Waits until the rendered rows satisfy `predicate`, failing after a bounded timeout.
     @MainActor
-    private func waitForRows(in model: KeyRowModel, until predicate: ([String: String]) -> Bool) async {
+    private func waitForRows(
+        in model: KeyRowModel,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        until predicate: ([String: String]) -> Bool
+    ) async {
         let deadline = Date(timeIntervalSinceNow: 5)
 
-        while !predicate(model.renderedRows), Date() < deadline {
+        while !predicate(model.renderedRows) {
+            guard Date() < deadline else {
+                return XCTFail("Rows did not render as expected: \(model.renderedRows)", file: file, line: line)
+            }
+
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
     }
@@ -1002,41 +1034,8 @@ extension PersistentValueTests {
 // MARK: - ForwardingStore Definition
 
 /// A value-type store that forwards every operation to a backing store.
-private struct ForwardingStore: PersistentKeyValueStore {
+private struct ForwardingStore: ForwardingPersistentKeyValueStore {
     let base: InMemoryPersistentKeyValueStore
-
-    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
-        base.migrationEndpoint
-    }
-
-    func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        base.deregister(observer, for: key, context: context)
-    }
-
-    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        base.get(key)
-    }
-
-    func register<Key>(
-        observer: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        base.register(observer: observer, for: key, with: context, and: selector)
-    }
-
-    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        base.remove(key)
-    }
-
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        base.set(key, to: value)
-    }
 }
 
 // MARK: - KeyRow Definition
@@ -1133,6 +1132,7 @@ private struct ObservedObjectRow: View {
 private final class SwitchingModel: ObservableObject {
     @Published var environmentStore: any PersistentKeyValueStore
     @Published var keyID: String
+    @Published var renderMarker = 0
     @Published var store: (any PersistentKeyValueStore)?
 
     init(
@@ -1148,15 +1148,17 @@ private final class SwitchingModel: ObservableObject {
 
 // MARK: - SwitchingRecorder Definition
 
-/// Records the value and binding from the row's most recent render.
+/// Records the value, render marker, and binding from the row's most recent render.
 @MainActor
 private final class SwitchingRecorder {
     var binding: Binding<Int>?
     var onRender: ((Int) -> Void)?
+    var renderedMarker: Int?
     var renderedValue: Int?
     var renderedValues: [Int] = []
 
-    func record(_ value: Int, binding: Binding<Int>) {
+    func record(_ value: Int, marker: Int = 0, binding: Binding<Int>) {
+        renderedMarker = marker
         renderedValue = value
         renderedValues.append(value)
         self.binding = binding
@@ -1172,7 +1174,7 @@ private struct SwitchingRoot: View {
     let recorder: SwitchingRecorder
 
     var body: some View {
-        SwitchingRow(keyID: model.keyID, store: model.store, recorder: recorder)
+        SwitchingRow(keyID: model.keyID, store: model.store, marker: model.renderMarker, recorder: recorder)
             .defaultPersistentKeyValueStore(model.environmentStore)
     }
 }
@@ -1182,15 +1184,17 @@ private struct SwitchingRoot: View {
 private struct SwitchingRow: View {
     @PersistentValue<PersistentKey<Int>> var value: Int
 
+    let marker: Int
     let recorder: SwitchingRecorder
 
-    init(keyID: String, store: (any PersistentKeyValueStore)?, recorder: SwitchingRecorder) {
+    init(keyID: String, store: (any PersistentKeyValueStore)?, marker: Int, recorder: SwitchingRecorder) {
         _value = PersistentValue(PersistentKey(keyID, defaultValue: 0), store: store)
+        self.marker = marker
         self.recorder = recorder
     }
 
     var body: some View {
-        recorder.record(value, binding: $value)
+        recorder.record(value, marker: marker, binding: $value)
 
         return Text(String(value))
     }

@@ -7,6 +7,7 @@
 
 import Foundation
 import ObjectiveC
+@testable import PersistentKeyValueKit
 
 /// Runs an action once, immediately after a notification center installs an observer for one notification name and
 /// observed object.
@@ -45,7 +46,7 @@ enum NotificationObserverInstallationHook {
         )!
         let hook = Hook(action: action, center: center, name: name, object: object)
 
-        withLock {
+        lock.withLockHeld {
             pendingHook = hook
         }
 
@@ -54,14 +55,14 @@ enum NotificationObserverInstallationHook {
         defer {
             method_exchangeImplementations(original, replacement)
 
-            withLock {
+            lock.withLockHeld {
                 pendingHook = nil
             }
         }
 
         body()
 
-        return withLock {
+        return lock.withLockHeld {
             hook.hasRun
         }
     }
@@ -74,7 +75,7 @@ enum NotificationObserverInstallationHook {
         name: Notification.Name?,
         object: Any?
     ) -> (() -> Void)? {
-        withLock {
+        lock.withLockHeld {
             guard
                 let hook = pendingHook,
                 hook.center === center,
@@ -89,17 +90,6 @@ enum NotificationObserverInstallationHook {
 
             return hook.action
         }
-    }
-
-    // MARK: Private Static Interface
-
-    private static func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
     }
 }
 

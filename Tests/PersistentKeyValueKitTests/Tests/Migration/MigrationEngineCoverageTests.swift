@@ -1,3 +1,10 @@
+//
+//  MigrationEngineCoverageTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -118,47 +125,18 @@ extension ScriptedMigrationStore: PersistentKeyValueMigrationBackend {
     }
 }
 
-// MARK: - PersistentKeyValueStore Extension
+// MARK: - ForwardingPersistentKeyValueStore Extension
 
-extension ScriptedMigrationStore: PersistentKeyValueStore {
+extension ScriptedMigrationStore: ForwardingPersistentKeyValueStore {
     var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         .init(backend: self)
-    }
-
-    func deregister<Key>(
-        _ observer: NSObject,
-        for key: Key,
-        context: UnsafeMutableRawPointer?
-    ) where Key: PersistentKeyProtocol {
-        base.deregister(observer, for: key, context: context)
-    }
-
-    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
-        base.get(key)
-    }
-
-    func register<Key>(
-        observer: NSObject,
-        for key: Key,
-        with context: UnsafeMutableRawPointer?,
-        and selector: Selector
-    ) where Key: PersistentKeyProtocol {
-        base.register(observer: observer, for: key, with: context, and: selector)
-    }
-
-    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
-        base.remove(key)
-    }
-
-    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
-        base.set(key, to: value)
     }
 }
 
 final class MigrationEngineCoverageTests: XCTestCase {
     // MARK: Tests
 
-    func testCompletionCurrentAndDecodedFalseVerificationFailures() throws {
+    func test_completion_currentAndDecodedFalseVerificationFailures() throws {
         let source = ScriptedMigrationStore()
         let destination = ScriptedMigrationStore()
         let recorder = ScriptedMigrationStore()
@@ -172,10 +150,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
             onConflict: .overwriteDestination,
             tracking: .once(id: #function + "1", recordedIn: recorder)
         )
-        if case .failed = first.completion {
-        } else {
-            XCTFail()
-        }
+        XCTAssertEqual(first.completion, .failed)
 
         recorder.current = true
         recorder.commitReturnsFalseBool = true
@@ -185,13 +160,10 @@ final class MigrationEngineCoverageTests: XCTestCase {
             onConflict: .overwriteDestination,
             tracking: .once(id: #function + "2", recordedIn: recorder)
         )
-        if case .failed = second.completion {
-        } else {
-            XCTFail()
-        }
+        XCTAssertEqual(second.completion, .failed)
     }
 
-    func testCompletionRecordVerificationFailures() throws {
+    func test_completionRecord_verificationFailures() throws {
         let source = ScriptedMigrationStore()
         let destination = ScriptedMigrationStore()
         let recorder = ScriptedMigrationStore()
@@ -205,16 +177,13 @@ final class MigrationEngineCoverageTests: XCTestCase {
             onConflict: .overwriteDestination,
             tracking: .once(id: #function, recordedIn: recorder)
         )
-        if case .failed = report.completion {
-        } else {
-            XCTFail()
-        }
+        XCTAssertEqual(report.completion, .failed)
 
         XCTAssertTrue(report.hasFailures)
         XCTAssertEqual(destination.get(k), 1)
     }
 
-    func testConflictDiscardDestinationChangedReportsExactError() throws {
+    func test_conflictDiscardDestinationChanged_reportsExactError() throws {
         let source = ScriptedMigrationStore()
         let destination = ScriptedMigrationStore()
         let k = key()
@@ -232,14 +201,14 @@ final class MigrationEngineCoverageTests: XCTestCase {
         guard let outcome = report.outcomes.first, case .failed(.write) = outcome.status,
             let error = outcome.error
         else {
-            return XCTFail()
+            return XCTFail("Expected a write failure with an error, got \(report.outcomes)")
         }
 
         XCTAssertEqual(error as? PersistentKeyMigrationError, .destinationChanged)
         XCTAssertEqual(source.get(k), 1)
     }
 
-    func testConflictDiscardSourceChangedReportsCleanup() throws {
+    func test_conflictDiscardSourceChanged_reportsCleanup() throws {
         let source = ScriptedMigrationStore()
         let destination = ScriptedMigrationStore()
         let k = key()
@@ -258,13 +227,13 @@ final class MigrationEngineCoverageTests: XCTestCase {
             case .failed(.cleanup) = report.outcomes[0].status,
             report.outcomes[0].error as? PersistentKeyMigrationError == .sourceChanged
         else {
-            return XCTFail()
+            return XCTFail("Expected a cleanup failure from a changed source, got \(report.outcomes[0])")
         }
 
         XCTAssertEqual(source.get(k), 1)
     }
 
-    func testCustomDisabledKeyIsSkipped() throws {
+    func test_customDisabledKey_isSkipped() throws {
         struct DisabledKey: PersistentKeyProtocol, Sendable {
             let id: String
             let defaultValue = 0
@@ -306,13 +275,13 @@ final class MigrationEngineCoverageTests: XCTestCase {
         let report = try source.copy(k, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
 
         guard case .keyDisabled = report.outcomes[0].status else {
-            return XCTFail()
+            return XCTFail("Expected a disabled key, got \(report.outcomes[0].status)")
         }
 
         XCTAssertEqual(destination.get(k), 0)
     }
 
-    func testDestinationVerificationFalsePreservesSource() throws {
+    func test_destinationVerificationFalse_preservesSource() throws {
         let source = ScriptedMigrationStore()
         let destination = ScriptedMigrationStore()
         let k = key()
@@ -325,13 +294,13 @@ final class MigrationEngineCoverageTests: XCTestCase {
             case .failed(.write) = report.outcomes[0].status,
             report.outcomes[0].error as? PersistentKeyMigrationError == .writeVerificationFailed
         else {
-            return XCTFail()
+            return XCTFail("Expected a write verification failure, got \(report.outcomes[0])")
         }
 
         XCTAssertEqual(source.get(k), 1)
     }
 
-    func testInvalidSourceAndDestinationIdentities() throws {
+    func test_invalidSourceAndDestinationIdentities_throw() throws {
         let source = ScriptedMigrationStore(namespace: "", identifier: "x")
         let destination = ScriptedMigrationStore()
 
@@ -381,7 +350,7 @@ final class MigrationEngineCoverageTests: XCTestCase {
         )
     }
 
-    func testNilCommittedSnapshotReportsVerificationFailure() throws {
+    func test_nilCommittedSnapshot_reportsVerificationFailure() throws {
         let source = ScriptedMigrationStore()
         let destination = ScriptedMigrationStore()
         let k = key()
@@ -395,11 +364,11 @@ final class MigrationEngineCoverageTests: XCTestCase {
             case .failed(.write) = report.outcomes[0].status,
             report.outcomes[0].error as? PersistentKeyMigrationError == .writeVerificationFailed
         else {
-            return XCTFail()
+            return XCTFail("Expected a write verification failure, got \(report.outcomes[0])")
         }
     }
 
-    func testReportCompletenessFlags() {
+    func test_report_completenessFlags() {
         let failedOutcome = PersistentKeyMigrationReport(
             outcomes: [
                 .init(

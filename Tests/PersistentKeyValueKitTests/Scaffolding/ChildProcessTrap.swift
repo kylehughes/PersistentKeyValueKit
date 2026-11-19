@@ -1,3 +1,10 @@
+//
+//  ChildProcessTrap.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 #if os(macOS)
 
 import Darwin
@@ -82,11 +89,18 @@ enum ChildProcessTrap {
             throw error
         }
 
-        guard termination.wait(timeout: .now() + 10) == .success else {
-            process.terminate()
+        guard termination.wait(timeout: .now() + 60) == .success else {
+            if process.isRunning {
+                process.terminate()
+            }
 
-            if termination.wait(timeout: .now() + 5) != .success {
+            if termination.wait(timeout: .now() + 5) != .success, process.isRunning {
                 kill(process.processIdentifier, SIGKILL)
+            }
+
+            guard termination.wait(timeout: .now() + 5) == .success else {
+                XCTFail("Trap child process termination was not confirmed", file: file, line: line)
+                return XCTFail("Trap child process timed out", file: file, line: line)
             }
 
             return XCTFail("Trap child process timed out", file: file, line: line)

@@ -1,3 +1,10 @@
+//
+//  MigrationSetupValidationTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/17/26.
+//
+
 import Foundation
 import XCTest
 
@@ -6,7 +13,7 @@ import XCTest
 final class MigrationSetupValidationTests: XCTestCase {
     // MARK: Tests
 
-    func testChainedRenameAcrossStoresIsAllowed() throws {
+    func test_chainedRenameAcrossStores_isAllowed() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let a = key(#function, "a")
@@ -27,7 +34,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         XCTAssertEqual(destination.get(c), 2)
     }
 
-    func testDuplicateDestinationKeyIsRejected() throws {
+    func test_duplicateDestinationKey_isRejected() throws {
         let source = MigrationFaultStore()
         let destination = MigrationFaultStore()
         let a = key(#function, "a")
@@ -46,7 +53,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         )
     }
 
-    func testDuplicateSourceKeyIsRejectedEvenWithDistinctDestinations() throws {
+    func test_duplicateSourceKey_isRejectedEvenWithDistinctDestinations() throws {
         let source = MigrationFaultStore()
         let destination = MigrationFaultStore()
         let a = key(#function, "a")
@@ -75,7 +82,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         )
     }
 
-    func testEmptyBatchWithinOneStoreIsAllowed() throws {
+    func test_emptyBatchWithinOneStore_isAllowed() throws {
         let store = InMemoryPersistentKeyValueStore()
         let report = try store.copy(items: [], to: store, onConflict: .overwriteDestination, tracking: .untracked)
 
@@ -83,7 +90,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         XCTAssertTrue(report.isComplete)
     }
 
-    func testEmptyRecorderIdentityIsInternalInconsistency() throws {
+    func test_emptyRecorderIdentity_isInternalInconsistency() throws {
         let source = MigrationFaultStore()
         let destination = MigrationFaultStore()
         let recorder = MigrationFaultStore(identifier: "")
@@ -100,7 +107,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         )
     }
 
-    func testEmptyTrackingIdentifierIsRejectedForDestinationTracking() throws {
+    func test_emptyTrackingIdentifier_isRejectedForDestinationTracking() throws {
         let source = MigrationFaultStore()
         let destination = MigrationFaultStore()
 
@@ -117,7 +124,7 @@ final class MigrationSetupValidationTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testKeyIdentifierLimitIsCheckedAgainstTheStoreThatHoldsTheKey() throws {
+    func test_keyIdentifierLimit_isCheckedAgainstTheStoreThatHoldsTheKey() throws {
         let memory = MigrationFaultStore()
         let cloud = UbiquitousKeyValueMigrationBackend(
             store: StrictMigrationUbiquitousStore(),
@@ -175,7 +182,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         XCTAssertEqual(defaults.get(long), 3)
     }
 
-    func testMarkerIdentifierLimitIsCheckedAgainstTheRecorder() throws {
+    func test_markerIdentifierLimit_isCheckedAgainstTheRecorder() throws {
         let source = MigrationFaultStore()
         let destination = MigrationFaultStore()
         let recorder = MigrationFaultStore()
@@ -211,7 +218,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         XCTAssertEqual(report.completion, .recorded)
     }
 
-    func testOverlappingKeysWithinOneStoreAreRejected() throws {
+    func test_overlappingKeysWithinOneStore_areRejected() throws {
         let store = MigrationFaultStore()
         let a = key(#function, "a")
         let b = key(#function, "b")
@@ -249,7 +256,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         )
     }
 
-    func testRegistryClaimsSourceIDsInSourceAndDestinationIDsInDestination() throws {
+    func test_registry_claimsSourceIDsInSourceAndDestinationIDsInDestination() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = MigrationFaultStore()
         let other = InMemoryPersistentKeyValueStore()
@@ -299,7 +306,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         XCTAssertEqual(destination.get(b), 1)
     }
 
-    func testReservedDestinationKeyIsRejected() throws {
+    func test_reservedDestinationKey_isRejected() throws {
         let source = MigrationFaultStore()
         let destination = MigrationFaultStore()
         let reserved = PersistentKey<Bool>.isMigrationCompleted(id: #function)
@@ -328,7 +335,7 @@ final class MigrationSetupValidationTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testReservedPrefixSpellingsAreRejectedBeforeMutationInEveryStore() throws {
+    func test_reservedPrefixSpellings_areRejectedBeforeMutationInEveryStore() throws {
         let prefix = "PersistentKeyValueKit_MigrationCompleted_"
         let sourceSuiteName = stableSuiteName("MigrationSetupValidationTests.ReservedPrefix.Source")
         let destinationSuiteName = stableSuiteName("MigrationSetupValidationTests.ReservedPrefix.Destination")
@@ -379,7 +386,7 @@ final class MigrationSetupValidationTests: XCTestCase {
         XCTAssertEqual(destination.get(unreserved), 1)
     }
 
-    func testSameStoreIsRejectedWhenAnyItemMapsAKeyToItself() throws {
+    func test_sameStore_isRejectedWhenAnyItemMapsAKeyToItself() throws {
         let store = MigrationFaultStore()
         let a = key(#function, "a")
         let b = key(#function, "b")

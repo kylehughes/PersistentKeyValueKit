@@ -1,3 +1,10 @@
+//
+//  MigrationReportTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/17/26.
+//
+
 import Foundation
 import XCTest
 
@@ -6,7 +13,7 @@ import XCTest
 final class MigrationReportTests: XCTestCase {
     // MARK: Tests
 
-    func testCompletionErrorIsReportedAlongsideFailedCompletion() throws {
+    func test_completionError_isReportedAlongsideFailedCompletion() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let recorder = MigrationFaultStore()
@@ -29,7 +36,7 @@ final class MigrationReportTests: XCTestCase {
         XCTAssertFalse(report.isComplete)
     }
 
-    func testEmptyBatchWithTrackingRecordsMarker() throws {
+    func test_emptyBatchWithTracking_recordsMarker() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let recorder = InMemoryPersistentKeyValueStore()
@@ -67,7 +74,7 @@ final class MigrationReportTests: XCTestCase {
         XCTAssertTrue(repeated.isComplete)
     }
 
-    func testOutcomeForKeyMatchesSourceKeyIdentifier() throws {
+    func test_outcomeForKey_matchesSourceKeyIdentifier() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let old = PersistentKey<Int>("old:\(#function)", defaultValue: 0)
@@ -101,7 +108,7 @@ final class MigrationReportTests: XCTestCase {
         XCTAssertNil(skipped.outcome(for: old))
     }
 
-    func testOutcomeInitializersPreserveTheErrorInvariant() {
+    func test_outcomeInitializers_preserveTheErrorInvariant() {
         let plain = PersistentKeyMigrationReport.Outcome(sourceKeyID: "a", status: .copied)
 
         XCTAssertEqual(plain.sourceKeyID, "a")
@@ -133,7 +140,7 @@ final class MigrationReportTests: XCTestCase {
         XCTAssertEqual(unmapped.destinationKeyID, "a")
     }
 
-    func testReportInitializersPreserveTheCompletionErrorInvariant() {
+    func test_reportInitializers_preserveTheCompletionErrorInvariant() {
         let completions: [PersistentKeyMigrationReport.Completion] = [.alreadyRecorded, .recorded, .untracked]
 
         for completion in completions {
@@ -170,7 +177,7 @@ final class MigrationReportTests: XCTestCase {
         XCTAssertEqual(failed.outcomes.count, 1)
     }
 
-    func testStatusesAreHashable() {
+    func test_statuses_areHashable() {
         let stages: [PersistentKeyMigrationReport.FailureStage] = [
             .snapshot, .decode, .transform, .prepare, .write, .cleanup,
         ]
@@ -188,7 +195,7 @@ final class MigrationReportTests: XCTestCase {
         XCTAssertNotEqual(PersistentKeyMigrationReport.Status.failed(.write), .failed(.cleanup))
     }
 
-    func testThrowIfIncompleteThrowsExactlyWhenIncomplete() throws {
+    func test_throwIfIncomplete_throwsExactlyWhenIncomplete() throws {
         let complete = PersistentKeyMigrationReport(
             outcomes: [.init(sourceKeyID: "a", status: .copied)],
             completion: .recorded
@@ -231,7 +238,7 @@ final class MigrationReportTests: XCTestCase {
 
     #if os(macOS) && DEBUG
 
-    func test_alreadyRecordedCompletionWithOutcomesTraps() throws {
+    func test_alreadyRecordedCompletionWithOutcomes_traps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(
                 outcomes: [.init(sourceKeyID: "a", status: .moved)],
@@ -251,7 +258,7 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
-    func test_failedCompletionWithFailedOutcomeTraps() throws {
+    func test_failedCompletionWithFailedOutcome_traps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(
                 outcomes: [
@@ -269,7 +276,7 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
-    func test_failedCompletionWithoutErrorTraps() throws {
+    func test_failedCompletionWithoutError_traps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(outcomes: [], completion: .failed)
             return
@@ -282,7 +289,7 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
-    func test_failedOutcomeWithoutErrorTraps() throws {
+    func test_failedOutcomeWithoutError_traps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport.Outcome(sourceKeyID: "a", status: .failed(.write))
             return
@@ -295,7 +302,7 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
-    func test_incompleteErrorWithCompleteReportTraps() throws {
+    func test_incompleteErrorWithCompleteReport_traps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationIncompleteError(
                 report: PersistentKeyMigrationReport(outcomes: [], completion: .alreadyRecorded)
@@ -319,7 +326,7 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
-    func test_notRecordedCompletionWithoutFailedOutcomeTraps() throws {
+    func test_notRecordedCompletionWithoutFailedOutcome_traps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(
                 outcomes: [.init(sourceKeyID: "a", status: .copied)],
@@ -335,7 +342,7 @@ final class MigrationReportTests: XCTestCase {
         )
     }
 
-    func test_recordedCompletionWithFailedOutcomeTraps() throws {
+    func test_recordedCompletionWithFailedOutcome_traps() throws {
         if ChildProcessTrap.isRunningInTrapChildProcess {
             _ = PersistentKeyMigrationReport(
                 outcomes: [

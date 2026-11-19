@@ -1,3 +1,10 @@
+//
+//  MigrationStoreMatrixTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 import XCTest
 
@@ -24,7 +31,7 @@ final class MigrationStoreMatrixTests: XCTestCase {
     // MARK: Tests
 
     @available(watchOS 9.0, *)
-    func testAllStorePairs() throws {
+    func test_migration_allStorePairs() throws {
         try runPair(InMemoryPersistentKeyValueStore(), InMemoryPersistentKeyValueStore())
         try runPair(InMemoryPersistentKeyValueStore(), makeDefaults("d1"))
         try runPair(InMemoryPersistentKeyValueStore(), makeCloud())

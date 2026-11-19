@@ -1,3 +1,10 @@
+//
+//  MigrationNativeFidelityTests.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/17/26.
+//
+
 import CoreFoundation
 import Foundation
 import XCTest
@@ -12,7 +19,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
 
     // MARK: Tests
 
-    func testCleanupObserverThatChangesDestinationFailsDiscardedSource() throws {
+    func test_cleanupObserverThatChangesDestination_failsDiscardedSource() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = PersistentKey<Int>("key:\(#function)", defaultValue: 0)
@@ -44,7 +51,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(source.object(forKey: key.id))
     }
 
-    func testCleanupObserverThatRemovesDestinationFailsMove() throws {
+    func test_cleanupObserverThatRemovesDestination_failsMove() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.cleanup")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
         let destination = InMemoryPersistentKeyValueStore()
@@ -81,7 +88,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(source.persistentDomain(forName: sourceName)?[key.id])
     }
 
-    func testDefaultsDateWithUndefinedIntervalMigratesUnchanged() throws {
+    func test_defaultsDateWithUndefinedInterval_migratesUnchanged() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.undefinedDate.source")
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.undefinedDate.destination")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
@@ -118,7 +125,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(source.persistentDomain(forName: sourceName)?[stamp.id])
     }
 
-    func testDefaultsDestinationRejectsNumberThatStorageWouldChange() throws {
+    func test_defaultsDestination_rejectsNumberThatStorageWouldChange() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.storedNumber")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
 
@@ -131,7 +138,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         }
     }
 
-    func testDefaultsDictionaryWithKeysThatSwiftMergesFailsToDecode() throws {
+    func test_defaultsDictionaryWithKeysThatSwiftMerges_failsToDecode() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.mergedKeys")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
         let destination = InMemoryPersistentKeyValueStore()
@@ -157,7 +164,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
-    func testDefaultsDestinationCommitsEncodingThatValidationCannotConsume() throws {
+    func test_defaultsDestination_commitsEncodingThatValidationCannotConsume() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.consumingDecoder")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
 
@@ -168,7 +175,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertEncodingThatValidationCannotConsumeIsCommitted(to: destination)
     }
 
-    func testDefaultsIntegerWidthMatchesOrdinaryAccess() throws {
+    func test_defaultsIntegerWidth_matchesOrdinaryAccess() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.integerWidth.source")
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.integerWidth.destination")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
@@ -182,7 +189,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertIntegerWidthMatchesOrdinaryAccess(from: source, to: destination)
     }
 
-    func testDefaultsOverwriteKeepsAnObserverWriteDuringFoundationEqualReplacement() throws {
+    func test_defaultsOverwrite_keepsAnObserverWriteDuringFoundationEqualReplacement() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.equalReplacementObserver")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let source = InMemoryPersistentKeyValueStore()
@@ -221,7 +228,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(source.get(key), 1)
     }
 
-    func testDefaultsOverwriteReplacesFoundationEqualValueOfAnotherType() throws {
+    func test_defaultsOverwrite_replacesFoundationEqualValueOfAnotherType() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.equalReplacement")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
 
@@ -234,7 +241,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         }
     }
 
-    func testDefaultsDestinationLookupDistinguishesNormalizationForms() throws {
+    func test_defaultsDestinationLookup_distinguishesNormalizationForms() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.destination")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let source = InMemoryPersistentKeyValueStore()
@@ -260,7 +267,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(destination.object(forKey: composed) as? Int, 17)
     }
 
-    func testDefaultsSourceLookupDistinguishesNormalizationForms() throws {
+    func test_defaultsSourceLookup_distinguishesNormalizationForms() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.source")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
         let composedKey = PersistentKey<Int>(composed, defaultValue: 0)
@@ -315,7 +322,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(decomposedDestination.object(forKey: decomposed) as? Int, 7)
     }
 
-    func testDefaultsPersistentDomainIsTheUnbridgedFoundationDictionary() throws {
+    func test_defaultsPersistentDomain_isTheUnbridgedFoundationDictionary() throws {
         let suiteName = stableSuiteName("MigrationNativeFidelityTests.unbridged")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
         let backend = try XCTUnwrap(defaults.migrationEndpoint.backend as? UserDefaultsMigrationBackend)
@@ -349,7 +356,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(equal(nested, dictionary(1, true)))
     }
 
-    func testDefaultsSnapshotExcludesValuesOutsideThePersistentDomain() throws {
+    func test_defaultsSnapshot_excludesValuesOutsideThePersistentDomain() throws {
         let suiteName = stableSuiteName("MigrationNativeFidelityTests.provenance")
         let addedName = stableSuiteName("MigrationNativeFidelityTests.provenanceAdded")
         let defaults = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
@@ -387,7 +394,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(try backend.migrationSnapshot(for: "persisted")?.object as? Int, 1)
     }
 
-    func testDefaultsSnapshotRejectsBooleanReplacedByEqualNumber() throws {
+    func test_defaultsSnapshot_rejectsBooleanReplacedByEqualNumber() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.boolean")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
 
@@ -398,7 +405,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertTypeChangeIsDetected(in: source)
     }
 
-    func testDefaultsSnapshotRejectsSingleReplacedByEqualDouble() throws {
+    func test_defaultsSnapshot_rejectsSingleReplacedByEqualDouble() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.width")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
 
@@ -409,7 +416,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertWidthChangeIsDetected(in: source)
     }
 
-    func testDefaultsSnapshotVerifiesIntegerReplacedByEqualWiderInteger() throws {
+    func test_defaultsSnapshot_verifiesIntegerReplacedByEqualWiderInteger() throws {
         let sourceName = stableSuiteName("MigrationNativeFidelityTests.integerReplacement")
         let source = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceName))
 
@@ -420,7 +427,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         try assertIntegerWidthReplacementVerifiesByValue(in: source)
     }
 
-    func testFileURLThatDefaultsCannotReproduceFailsBeforeMutation() throws {
+    func test_fileURLThatDefaultsCannotReproduce_failsBeforeMutation() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.fileURL")
         let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationName))
         let source = InMemoryPersistentKeyValueStore()
@@ -467,7 +474,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertNil(destination.get(optionalKey))
     }
 
-    func testImmutableCopyHoldsOnlyImmutableFoundationObjects() throws {
+    func test_immutableCopy_holdsOnlyImmutableFoundationObjects() throws {
         let nested = NSMutableDictionary(
             dictionary: [
                 "string": NSMutableString(string: "text"),
@@ -488,7 +495,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertTrue(type(of: try PropertyListStorage.exactCopy(1.5)) is AnyClass)
     }
 
-    func testMemorySourceDecimalEditDuringMoveFailsCleanup() throws {
+    func test_memorySourceDecimalEditDuringMove_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = MutableArrayKey(id: "key:\(#function)")
@@ -514,7 +521,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(destination.get(key), [original])
     }
 
-    func testMemorySourceIntegerWidthEditDuringMoveFailsCleanup() throws {
+    func test_memorySourceIntegerWidthEditDuringMove_failsCleanup() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
         let key = MutableArrayKey(id: "key:\(#function)")
@@ -553,7 +560,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(destination.get(destinationKey), "4")
     }
 
-    func testPropertyListEqualityComparesTypesAndLiteralKeys() {
+    func test_propertyListEquality_comparesTypesAndLiteralKeys() {
         let date = Date(timeIntervalSinceReferenceDate: 12)
         let url = URL(string: "https://example.com")!
 
@@ -602,7 +609,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertTrue(PropertyListStorage.equal(nil, nil))
     }
 
-    func testPropertyListEqualityComparesDecimalsExactly() {
+    func test_propertyListEquality_comparesDecimalsExactly() {
         let decimal = NSDecimalNumber(string: "1.000000000000000001")
 
         XCTAssertTrue(PropertyListStorage.equal(decimal, NSDecimalNumber(string: "1.000000000000000001")))
@@ -613,7 +620,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(PropertyListStorage.equal(NSDecimalNumber.notANumber, decimal))
     }
 
-    func testPropertyListEqualityDistinguishingIntegerWidthsComparesWidthsRecursively() {
+    func test_propertyListEqualityDistinguishingIntegerWidths_comparesWidthsRecursively() {
         let int32 = NSNumber(value: Int32(-200_000_023))
         let int64 = NSNumber(value: Int64(-200_000_023))
 
@@ -637,7 +644,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertTrue(equalWidths(1.25, 1.25))
     }
 
-    func testSelfReferentialEncodingFailsBeforeMutation() throws {
+    func test_selfReferentialEncoding_failsBeforeMutation() throws {
         let destinationName = stableSuiteName("MigrationNativeFidelityTests.selfReferential")
         let finished = DispatchSemaphore(value: 0)
 
@@ -683,12 +690,12 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousDestinationCommitsEncodingThatValidationCannotConsume() throws {
+    func test_ubiquitousDestination_commitsEncodingThatValidationCannotConsume() throws {
         try assertEncodingThatValidationCannotConsumeIsCommitted(to: StrictMigrationUbiquitousStore())
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousDestinationRejectsNumberThatStorageWouldChange() throws {
+    func test_ubiquitousDestination_rejectsNumberThatStorageWouldChange() throws {
         let destination = StrictMigrationUbiquitousStore()
 
         try assertNumbersThatStorageWouldChangeFailBeforeWriting(to: destination) {
@@ -697,7 +704,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousIntegerWidthMatchesOrdinaryAccess() throws {
+    func test_ubiquitousIntegerWidth_matchesOrdinaryAccess() throws {
         try assertIntegerWidthMatchesOrdinaryAccess(
             from: StrictMigrationUbiquitousStore(),
             to: StrictMigrationUbiquitousStore()
@@ -705,24 +712,24 @@ final class MigrationNativeFidelityTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousOverwriteReplacesFoundationEqualValueOfAnotherType() throws {
+    func test_ubiquitousOverwrite_replacesFoundationEqualValueOfAnotherType() throws {
         let destination = StrictMigrationUbiquitousStore()
 
         try assertOverwriteReplacesFoundationEqualValueOfAnotherType(in: destination, rawValue: destination.storedValue(for:))
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousSnapshotRejectsBooleanReplacedByEqualNumber() throws {
+    func test_ubiquitousSnapshot_rejectsBooleanReplacedByEqualNumber() throws {
         try assertTypeChangeIsDetected(in: StrictMigrationUbiquitousStore())
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousSnapshotRejectsSingleReplacedByEqualDouble() throws {
+    func test_ubiquitousSnapshot_rejectsSingleReplacedByEqualDouble() throws {
         try assertWidthChangeIsDetected(in: StrictMigrationUbiquitousStore())
     }
 
     @available(watchOS 9.0, *)
-    func testUbiquitousSnapshotVerifiesIntegerReplacedByEqualWiderInteger() throws {
+    func test_ubiquitousSnapshot_verifiesIntegerReplacedByEqualWiderInteger() throws {
         try assertIntegerWidthReplacementVerifiesByValue(in: StrictMigrationUbiquitousStore())
     }
 
