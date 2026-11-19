@@ -104,6 +104,13 @@ remain internal. Migration does not intercept a wrapper's ordinary `get` or
 and a labeled `items: [PersistentKeyMigrationItem]` array), each requiring
 explicit `onConflict:` and `tracking:` arguments (`PersistentKeyMigrationTracking.untracked`,
 `.once(id:)` recorded in the destination store, or `.once(id:recordedIn:)`).
+A marker depends only on the migration `id` and the recording store, so two
+independent sources that record in the same store (such as one shared App Group
+destination) must use distinct identifiers or recording stores; otherwise the
+second migration reads the first one's marker, returns `.alreadyRecorded` with
+no outcomes, and never transfers its keys. `.once(id:recordedIn: UserDefaults.standard)`
+scopes completion to the local defaults domain of the process's main bundle,
+not to the device as a whole.
 Completion marker keys (`PersistentKey.isMigrationCompleted(id:)`) normalize
 `id` to Unicode Normalization Form C (NFC) before hashing with SHA-256 and
 unpadded base64url encoding under the dotless prefix
@@ -119,7 +126,11 @@ destination key identifiers are the same throws `sameStore` during setup before
 any key is read (to change a key's stored representation or value format, move
 it to a new key identifier), duplicate source or destination key identifiers
 throw `duplicateKey(_:)`, and same-store batches where one item's destination
-is another item's source throw `overlappingKeys(_:)`.
+is another item's source throw `overlappingKeys(_:)`. Setup validates and
+reserves key identifiers, and execution reads each key's `id` again, so the
+validation holds only while a custom key returns the same `id` throughout the
+migration; a key whose `id` changes between those reads can write to or remove
+an entry that setup did not check.
 
 `copy` and `move` return `PersistentKeyMigrationReport` and are not marked
 `@discardableResult`. `PersistentKeyMigrationReport.Completion` and
@@ -509,7 +520,11 @@ principles:
   `get(_:)` returns the declared default while raw `url(forKey:)` returns
   `nil` when no other value is visible), while ordinary `UserDefaults` `set`
   keeps Foundation's lossy path behavior and `[URL]` stores `absoluteString`
-  values in `.propertyList` format. The `.ubiquitousKeyValueStore` and
+  values in `.propertyList` format. Registration through the checked encoder is a
+  compatibility change from 1.x, which registered `absoluteString`: a
+  representable file URL now registers as a path and a non-file URL as archive
+  data, so raw `string(forKey:)` on a registered non-file URL default returns
+  `nil` and raw readers should use `url(forKey:)`. The `.ubiquitousKeyValueStore` and
   `.propertyList` formats store `absoluteString` for every URL, so a relative
   URL with an absolute base reads back as its resolved URL, without its original
   relative reference or base. In `InMemoryPersistentKeyValueStore`,
@@ -665,7 +680,11 @@ principles:
   and drops only undecodable ones so a single unknown entry (such as an enum
   case written by a newer app version) does not blank the whole dictionary. A
   dictionary element inside such an array keeps its readable
-  entries, and an external array reader can filter elements. An `Optional` or
+  entries, and an external array or dictionary-entry reader can filter
+  elements or nested entries. An ordinary read leaves the omitted entries in
+  storage, but the native setters replace the whole stored dictionary, so writing
+  the decoded dictionary back deletes them, even when only a different entry
+  changed. An `Optional` or
   proxy representation delegates to its wrapped reader, so it preserves that
   reader's filtering, as does a built-in array or dictionary that nests it (a
   dictionary of arrays, for example), so a checked migration can succeed with
@@ -742,6 +761,10 @@ principles:
   notifications without a usable key list refresh every observed key. A manual
   observer's selector receives only notifications for its registered literal
   key, whereas 1.x delivered every change notification from the store to it.
+  A manual `UserDefaults` observer receives every key, including keys observed
+  through `UserDefaults.didChangeNotification`, by
+  `observeValue(forKeyPath:of:change:context:)`; the supplied selector is used
+  only for `NSUbiquitousKeyValueStore` observation.
   Manual deregistration removes every registration on the store with the same
   observer, key, and context (a duplicate registration is not deduplicated, so
   one call removes both). Manual iCloud deregistration did nothing in 1.0.0 and

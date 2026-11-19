@@ -570,7 +570,8 @@ extension PersistentKeyValueRepresentation {
     /// to decode.
     ///
     /// Dictionary entries are independent, so one unreadable entry (such as an enum case written by a newer app
-    /// version) does not hide the others. Writing the result back therefore keeps every readable entry.
+    /// version) does not hide the others. Writing the result back keeps every readable entry and deletes the
+    /// unreadable ones.
     @usableFromInline
     internal func dictionary(decoding propertyListDictionary: [String: Any]) -> [String: Value] {
         var values: [String: Value] = Dictionary(minimumCapacity: propertyListDictionary.count)

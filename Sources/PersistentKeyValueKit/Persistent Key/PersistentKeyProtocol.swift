@@ -54,7 +54,8 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``. If it is backed
     ///   by a Foundation string, reading its characters must not access a store; Foundation may hold its own locks
-    ///   while it reads a key.
+    ///   while it reads a key. Migration and observation read this value more than once, so it must return the same
+    ///   identifier for the duration of a migration or an observation.
     var id: ID { get }
 
     /// Whether this key participates in migration operations.

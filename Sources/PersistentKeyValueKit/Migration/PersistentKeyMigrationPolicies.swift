@@ -43,6 +43,10 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// `id` when changing the migration's keys or behavior. A marker recorded in `NSUbiquitousKeyValueStore` syncs to the
 /// user's other devices like any other value, so two devices can both run the migration before the marker syncs.
 ///
+/// The marker depends only on the migration identifier and the recording store. Independent migrations that record in
+/// the same store, such as several sources migrating into one shared App Group destination, need distinct identifiers
+/// or recording stores, because a recorded marker skips every later batch that uses the same identifier.
+///
 /// Migration identifiers that are equal as Swift strings identify the same migration, even when their Unicode
 /// spellings differ, such as precomposed and decomposed forms of the same accented character. Identifiers are
 /// otherwise distinct, including identifiers that differ only by case.

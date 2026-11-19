@@ -127,7 +127,8 @@ where
 
     /// Decodes the dictionary at `dictionaryKey`, returning `nil` if it is absent or is not a dictionary.
     ///
-    /// Entries that fail to decode are omitted so the readable entries survive a read-modify-write.
+    /// Entries that fail to decode are omitted from the result but stay in storage. Writing the result back replaces
+    /// the whole stored dictionary and deletes them.
     @inlinable
     public static func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Self? {
         guard let propertyListDictionary = propertyListDictionary[dictionaryKey] as? [String: Any] else {
@@ -155,7 +156,8 @@ where
 
     /// Decodes the dictionary at `userDefaultsKey`, returning `nil` if it is absent or is not a dictionary.
     ///
-    /// Entries that fail to decode are omitted so the readable entries survive a read-modify-write.
+    /// Entries that fail to decode are omitted from the result but stay in storage. Writing the result back replaces
+    /// the whole stored dictionary and deletes them.
     @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
         guard let propertyListDictionary = userDefaults.dictionary(forKey: userDefaultsKey) else {
@@ -184,7 +186,8 @@ where
 
     /// Decodes the dictionary at `ubiquitousStoreKey`, returning `nil` if it is absent or is not a dictionary.
     ///
-    /// Entries that fail to decode are omitted so the readable entries survive a read-modify-write.
+    /// Entries that fail to decode are omitted from the result but stay in storage. Writing the result back replaces
+    /// the whole stored dictionary and deletes them.
     @available(watchOS 9.0, *)
     @inlinable
     public static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self? {
