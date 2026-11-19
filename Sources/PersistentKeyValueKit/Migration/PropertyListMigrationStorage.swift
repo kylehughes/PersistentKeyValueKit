@@ -17,10 +17,11 @@ internal enum PropertyListMigrationStorage {
     /// distinguishes booleans from numbers, integers from reals, and single-precision from double-precision reals,
     /// which a binary property list preserves, even when they compare equal numerically. It also distinguishes an
     /// `NSDecimalNumber`, which only an exact copy preserves, from other reals, and compares decimals exactly. Reals
-    /// and date intervals compare exactly, as a binary property list keeps them, so `NaN` equals `NaN` and a real `0.0`
-    /// differs from `-0.0`. Strings and dictionary keys compare by their literal UTF-16 contents, as Foundation stores
-    /// them, rather than by Swift's canonical equivalence. The UIDs in a keyed archive's property list, which an
-    /// in-memory store can hold, compare by value.
+    /// and date intervals compare by bit pattern, as a binary property list keeps them, so a real `0.0` differs from
+    /// `-0.0`, except that any two `NaN` values of the same width are equal regardless of payload or sign. Strings and
+    /// dictionary keys compare by their literal UTF-16 contents, as Foundation stores them, rather than by Swift's
+    /// canonical equivalence. The UIDs in a keyed archive's property list, which an in-memory store can hold, compare
+    /// by value.
     ///
     /// By default, integers compare by value regardless of width: a property list stores an integer by its value, so
     /// `UserDefaults` returns an `Int32` as written only to the process that wrote it, and a 64-bit integer to other

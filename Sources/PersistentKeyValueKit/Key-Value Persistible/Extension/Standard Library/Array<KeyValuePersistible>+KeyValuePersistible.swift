@@ -20,7 +20,9 @@ extension Array: KeyValuePersistible where Element: KeyValuePersistible {
     /// empty, so a write fails if that representation encodes every element of a nonempty array to `nil`. Reads are
     /// also all or nothing: if any element fails to decode, the read returns `nil` and a key falls back to its default
     /// value, because an element's position can carry meaning. The stored array is unchanged by the read, but saving an
-    /// edit to that default array replaces the stored array, including the elements that could decode.
+    /// edit to that default array replaces the array in the writable defaults domain or iCloud store, including the
+    /// elements that could decode. If an added suite supplied the original array, the replacement hides it and the
+    /// suite keeps every element.
     @inlinable
     public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()

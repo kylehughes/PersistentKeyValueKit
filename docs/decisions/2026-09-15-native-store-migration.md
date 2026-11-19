@@ -110,7 +110,9 @@ destination) must use distinct identifiers or recording stores; otherwise the
 second migration reads the first one's marker, returns `.alreadyRecorded` with
 no outcomes, and never transfers its keys. `.once(id:recordedIn: UserDefaults.standard)`
 scopes completion to the local defaults domain of the process's main bundle,
-not to the device as a whole. Every call validates its setup and claims its
+not to the device as a whole, and that marker survives an Apple Account change,
+which replaces the iCloud data, so a later seed of the new account's store
+returns `.alreadyRecorded` unless the identifier is scoped to the account. Every call validates its setup and claims its
 keys before it reads the marker, so a call whose marker is already `true` can
 still throw (`.overlappingMigration` while another migration holds one of its
 keys); once those steps succeed, the `true` marker returns `.alreadyRecorded`.
@@ -447,7 +449,9 @@ principles:
   byte sizes with `CFNumberGetByteSize` as well), `CFNumberGetByteSize` (`Float`
   versus `Double`), and `NaN` and floating-point bit patterns (`0.0` versus
   `-0.0`) for both floating-point numbers and `Date` time intervals
-  (`timeIntervalSinceReferenceDate`, so an unchanged `NaN` date verifies)
+  (`timeIntervalSinceReferenceDate`, so an unchanged `NaN` date verifies, and
+  any two `NaN` values of the same width compare equal regardless of payload or
+  sign, so a migration can succeed for a copy whose `NaN` payload differs)
   recursively across arrays and dictionaries, and compares other same-type Core
   Foundation property-list leaves (such as the UIDs in a keyed archive's
   property list, which `InMemoryPersistentKeyValueStore` can hold) by their
@@ -684,15 +688,18 @@ principles:
   An ordinary built-in array read fails if an element cannot decode, because
   element positions carry meaning (the key then returns its default array, the
   stored array is unchanged, and saving an edit to that default replaces the
-  stored array, including the elements that could decode), whereas `Dictionary` keeps readable entries
+  array in the writable defaults domain or iCloud store, including the elements
+  that could decode; if an added suite supplied the original array, the
+  replacement hides it and the suite keeps every element), whereas `Dictionary` keeps readable entries
   and drops only undecodable ones so a single unknown entry (such as an enum
   case written by a newer app version) does not blank the whole dictionary. A
   dictionary element inside such an array keeps its readable
   entries, and an external array or dictionary-entry reader can filter
   elements or nested entries. An ordinary read leaves the omitted entries in
   storage, but the native setters replace the whole dictionary in the writable
-  defaults domain, so writing the decoded dictionary back deletes the omitted
-  entries there, even when only a different entry changed. If an added suite
+  defaults domain or iCloud store, so writing the decoded dictionary back deletes
+  the omitted entries there, even when only a different entry changed, and on
+  iCloud that deletion can propagate to other devices. If an added suite
   supplied the dictionary that was read, the write instead hides that suite's
   dictionary, which keeps its entries. An `Optional` or
   proxy representation delegates to its wrapped reader, so it preserves that
@@ -814,6 +821,10 @@ principles:
 - Conflict detection against an iCloud destination reads this device's local
   cache, so migration neither waits for initial sync nor sees cloud values that
   have not reached the device.
+- Any use of `NSUbiquitousKeyValueStore.default`, including local reads and
+  writes, requires the iCloud Key-value storage entitlement. Without it, a typed
+  read can return the key's default after a typed write, and the package's local
+  change notification does not show that a value was stored.
 - Migration remains non-transactional across stores. It can report a partial
   move, does not provide rollback, and cannot promise disk durability or cloud
   delivery.

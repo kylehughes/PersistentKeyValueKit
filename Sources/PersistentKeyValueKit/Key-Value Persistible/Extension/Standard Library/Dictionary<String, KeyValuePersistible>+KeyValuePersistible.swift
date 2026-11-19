@@ -188,7 +188,7 @@ where
     /// Decodes the dictionary at `ubiquitousStoreKey`, returning `nil` if it is absent or is not a dictionary.
     ///
     /// Entries that fail to decode are omitted from the result but stay in storage. Writing the result back replaces
-    /// the whole stored dictionary and deletes them.
+    /// the whole stored dictionary and deletes them, and that deletion can propagate to the user's other devices.
     @available(watchOS 9.0, *)
     @inlinable
     public static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self? {
