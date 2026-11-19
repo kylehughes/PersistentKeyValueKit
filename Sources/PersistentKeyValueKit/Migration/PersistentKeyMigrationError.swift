@@ -65,9 +65,9 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// The source value changed between the initial snapshot and source removal during a move.
     case sourceChanged
 
-    /// The destination value changed between the initial snapshot and the destination write or source cleanup,
-    /// including when an observer wrote it while a write replaced it, or no longer matched the migrated value after the
-    /// source was removed during a move.
+    /// The destination value appeared, disappeared, or changed between the initial snapshot and the destination write
+    /// or source cleanup, including when an observer wrote it while a write replaced it, or no longer matched the
+    /// migrated value after the source was removed during a move.
     case destinationChanged
 
     /// The destination store did not retain the expected value after writing.

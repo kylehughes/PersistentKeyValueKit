@@ -28,7 +28,7 @@ nonisolated struct CustomPrimitive {
     }
 }
 
-struct ForwardingStore {
+nonisolated struct ForwardingStore {
     let base: UserDefaults
 
     func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
@@ -89,4 +89,19 @@ extension ForwardingStore: PersistentKeyValueStore {
             try base.migrationEndpoint
         }
     }
+}
+
+// MARK: - Nonisolated Usage
+
+// Not shown in the release notes. Checks that a nonisolated caller can use the store under `MainActor` default
+// isolation.
+
+nonisolated func observeAndMigrate(
+    _ key: PersistentKey<Int>,
+    in store: ForwardingStore,
+    to destination: UserDefaults
+) throws -> (PersistentKeyValues<PersistentKey<Int>>, PersistentKeyMigrationReport) {
+    let values = PersistentKeyValues(key, store: store)
+    let report = try store.copy(key, to: destination, onConflict: .keepDestination, tracking: .untracked)
+    return (values, report)
 }

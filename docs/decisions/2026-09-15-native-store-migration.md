@@ -529,7 +529,9 @@ principles:
   masking side effects. Under `.keepDestination` (copy) and `.keepBoth` (move),
   the migration releases the source snapshot and rechecks the kept destination
   at `.write`, failing with `PersistentKeyMigrationError.destinationChanged` (and
-  suppressing completion recording) if the destination changed or vanished. A
+  suppressing completion recording) if the destination changed or vanished. Any
+  write also fails at `.write` with `.destinationChanged` if a destination that
+  was absent at its snapshot has appeared by the time of the commit. A
   committed destination write that fails verification, such as one overwritten
   after the commit, reports `.writeVerificationFailed` at `.write`, and on
   `copy` the source snapshot is released before the committed write is rechecked
@@ -709,7 +711,10 @@ principles:
   not when another domain, such as an argument-domain value, supplies the
   effective object), whereas in-memory objects and in-process notification reads
   remain unserialized `CFNumber` objects whose width a representation can
-  observe via `objCType`. The notification fallback compares the widths of the
+  observe via `objCType`. Foundation migration can therefore move an integer
+  that serialization widened (a four-byte integer can become eight bytes) and
+  report success, so a decoder of persisted values must accept widened
+  integers. The notification fallback compares the widths of the
   effective objects it reads, and `NSUbiquitousKeyValueStore` notification
   observers filter by key without comparing widths.
   `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
