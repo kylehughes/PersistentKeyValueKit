@@ -1280,7 +1280,9 @@ internal func encodeStorageValue<Key: PersistentKeyProtocol>(
 /// Whether `value` is an optional that is `nil` at any level of nesting, as `Int??.some(nil)` is.
 private func isNilOptional(_ value: Any) -> Bool {
     var value = value
-    while let optional = value as? any OptionalElement {
+    // The dynamic type check comes first because a cast unwraps an `AnyHashable`, which would make a boxed `nil` look
+    // like an optional.
+    while type(of: value) is any OptionalElement.Type, let optional = value as? any OptionalElement {
         guard let wrapped = optional.wrappedObject else {
             return true
         }
