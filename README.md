@@ -324,7 +324,7 @@ extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
 }
 ```
 
-To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)`, which convert between Swift values and the objects a store keeps. Do not mutate an object after you return it from `encode` or write it with a `set` method. Ordinary reads and writes stay non-throwing, and the throwing conversions are what migration and registration use. The `PersistentKeyValueRepresentation` documentation lists the rest of the contract, including how collections are written.
+To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)`, which convert between Swift values and the objects a store keeps. Do not mutate an object after you return it from `encode` or write it with a `set` method. Ordinary reads and writes stay non-throwing. Foundation migration endpoints use the checked conversions, and `UserDefaults` registration uses checked encoding. The `PersistentKeyValueRepresentation` documentation lists the rest of the contract, including how collections are written.
 
 ### Migrating Values Between Stores
 
@@ -400,7 +400,7 @@ if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.e
 try report.throwIfIncomplete()
 ```
 
-With `.once(id:)`, the migration records a completion marker once every item resolves without failure. After setup succeeds, a true marker for that `id` in the selected recording store skips the whole batch (`.alreadyRecorded`). The marker depends only on its `id` and recording store, so give each independent source its own. A marker in `NSUbiquitousKeyValueStore` syncs to other devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data has arrived. Remove `.isMigrationCompleted(id:)` or choose a new `id` to run a migration again.
+With `.once(id:)`, the migration attempts to record a completion marker once every item resolves without failure. After setup succeeds, a true marker for that `id` in the selected recording store skips the whole batch (`.alreadyRecorded`). The marker depends only on its `id` and recording store, so give each independent source its own. A marker in `NSUbiquitousKeyValueStore` syncs to other devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data has arrived. Remove `.isMigrationCompleted(id:)` or choose a new `id` to run a migration again.
 
 ### `UserDefaults` Registration
 

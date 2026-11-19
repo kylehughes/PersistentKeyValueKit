@@ -56,7 +56,8 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// the marker is `true`, the migration is skipped without reading or mutating any keys, and the report has no outcomes
 /// and ``PersistentKeyMigrationReport/Completion/alreadyRecorded``. Otherwise the batch runs, and the marker is written
 /// and verified only if every item resolves without failure (``PersistentKeyMigrationReport/Completion/recorded``).
-/// An empty batch resolves without failure, so it records the marker.
+/// After every item resolves without failure, including in an empty batch, tracking attempts to record the marker.
+/// ``PersistentKeyMigrationReport/completion`` gives the result.
 ///
 /// Tracking is a persistent marker rather than an in-flight transaction or an exactly-once guarantee. Until the marker
 /// is written, retrying runs the batch again under its conflict policy. Remove
@@ -81,10 +82,10 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// migration still runs. Use ``PersistentKeyMigrationReport/completion`` to learn whether the marker skipped a batch.
 /// A retry reads the stored marker again, so a marker that was written but failed verification can still be honored.
 ///
-/// A batch whose items all resolve without failure records the marker even when it transferred nothing, as when every
-/// source is ``PersistentKeyMigrationReport/Status/sourceAbsent``. Run a seeding migration in the target that owns the
-/// legacy data: a target with nothing to move still records a shared marker, so the owning target's later call returns
-/// ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` and skips its migration, even though
+/// A batch whose items all resolve without failure attempts to record the marker even when it transferred nothing, as
+/// when every source is ``PersistentKeyMigrationReport/Status/sourceAbsent``. Run a seeding migration in the target
+/// that owns the legacy data: a target with nothing to move still records a shared marker, so the owning target's later
+/// call returns ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` and skips its migration, even though
 /// ``PersistentKeyMigrationReport/throwIfIncomplete()`` succeeds.
 ///
 /// When migrating from `NSUbiquitousKeyValueStore` with both keys enabled, a source missing from the local cache before

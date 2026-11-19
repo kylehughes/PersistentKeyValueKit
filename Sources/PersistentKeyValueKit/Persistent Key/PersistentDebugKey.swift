@@ -11,8 +11,8 @@ import Foundation
 ///
 /// In Release builds, `get(from:)`, `set(to:in:)`, and `remove(from:)` on `UserDefaults`,
 /// `NSUbiquitousKeyValueStore`, and ``InMemoryPersistentKeyValueStore`` always return the release default value and
-/// ignore writes and removals. Store migrations check ``isMigrationEnabled`` and skip the key with
-/// ``PersistentKeyMigrationReport/Status/keyDisabled`` in Release builds across all stores.
+/// ignore writes and removals. If a migration batch runs in a Release build, it checks ``isMigrationEnabled`` and
+/// skips an item with this key, reporting ``PersistentKeyMigrationReport/Status/keyDisabled``, across all stores.
 ///
 /// Define reusable keys as static members on ``PersistentKeyProtocol``:
 ///
@@ -192,8 +192,8 @@ where
 extension PersistentDebugKey {
     /// Whether this debug key participates in migration operations.
     ///
-    /// Returns `true` in Debug builds and `false` in Release builds, where migration reports
-    /// ``PersistentKeyMigrationReport/Status/keyDisabled``.
+    /// Returns `true` in Debug builds and `false` in Release builds, where an item that migration considers reports
+    /// ``PersistentKeyMigrationReport/Status/keyDisabled``. A recorded completion marker can skip the batch first.
     public var isMigrationEnabled: Bool {
         #if DEBUG
         true

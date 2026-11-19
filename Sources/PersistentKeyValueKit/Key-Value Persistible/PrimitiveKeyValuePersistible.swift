@@ -77,11 +77,11 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Array reads decode a stored array with this method, so it must accept the arrays that ``set(_:to:)`` writes.
     /// Checked collection decoding, which migration uses, also calls this method for types defined outside this
     /// package, so an implementation that omits elements it cannot decode omits them from migrated values too,
-    /// including when an optional, proxy, or nested collection representation reaches it. Default registration uses
-    /// checked encoding, which does not call it.
+    /// including when an optional, proxy, or nested collection representation reaches it. Registration uses checked
+    /// encoding. An encoder that validates an array by decoding it can call this reader.
     ///
     /// - Parameter propertyListArray: The array to decode values from.
-    /// - Returns: The decoded values, or `nil` if any element cannot be decoded as `Self`.
+    /// - Returns: The decoded values, which may be filtered, or `nil` to reject the array.
     static func get(from propertyListArray: [Any]) -> [Self]?
     
     /// Writes the encoded representations of `values` into `propertyListArray`.

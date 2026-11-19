@@ -56,6 +56,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// more than once for the same value; do not rely on a specific invocation count. Do not mutate the returned
     /// object, or any object it contains, after returning it.
     ///
+    /// To persist a keyed archive, return its encoded `Data`. Its deserialized property list can contain UIDs that
+    /// Foundation stores reject.
+    ///
     /// After a successful migration write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
     /// destination entry is absent only when this method returns `nil` for the key's top-level value and that value is
     /// `nil` at an actual `Optional` layer. If it returns `nil` for any other top-level value, the item fails at
@@ -79,10 +82,11 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// this package, so an implementation that omits elements it cannot decode omits them from migrated values too,
     /// including when an optional, proxy, or nested collection representation reaches it. Checked migration can
     /// therefore succeed with fewer elements, and remove the source of a move, when this method filters unreadable
-    /// elements. Default registration uses checked encoding, which does not call it.
+    /// elements. Registration uses checked encoding. An encoder that validates an array by decoding it can call this
+    /// reader.
     ///
     /// - Parameter propertyListArray: The array to decode values from.
-    /// - Returns: The decoded values, or `nil` if any element cannot be decoded as ``Value``.
+    /// - Returns: The decoded values, which may be filtered, or `nil` to reject the array.
     func get(from propertyListArray: [Any]) -> [Value]?
 
     /// Writes the encoded representations of `values` into `propertyListArray`.

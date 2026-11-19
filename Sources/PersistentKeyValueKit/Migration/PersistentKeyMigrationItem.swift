@@ -9,7 +9,7 @@ import Foundation
 /// between two in-memory stores transfers the Swift value without decoding or encoding it. Conflict detection and the
 /// conflict policy apply to the destination key in the destination store. An item whose source or destination key has
 /// ``PersistentKeyProtocol/isMigrationEnabled`` set to `false` reports
-/// ``PersistentKeyMigrationReport/Status/keyDisabled``.
+/// ``PersistentKeyMigrationReport/Status/keyDisabled`` if the batch runs.
 ///
 /// A batch can mix items of different value types:
 ///
@@ -31,8 +31,9 @@ import Foundation
 /// is a different key there, while ``InMemoryPersistentKeyValueStore`` uses Swift string equality and treats it as the
 /// same key.
 ///
-/// Mapping to a different key identifier also lets a migration rename or reshape keys within one store, provided no
-/// item's destination is another item's source. An item that maps a key to its own identifier within one store throws
+/// Mapping to a different key identifier also lets a migration rename or reshape keys within one store. Within one
+/// store, source identifiers must be unique, destination identifiers must be unique, and the two sets must be
+/// disjoint. An item that maps a key to its own identifier within one store throws
 /// ``PersistentKeyMigrationError/sameStore``.
 public struct PersistentKeyMigrationItem: Sendable {
     let mapping: any PersistentKeyMigrationMappingProtocol

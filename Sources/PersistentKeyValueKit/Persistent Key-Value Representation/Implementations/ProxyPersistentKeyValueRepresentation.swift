@@ -25,6 +25,10 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
     /// This is useful for composing representations together. The value of `Proxy` is inferred from the
     /// proxied representation, not vice versa.
     ///
+    /// This initializer composes the supplied closures with `other.to` and `other.from`. The resulting representation
+    /// uses `Proxy.persistentKeyValueRepresentation` for storage and checked conversion. It bypasses store, container,
+    /// and conversion overrides on `other`.
+    ///
     /// - Parameter other: The other representation to proxy through.
     /// - Parameter to: The closure used to serialize a value into the other representation's value.
     /// - Parameter from: The closure used to deserialize a value from the other representation's value.

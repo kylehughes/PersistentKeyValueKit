@@ -22,8 +22,8 @@ import Foundation
 /// ## Thread Safety
 ///
 /// Conforming types are expected to be thread-safe. `UserDefaults` and `NSUbiquitousKeyValueStore` are documented by
-/// Apple as thread-safe. This protocol is not marked `Sendable` because those classes are `open` and cannot be
-/// retroactively conformed—subclasses could theoretically violate thread-safety. In practice, subclassing is
+/// Apple as thread-safe. This protocol is not marked `Sendable`. A retroactive `@unchecked Sendable` conformance on
+/// either open Foundation class would also vouch for the thread safety of its subclasses. In practice, subclassing is
 /// uncommon.
 /// Implementations that are not thread-safe will exhibit undefined behavior or crash when used with observation APIs.
 public protocol PersistentKeyValueStore {

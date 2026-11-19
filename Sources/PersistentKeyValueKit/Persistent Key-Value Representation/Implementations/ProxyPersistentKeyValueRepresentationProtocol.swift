@@ -64,7 +64,8 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
 
     /// Converts `value` into `Proxy` using ``to(_:)`` and encodes it for `format`.
     ///
-    /// Returns an immutable copy of `Proxy`'s encoding after verifying that `Proxy` decodes that copy. Throws
+    /// If the proxy's representation encodes no object, this method returns `nil`. Otherwise it verifies that the proxy
+    /// can decode the immutable copy and returns that copy. Throws
     /// ``PersistentKeyValueConversionError/encodingFailed`` when ``to(_:)`` returns `nil` or when `Proxy`'s encoding is
     /// not a property list.
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {

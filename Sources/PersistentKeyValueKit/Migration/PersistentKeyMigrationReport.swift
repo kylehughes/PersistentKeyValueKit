@@ -28,8 +28,8 @@ public struct PersistentKeyMigrationReport: Sendable {
     /// - Precondition: `outcomes` is empty when `completion` is ``Completion/alreadyRecorded``, because a migration
     ///   whose marker was already recorded is skipped.
     /// - Precondition: `outcomes` contains a failed outcome when `completion` is ``Completion/notRecorded`` and
-    ///   contains none when `completion` is ``Completion/recorded``, because the marker is recorded exactly when every
-    ///   item resolves without failure.
+    ///   contains none when `completion` is ``Completion/recorded``, because tracking attempts to record the marker
+    ///   only after every item resolves without failure.
     /// - Parameter outcomes: The per-item outcomes in input order.
     /// - Parameter completion: The completion-tracking result for the batch.
     public init(outcomes: [Outcome], completion: Completion) {
@@ -93,8 +93,9 @@ public struct PersistentKeyMigrationReport: Sendable {
     ///
     /// For an item that maps one key to another, pass the source key. Identifiers match by their UTF-16 code units, as
     /// Foundation stores compare keys, so composed and decomposed spellings of the same text match different outcomes.
-    /// A report returned by `copy` or `move` has at most one matching outcome, because a batch cannot contain duplicate
-    /// source key identifiers. For a manually constructed report, the lookup returns the first literal match.
+    /// When key identifiers remain stable, a report returned by `copy` or `move` has at most one matching outcome,
+    /// because a batch cannot contain duplicate source key identifiers. For a manually constructed report, the lookup
+    /// returns the first literal match.
     ///
     /// - Parameter key: The source key of the item.
     /// - Returns: The matching outcome, or `nil` if the batch did not contain `key` or the migration was skipped

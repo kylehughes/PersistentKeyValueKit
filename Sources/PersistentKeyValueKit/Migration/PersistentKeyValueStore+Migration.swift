@@ -389,7 +389,7 @@ extension PersistentKeyValueStore {
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue,
     /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``.
     /// Completed writes are not rolled back if a later item fails. An empty batch is valid; with completion tracking,
-    /// it records the marker.
+    /// it attempts to record the marker.
     ///
     /// The backend verifies the commit. The copy then releases its references to the prepared write and to a replaced
     /// destination value and verifies the destination again, and releases its reference to the source value before
@@ -534,7 +534,7 @@ extension PersistentKeyValueStore {
     /// item. Migrations do not roll back completed items, and a move that fails during
     /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` does not roll back its destination write (though another
     /// writer or observer may have modified or removed the value in either store). An empty batch is valid; with
-    /// completion tracking, it records the marker.
+    /// completion tracking, it attempts to record the marker.
     ///
     /// The backend verifies the commit. The move then releases its references to the prepared write and to a replaced
     /// destination value and verifies the destination again, and releases its reference to the removed source value

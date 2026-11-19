@@ -135,7 +135,7 @@ is another item's source throw `overlappingKeys(_:)`. Setup validates and
 reserves key identifiers, and execution reads each key's `id` again, so the
 validation holds only while a custom key returns the same `id` throughout the
 migration; a key whose `id` changes between those reads can write to or remove
-an entry that setup did not check.
+an entry that setup did not check, and a move can still report `.moved`.
 
 `copy` and `move` return `PersistentKeyMigrationReport` and are not marked
 `@discardableResult`. `PersistentKeyMigrationReport.Completion` and
@@ -250,8 +250,9 @@ principles:
   contains no failed outcomes for `.recorded` or `.failed`, and
   `PersistentKeyMigrationIncompleteError(report:)` requires `!report.isComplete`.
   The preconditions do not validate the original batch, so a fixture can hold
-  two outcomes for one source key or mix `.copied` and `.moved`, which the engine
-  never produces. `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16
+  two outcomes for one source key, which the engine produces only if a key's `id`
+  changes after setup, or mix `.copied` and `.moved`, which it never produces.
+  `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16
   code units and returns the first match.
 - **Same-store key mapping and `overlappingKeys`**: Migrating within a single
   store is allowed when every item maps its source key to a different
