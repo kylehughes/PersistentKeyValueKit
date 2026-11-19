@@ -238,25 +238,31 @@ final class MigrationNilEncodingTests: XCTestCase {
             defaults.removePersistentDomain(forName: suite)
         }
 
-        let raw = StrictMigrationUbiquitousStore()
-        let destinations: [(String, any PersistentKeyValueStore, () -> Any?)] = [
+        var destinations: [(String, any PersistentKeyValueStore, () -> Any?)] = [
             (
                 "UserDefaults",
                 UserDefaultsMigrationBackend(userDefaults: defaults, domainName: suite),
                 { defaults.object(forKey: destinationKey.id) }
             ),
-            (
-                "NSUbiquitousKeyValueStore",
-                UbiquitousKeyValueMigrationBackend(
-                    store: raw,
-                    identity: .init(namespace: "nil-encoding", identifier: UUID().uuidString)
-                ),
-                { raw.storedValue(for: destinationKey.id) }
-            ),
         ]
 
         defaults.set(5, forKey: destinationKey.id)
-        raw.set(Int64(5), forKey: destinationKey.id)
+
+        if #available(watchOS 9.0, *) {
+            let raw = StrictMigrationUbiquitousStore()
+
+            raw.set(Int64(5), forKey: destinationKey.id)
+            destinations.append(
+                (
+                    "NSUbiquitousKeyValueStore",
+                    UbiquitousKeyValueMigrationBackend(
+                        store: raw,
+                        identity: .init(namespace: "nil-encoding", identifier: UUID().uuidString)
+                    ),
+                    { raw.storedValue(for: destinationKey.id) }
+                )
+            )
+        }
 
         for (name, destination, read) in destinations {
             let source = InMemoryPersistentKeyValueStore()
