@@ -13,20 +13,23 @@ import Foundation
 /// `UserDefaults` or `NSUbiquitousKeyValueStore`.
 ///
 /// Unlike Foundation stores, `InMemoryPersistentKeyValueStore` stores typed Swift values directly (compacting `nil`
-/// elements out of Swift arrays and dictionaries of optionals) and records an explicit entry when an optional key is
-/// set to `nil`. Calling ``remove(_:)`` deletes the entry. Migrations read and write the stored Swift value directly
-/// without calling the key's representation `decode` or `encode`. When migrating a stored `nil` from an in-memory store
-/// to `UserDefaults` or `NSUbiquitousKeyValueStore` with
-/// ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
-/// ``PersistentKeyMoveConflictPolicy/overwriteDestination``, the destination key is removed.
+/// elements out of a top-level Swift array or dictionary of optionals) and records an explicit entry when an optional
+/// key is set to `nil` through the default in-memory setter. Calling ``remove(_:)`` deletes the entry. Migrations read
+/// and write the stored Swift value directly without calling the key's representation `decode` or `encode` for an
+/// in-memory source or destination. When migrating a stored `nil` from an in-memory store to `UserDefaults` or
+/// `NSUbiquitousKeyValueStore` with ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
+/// ``PersistentKeyMoveConflictPolicy/overwriteDestination``, the destination key is removed if its representation
+/// encodes `nil` as removal, as the built-in optional representation does.
 ///
 /// Because the store keeps the Swift value itself rather than an encoded copy, a class-typed value is shared, not
 /// copied: every read returns the same instance that was written, and mutating it changes the stored value. Use
 /// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
 /// A migration captures an exact copy of a Foundation property-list object that it reads or prepares as a key's value,
 /// such as an `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents, including each
-/// integer's width, so in-place edits fail the migration instead of removing or overwriting the value. It detects other
-/// references only when they are replaced, so do not mutate them while a migration runs.
+/// integer's width, before it overwrites a destination value, removes a move's source, or verifies a write, so an
+/// in-place edit fails the migration at that step instead of the value being replaced or removed. A `copy` does not
+/// recheck its source after reading it. The migration detects other references only when they are replaced, so do not
+/// mutate them while a migration runs.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
 ///   thread-safety requirement. The lock is not held while key identifiers are evaluated, an identifier bridged from an
@@ -103,9 +106,9 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// Stores the given value for the given key and notifies observers of the key.
     ///
     /// The store keeps the Swift value itself, without converting it to a property-list type. It removes `nil`
-    /// elements from a Swift array or `String`-keyed dictionary of optionals when the result is still a `Value`, so a
-    /// read of the same type returns the stored value; other values, including Foundation collections such as
-    /// `NSMutableArray`, are stored unchanged. Passing an optional that is `nil` records an explicit entry that
+    /// elements from a top-level Swift array or `String`-keyed dictionary of optionals when the result is still a
+    /// `Value`, so a read of the same type returns the stored value; other values, including Foundation collections
+    /// such as `NSMutableArray`, are stored unchanged. Passing an optional that is `nil` records an explicit entry that
     /// ``object(forKey:)`` returns; call ``removeObject(forKey:)`` to delete the entry.
     ///
     /// Use this method to implement a custom key's in-memory `set(to:in:)` requirement of ``PersistentKeyProtocol``,

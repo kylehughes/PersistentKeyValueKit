@@ -35,14 +35,15 @@ import SwiftUI
 /// reads, writes, and observes the new key and store from that update onward.
 ///
 /// - Important: Using this property wrapper with `NSUbiquitousKeyValueStore` requires local (in-app) mutations to be
-///   performed through ``PersistentKeyValueStore``, `PersistentValue`, or store migration. Foundation posts
-///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` only for changes received from iCloud, so
+///   performed through ``PersistentKeyValueStore``, `PersistentValue`, or store migration. Foundation does not post
+///   `NSUbiquitousKeyValueStore.didChangeExternallyNotification` for local writes, so
 ///   `PersistentKeyValueKit` posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for local writes and
 ///   removals.
 /// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit
 ///   (even inside a combined character) or NUL, or are `valueForKey:` or `ValueForKey:`, only changes made in the
-///   current process are observed. Changes made by another process, such as an app extension that shares an app group,
-///   might not be delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
+///   current process request a read of the key. Changes made by another process, such as an app extension that shares
+///   an app group, or caused only by `addSuite(named:)` or `removeSuite(named:)`, are not delivered by themselves and
+///   can become visible when a later in-process change is read.
 ///   For other `UserDefaults` keys, key-value observation does not report a write of a value that Foundation considers
 ///   equal to the stored value, such as an `Int64` over an equal `Int32` or `-0.0` over `0.0`, so the observed value
 ///   can remain the previous, numerically equal value.

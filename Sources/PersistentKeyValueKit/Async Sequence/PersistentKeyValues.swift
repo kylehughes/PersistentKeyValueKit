@@ -43,7 +43,8 @@ import Foundation
 ///   released. After cancellation, ``Iterator/next()`` returns `nil` without returning pending values, and the
 ///   iterator deregisters from the store. Always iterate within a cancellable context.
 /// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the
-///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` to keep every observed value.
+///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` to keep every
+///   emitted value; several store change reports can still produce one read and one emitted value.
 /// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit
 ///   (even inside a combined character) or NUL, or are `valueForKey:` or `ValueForKey:`, only changes made in the
 ///   current process request a read of the key. Changes made by another process, such as an app extension that shares

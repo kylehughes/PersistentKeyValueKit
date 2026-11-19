@@ -75,10 +75,7 @@ extension CustomRepresentation: PersistentKeyValueRepresentation {
 
 extension CustomPrimitive: PrimitiveKeyValuePersistible {
     static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Self {
-        guard let number = storageObject as? NSNumber else {
-            throw PersistentKeyValueConversionError.invalidStorageValue
-        }
-        return Self(rawValue: number.intValue)
+        Self(rawValue: try Int.decode(storageObject: storageObject, format: format))
     }
 
     func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {

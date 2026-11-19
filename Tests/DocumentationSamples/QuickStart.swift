@@ -1,10 +1,12 @@
 // README samples: Quick Start.
 
+import Combine
 import Foundation
 
 // MARK: - Stubs
 
 nonisolated(unsafe) let userDefaults = UserDefaults.standard
+nonisolated(unsafe) var cancellables = Set<AnyCancellable>()
 
 func apply(_ runtimeColorScheme: RuntimeColorScheme) {
 }
@@ -63,11 +65,10 @@ func observeValues() async {
 }
 
 func observeWithCombine() {
-    let cancellable = userDefaults.publisher(for: .runtimeColorScheme)
+    userDefaults.publisher(for: .runtimeColorScheme)
         .receive(on: DispatchQueue.main)
         .sink { runtimeColorScheme in
             apply(runtimeColorScheme)
         }
-
-    _ = cancellable
+        .store(in: &cancellables)
 }

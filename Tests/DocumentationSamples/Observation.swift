@@ -1,5 +1,6 @@
 // README samples: async and Combine observation.
 
+import Combine
 import Foundation
 import PersistentKeyValueKit
 
@@ -17,6 +18,8 @@ final class Label {
 }
 
 let usernameLabel = Label()
+
+nonisolated(unsafe) var cancellables = Set<AnyCancellable>()
 
 func handleChange(username: String) {
 }
@@ -52,27 +55,26 @@ func observeBufferedChanges() async {
 
 @MainActor
 func publishValues() {
-    let cancellable = UserDefaults.standard.publisher(for: .username)
+    UserDefaults.standard.publisher(for: .username)
         .receive(on: DispatchQueue.main)
         .sink { username in
             usernameLabel.text = username
         }
+        .store(in: &cancellables)
 
     let usernameKey: PersistentKey<String> = .username
-    let keyCancellable = usernameKey.publisher(in: UserDefaults.standard)
+    usernameKey.publisher(in: UserDefaults.standard)
         .receive(on: DispatchQueue.main)
         .sink { username in
             usernameLabel.text = username
         }
-
-    _ = (cancellable, keyCancellable)
+        .store(in: &cancellables)
 }
 
 func publishChanges() {
-    let cancellable = UserDefaults.standard.changesPublisher(for: .username)
+    UserDefaults.standard.changesPublisher(for: .username)
         .sink { username in
             handleChange(username: username)
         }
-
-    _ = cancellable
+        .store(in: &cancellables)
 }

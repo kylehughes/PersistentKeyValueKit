@@ -459,18 +459,22 @@ principles:
   `PropertyListMigrationStorage.equal(copy, try freeze(copy))` holds against a
   binary-property-list-serialized copy, and returns `copy` so the backend commits
   that exact immutable copy, bypassing the key's `set` accessor, throwing
-  `PersistentKeyValueConversionError.encodingFailed` at `.prepare` before any
-  mutation when binary property-list serialization would change the value or
-  stored type (including any `NSDecimalNumber`, even when exact, because binary
+  `PersistentKeyValueConversionError.encodingFailed` at `.prepare`, before the
+  item writes its destination or removes its source, when binary property-list
+  serialization would change the value or stored type (including any `NSDecimalNumber`, even when exact, because binary
   property lists store decimals as `Double`, while allowing integers of any width
   such as `Int32`). A `nil` encoding prepares a removal of the destination entry,
   so an `.overwriteDestination` move whose destination representation encodes the
   value as `nil` (as the built-in optional representation does for `nil`) removes
-  the destination entry, then the source, and still reports `.moved`.
+  the destination entry, then the source, and still reports `.moved`. An
+  in-memory destination does not call the representation: it stores the Swift
+  value directly, including an explicit optional `nil`.
   `UserDefaultsMigrationBackend`
-  removes an existing key before writing when the replacement object is
-  `CFEqual` to the snapshot but has a different property-list type so
-  `UserDefaults` does not ignore the write, rechecking that the key is still
+  removes an existing key before writing when Foundation considers the
+  replacement object equal to the snapshot (`CFEqual`) but migration
+  verification distinguishes them (such as `1` and `true`, which have different
+  property-list types, or `0.0` and `-0.0`), so `UserDefaults` does not ignore
+  the write, rechecking that the key is still
   absent after removal and failing at `.write` with
   `PersistentKeyMigrationError.destinationChanged` if an observer wrote during
   removal. For `.userDefaults`, `URL.decode(storageObject:format: .userDefaults)`
@@ -478,8 +482,7 @@ principles:
   expansion (`(path as NSString).expandingTildeInPath`) so stored paths
   (including tilde-prefixed and relative paths) decode exactly as
   `UserDefaults.url(forKey:)` reads them, and paths that
-  `UserDefaults.url(forKey:)` reads as `nil` (such as an empty string or a path
-  containing NUL) throw `PersistentKeyValueConversionError.invalidStorageValue`,
+  `UserDefaults.url(forKey:)` reads as `nil` (such as an empty string) throw `PersistentKeyValueConversionError.invalidStorageValue`,
   so a migration fails at `.decode` and keeps the source entry. Because
   `UserDefaults` stores file URLs as paths (which strips a
   non-existent directory's trailing slash or drops a file URL host),
@@ -487,8 +490,9 @@ principles:
   path reproduces `url.absoluteString` and throws
   `PersistentKeyValueConversionError.encodingFailed` when it does not. Checking
   the round-trip in `URL.encode(format:)` rather than on the outer migrated
-  value ensures that migration to `UserDefaults` fails at `.prepare` before any
-  mutation for direct `URL` keys, `Optional<URL>`, and proxy representations
+  value ensures that migration to `UserDefaults` fails the item at `.prepare`,
+  before it writes its destination or removes its source (earlier items keep
+  their results and the batch continues), for direct `URL` keys, `Optional<URL>`, and proxy representations
   over `URL`, and that `UserDefaults.register(_:)` skips such defaults (so typed
   `get(_:)` returns the declared default while raw `url(forKey:)` returns
   `nil` when no other value is visible), while ordinary `UserDefaults` `set`
@@ -601,10 +605,10 @@ principles:
   `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths: true)`,
   which compares integer widths recursively because `UserDefaults` returns
   in-process writes with their written `CFNumber` width),
-  notifies any registration whose first read finished while that
-  reconciliation was in progress if any change was reported after that first
-  read began (the change count is captured before the read), even when the value
-  read equals its comparison value (so it may get one extra, possibly repeated,
+  notifies a registration inserted while a reconciliation was in progress, even
+  when the value read equals its comparison value, if the change count advanced
+  between the start of its initial read and the start of the first pass that
+  includes it in that reconciliation (so it may get one extra, possibly repeated,
   emission rather than missing a concurrent write that overlapped its initial
   read), and invokes callbacks outside its lock,
   checking weak observer liveness outside it as well (whereas
@@ -626,8 +630,8 @@ principles:
   `precomposedStringWithCanonicalMapping` (NFC) before SHA-256 hashing so
   migration IDs that compare equal as Swift strings share one completion
   marker, while case differences remain distinct. The marker prefix is
-  `PersistentKeyValueKit_MigrationCompleted_` (no `.` characters, 84 UTF-16
-  code units total) so `UserDefaults` key-value observation can observe marker
+  `PersistentKeyValueKit_MigrationCompleted_` (no `.` characters; the prefix is
+  41 UTF-16 code units and the complete marker key is 84) so `UserDefaults` key-value observation can observe marker
   keys directly.
 - **Dictionary-read leniency versus strict migration (and all-or-nothing writes)**:
   Writes for both `Array` and `Dictionary` are all-or-nothing so a single
@@ -695,11 +699,15 @@ principles:
   compare integer widths recursively (`distinguishingIntegerWidths: true`).
   `UserDefaults` stores integers in property lists by value without preserving
   bit width across processes or launches, so a later process or launch can read
-  a widened integer (the writing process reads back what it wrote), whereas in-memory objects
-  and in-process notification reads remain unserialized `CFNumber` objects
-  whose width a representation can observe via `objCType`.
+  a widened integer (the writing process usually reads back what it wrote, but
+  not when another domain, such as an argument-domain value, supplies the
+  effective object), whereas in-memory objects and in-process notification reads
+  remain unserialized `CFNumber` objects whose width a representation can
+  observe via `objCType`. The notification fallback compares the widths of the
+  effective objects it reads, and `NSUbiquitousKeyValueStore` notification
+  observers filter by key without comparing widths.
   `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
-  shared references, compacting `nil` only from Swift arrays and `String`-keyed
+  shared references, compacting `nil` only from top-level Swift arrays and `String`-keyed
   dictionaries of optionals, merging canonically equivalent keys, and verifying
   Foundation property-list snapshots by exact copy plus revision while
   verifying other references by revision only).
