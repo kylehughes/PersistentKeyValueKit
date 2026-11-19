@@ -15,8 +15,8 @@ import Foundation
 ///
 /// An object that ``encode(_:format:)`` returns or a `set` method writes is handed over to the caller: do not mutate it
 /// afterward, including a mutable string or data buffer, a mutable dictionary key, or a container. As a defense, the
-/// package keeps immutable copies of the mutable strings, data objects, arrays, and dictionaries that it accepts, but
-/// behavior is unspecified if a representation mutates an object after handing it over.
+/// package copies the mutable containers and leaf values that it accepts, but it does not copy every mutable object,
+/// such as a dictionary key, and behavior is unspecified if a representation mutates an object after handing it over.
 public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     // MARK: Associated Types
     
@@ -157,8 +157,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 /// A property list contains only strings, numbers, dates, data, arrays, and dictionaries with string keys, which are
 /// the objects that `UserDefaults` and `NSUbiquitousKeyValueStore` store. Binary property-list serialization also
 /// accepts the UIDs in a keyed archive's property list, but these writes reject them; store such an archive as `Data`.
-/// As a defense, writes keep an immutable copy of each mutable string, data object, array, or dictionary in the object
-/// that `encode` returns. A representation must still not mutate that object after `encode` returns.
+/// As a defense, writes keep immutable copies of the mutable containers and leaf values in the object that `encode`
+/// returns, but not of every mutable object, such as a dictionary key. A representation must still not mutate that
+/// object, or any object it contains, after `encode` returns.
 ///
 /// These defaults read the effective `UserDefaults` object without inspecting `UserDefaults.argumentDomain`, so they do
 /// not coerce string launch arguments into typed values. Built-in representations implement these methods themselves
@@ -762,11 +763,11 @@ internal protocol BuiltInScalarConversion: PersistentKeyValueRepresentation {}
 ///
 /// Container methods implemented outside this package can write any object, including one that binary property-list
 /// validation accepts but a store rejects, such as the UIDs in a keyed archive's property list, so ordinary writes
-/// validate what such methods write before a store receives it, and keep immutable copies of its mutable objects so
-/// that a later conversion cannot change it. A conforming representation's container methods write only such property
-/// lists, or encode the elements of a container through the ordinary writes of their own representation, which
-/// validate and copy what they write, so ordinary writes skip that validation. A built-in proxy or optional
-/// representation does not conform; it writes through ``BuiltInValueOmission`` instead.
+/// validate what such methods write before a store receives it, and keep immutable copies of its mutable containers
+/// and leaf values so that a later conversion cannot change them. A conforming representation's container methods
+/// write only such property lists, or encode the elements of a container through the ordinary writes of their own
+/// representation, which validate and copy what they write, so ordinary writes skip that validation. A built-in proxy
+/// or optional representation does not conform; it writes through ``BuiltInValueOmission`` instead.
 internal protocol BuiltInPrimitiveConversion: PersistentKeyValueRepresentation {}
 
 // MARK: - Built-In Value Omission Definition
@@ -983,9 +984,10 @@ internal func isStorableDictionary(_ objects: inout [String: Any]) -> Bool {
 /// rejecting such an object, so a write must not pass one to a store.
 ///
 /// The snapshot is the Foundation object that `object` bridges to, with every mutable string, data object, array, or
-/// dictionary in it replaced by an immutable copy. A representation can keep a mutable object it returned and change
-/// it while a later value of the same collection is converted, such as by adding an archive UID to a dictionary that
-/// has already been validated or by reusing one data buffer for every value, so writes store the snapshot instead.
+/// dictionary in it replaced by an immutable copy, except dictionary keys, which it keeps as they are. A
+/// representation can keep a mutable object it returned and change it while a later value of the same collection is
+/// converted, such as by adding an archive UID to a dictionary that has already been validated or by reusing one data
+/// buffer for every value, so writes store the snapshot instead.
 internal func storablePropertyList(_ object: Any) -> AnyObject? {
     let bridgedObject = object as AnyObject
     var enclosingContainers: [ObjectIdentifier] = []

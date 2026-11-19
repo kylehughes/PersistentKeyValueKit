@@ -177,8 +177,8 @@ extension PersistentKeyMigrationReport {
 
         /// Writing to or verifying the destination store failed. A move had not started removing the source value.
         ///
-        /// Under ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource``, this includes finding that the
-        /// existing destination value changed, in which case the source value is left in place.
+        /// Under a policy that keeps the existing destination value, this includes finding that the value changed, in
+        /// which case the migration leaves the source value in place.
         case write
 
         /// Removing the value from the source store or verifying its removal failed during a move, or the destination
@@ -270,7 +270,9 @@ extension PersistentKeyMigrationReport {
         /// destination then no longer matched its expected snapshot. A cleanup failure with
         /// ``PersistentKeyMigrationError/removalVerificationFailed`` means the source key still held a value after the
         /// move attempted to remove it, which does not establish whether the value was removed and then restored. In
-        /// each case, another writer or observer may have modified or removed the value in either store.
+        /// each case, another writer or observer may have modified or removed the value in either store. Verification
+        /// detects only the changes it can observe, so coordinate writers before migrating, including code that writes
+        /// to a migrating store as a side effect of reading, encoding, or deallocating a value.
         case failed(FailureStage)
 
         /// The existing destination value was preserved under ``PersistentKeyCopyConflictPolicy/keepDestination`` or

@@ -2,8 +2,8 @@ import Foundation
 
 /// Determines how a copy operation handles a key that already has a persisted value in the destination store.
 public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
-    /// Preserves the existing destination value and leaves the source value unchanged, reporting
-    /// ``PersistentKeyMigrationReport/Status/keptDestination``.
+    /// Preserves the existing destination value after verifying that the destination snapshot has not changed, and
+    /// leaves the source value unchanged, reporting ``PersistentKeyMigrationReport/Status/keptDestination``.
     case keepDestination
 
     /// Replaces the destination value with the source value after verifying that the destination snapshot has not
@@ -13,8 +13,8 @@ public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
 
 /// Determines how a move operation handles a key that already has a persisted value in the destination store.
 public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
-    /// Preserves both the existing destination value and the source value, reporting
-    /// ``PersistentKeyMigrationReport/Status/keptDestination``.
+    /// Preserves both the existing destination value and the source value after verifying that the destination snapshot
+    /// has not changed, reporting ``PersistentKeyMigrationReport/Status/keptDestination``.
     ///
     /// The source value remains in the source store after the migration completes.
     case keepBoth

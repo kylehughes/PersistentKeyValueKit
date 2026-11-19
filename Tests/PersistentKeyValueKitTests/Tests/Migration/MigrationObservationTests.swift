@@ -191,6 +191,75 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
+    func testMemoryCopyKeptDestinationRemovedByReleasedSourceDeinitFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let sourceKey = DeinitHookEntry.key("source:\(#function)")
+        let destinationKey = PublishedRowsKey(id: "destination:\(#function)")
+        let rows = PublishedRows()
+        var deinitRan = false
+
+        source.set(
+            sourceKey,
+            to: DeinitHookEntry("source") {
+                destination.remove(destinationKey)
+                deinitRan = true
+            }
+        )
+        destination.set(destinationKey, to: rows)
+        // Another writer removes the source once the copy reads the kept value. The migration still holds the source's
+        // value, so its `deinit` runs only when the migration releases it.
+        rows.onRead = {
+            source.remove(sourceKey)
+        }
+
+        let report = try source.copy(
+            .key(sourceKey, to: destinationKey) { _ in
+                NSArray()
+            },
+            to: destination,
+            onConflict: .keepDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertNil(source.object(forKey: sourceKey.id))
+        XCTAssertNil(destination.object(forKey: destinationKey.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
+    func testMemoryCopyKeptDestinationRemovedWhileCapturingSnapshotFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = PublishedRowsKey(id: "key:\(#function)")
+        let rows = PublishedRows()
+
+        source.set(key, to: NSArray(array: [[7]]))
+        destination.set(key, to: rows)
+        // Reading the kept value removes it, as a model behind a collection proxy can invalidate its cached entry.
+        rows.onRead = {
+            destination.remove(key)
+        }
+
+        let report = try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .once(id: #function))
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.object(forKey: key.id) as? NSArray, NSArray(array: [[7]]))
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+
+        let retry = try source.copy(key, to: destination, onConflict: .keepDestination, tracking: .once(id: #function))
+
+        XCTAssertEqual(retry.outcomes.map(\.status), [.copied])
+        XCTAssertEqual(retry.completion, .recorded)
+        XCTAssertEqual(destination.object(forKey: key.id) as? NSArray, NSArray(array: [[7]]))
+    }
+
     func testMemoryCopyPublishesExactlyOneDestinationChange() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -487,6 +556,76 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
     }
 
+    func testMemoryMoveKeptBothDestinationRemovedByReleasedSourceDeinitFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let sourceKey = DeinitHookEntry.key("source:\(#function)")
+        let destinationKey = PublishedRowsKey(id: "destination:\(#function)")
+        let rows = PublishedRows()
+        var deinitRan = false
+
+        source.set(
+            sourceKey,
+            to: DeinitHookEntry("source") {
+                destination.remove(destinationKey)
+                deinitRan = true
+            }
+        )
+        destination.set(destinationKey, to: rows)
+        // Another writer removes the source once the move reads the kept value. The migration still holds the source's
+        // value, so its `deinit` runs only when the migration releases it.
+        rows.onRead = {
+            source.remove(sourceKey)
+        }
+
+        let report = try source.move(
+            .key(sourceKey, to: destinationKey) { _ in
+                NSArray()
+            },
+            to: destination,
+            onConflict: .keepBoth,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(deinitRan)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertNil(source.object(forKey: sourceKey.id))
+        XCTAssertNil(destination.object(forKey: destinationKey.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
+    func testMemoryMoveKeptBothDestinationRemovedWhileCapturingSnapshotFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let key = PublishedRowsKey(id: "key:\(#function)")
+        let rows = PublishedRows()
+
+        source.set(key, to: NSArray(array: [[7]]))
+        destination.set(key, to: rows)
+        // Reading the kept value removes it, as a model behind a collection proxy can invalidate its cached entry.
+        rows.onRead = {
+            destination.remove(key)
+        }
+
+        let report = try source.move(key, to: destination, onConflict: .keepBoth, tracking: .once(id: #function))
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .destinationChanged)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.object(forKey: key.id) as? NSArray, NSArray(array: [[7]]))
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+
+        let retry = try source.move(key, to: destination, onConflict: .keepBoth, tracking: .once(id: #function))
+
+        XCTAssertEqual(retry.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(retry.completion, .recorded)
+        XCTAssertNil(source.object(forKey: key.id))
+        XCTAssertEqual(destination.object(forKey: key.id) as? NSArray, NSArray(array: [[7]]))
+    }
+
     func testMemoryMovePublishesSourceRemovalAndDestinationTransfer() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -710,6 +849,95 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertTrue(values.isEmpty)
     }
 
+    func testUserDefaultsCopyPreparedWriteReleaseRemovingDestinationFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let suiteName = stableSuiteName("MigrationObservation")
+        // `UserDefaults` is thread-safe but not declared `Sendable`.
+        nonisolated(unsafe) let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
+        let destinationKey = AllocatorHookNumber.key("destination:\(#function)")
+        let removedDestination = LockedFlag(false)
+
+        defer {
+            destination.removePersistentDomain(forName: suiteName)
+        }
+
+        source.set(sourceKey, to: .max)
+        // `UserDefaults` stores its own copy of a number, so the prepared write holds the last reference to the encoded
+        // number, whose allocator's cleanup removes the destination when the migration releases the write.
+        let item = PersistentKeyMigrationItem.key(sourceKey, to: destinationKey) {
+            AllocatorHookNumber.make($0) {
+                if destination.object(forKey: destinationKey.id) != nil {
+                    destination.removeObject(forKey: destinationKey.id)
+                    removedDestination.value = true
+                }
+            }
+        }
+        let report = try source.copy(
+            item,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(removedDestination.value)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.get(sourceKey), .max)
+        XCTAssertNil(destination.object(forKey: destinationKey.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
+    func testUserDefaultsCopySharedSourceAndWriteReleaseRemovingDestinationFailsWrite() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let suiteName = stableSuiteName("MigrationObservation")
+        let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let key = AllocatorHookNumber.key("key:\(#function)")
+        var removedDestination = false
+        var subscriptions = Set<AnyCancellable>()
+
+        defer {
+            destination.removePersistentDomain(forName: suiteName)
+        }
+
+        // The source snapshot and the prepared write hold the same number, whose allocator's cleanup removes the
+        // destination once the migration releases both.
+        source.set(
+            key,
+            to: AllocatorHookNumber.make(.max) {
+                if destination.object(forKey: key.id) != nil {
+                    destination.removeObject(forKey: key.id)
+                    removedDestination = true
+                }
+            }
+        )
+        // Another writer removes the source once the copy reaches the destination, so the migration holds the
+        // remaining references to the number.
+        destination.changesPublisher(for: key).sink { value in
+            guard value.intValue == .max else {
+                return
+            }
+
+            source.remove(key)
+        }.store(in: &subscriptions)
+
+        let report = try source.copy(
+            key,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(removedDestination)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertNil(source.object(forKey: key.id))
+        XCTAssertNil(destination.object(forKey: key.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
     func testUserDefaultsDestinationObserverCausesWriteFailure() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suite = stableSuiteName("MigrationObservation")
@@ -742,6 +970,46 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(source.get(key), 1)
     }
 
+    func testUserDefaultsMovePreparedWriteReleaseRemovingDestinationKeepsSource() throws {
+        let source = InMemoryPersistentKeyValueStore()
+        let suiteName = stableSuiteName("MigrationObservation")
+        // `UserDefaults` is thread-safe but not declared `Sendable`.
+        nonisolated(unsafe) let destination = try XCTUnwrap(UserDefaults.migratable(suiteName: suiteName))
+        let sourceKey = PersistentKey<Int>("source:\(#function)", defaultValue: 0)
+        let destinationKey = AllocatorHookNumber.key("destination:\(#function)")
+        let removedDestination = LockedFlag(false)
+
+        defer {
+            destination.removePersistentDomain(forName: suiteName)
+        }
+
+        source.set(sourceKey, to: .max)
+        // `UserDefaults` stores its own copy of a number, so the prepared write holds the last reference to the encoded
+        // number, whose allocator's cleanup removes the destination when the migration releases the write.
+        let item = PersistentKeyMigrationItem.key(sourceKey, to: destinationKey) {
+            AllocatorHookNumber.make($0) {
+                if destination.object(forKey: destinationKey.id) != nil {
+                    destination.removeObject(forKey: destinationKey.id)
+                    removedDestination.value = true
+                }
+            }
+        }
+        let report = try source.move(
+            item,
+            to: destination,
+            onConflict: .overwriteDestination,
+            tracking: .once(id: #function)
+        )
+
+        XCTAssertTrue(removedDestination.value)
+        XCTAssertEqual(report.outcomes.map(\.status), [.failed(.write)])
+        XCTAssertEqual(report.outcomes.first?.error as? PersistentKeyMigrationError, .writeVerificationFailed)
+        XCTAssertEqual(report.completion, .notRecorded)
+        XCTAssertEqual(source.get(sourceKey), .max)
+        XCTAssertNil(destination.object(forKey: destinationKey.id))
+        XCTAssertFalse(destination.get(.isMigrationCompleted(id: #function)))
+    }
+
     func testUserDefaultsMovePublishesDestinationChange() throws {
         let source = InMemoryPersistentKeyValueStore()
         let suite = "MigrationObservation.\(#function)"
@@ -765,6 +1033,61 @@ final class MigrationObservationTests: XCTestCase {
 
         XCTAssertEqual(values, ["migrated"])
         XCTAssertEqual(source.get(key), "")
+    }
+}
+
+// MARK: - Allocator Hook Number Definition
+
+/// Creates numbers whose Core Foundation allocator runs a cleanup action when the number is deallocated.
+private enum AllocatorHookNumber {
+    // MARK: Internal Static Interface
+
+    /// A key whose representation stores a number as it is, so the encoded object is the value itself.
+    static func key(_ id: String) -> PersistentKey<NSNumber> {
+        PersistentKey(id, defaultValue: NSNumber(value: 0), representation: Representation())
+    }
+
+    /// Returns a number for `value`, which must be too large for a tagged pointer, that runs `onRelease` when it is
+    /// deallocated.
+    static func make(_ value: Int, onRelease: @escaping () -> Void) -> NSNumber {
+        var context = CFAllocatorContext()
+        // A number releases its allocator when it is deallocated, and the allocator then releases this entry.
+        context.info = Unmanaged.passRetained(DeinitHookEntry("allocator", onDeinit: onRelease)).toOpaque()
+        context.release = {
+            Unmanaged<DeinitHookEntry>.fromOpaque($0!).release()
+        }
+        context.allocate = { size, _, _ in
+            malloc(size)
+        }
+        context.reallocate = { pointer, size, _, _ in
+            realloc(pointer, size)
+        }
+        context.deallocate = { pointer, _ in
+            free(pointer)
+        }
+
+        let allocator = CFAllocatorCreate(nil, &context).takeRetainedValue()
+        var number = Int64(value)
+
+        return CFNumberCreate(allocator, .sInt64Type, &number)
+    }
+}
+
+// MARK: - Representation Extension
+
+extension AllocatorHookNumber {
+    private struct Representation: PersistentKeyValueRepresentation {
+        func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> NSNumber {
+            guard let number = storageObject as? NSNumber else {
+                throw PersistentKeyValueConversionError.invalidStorageValue
+            }
+
+            return number
+        }
+
+        func encode(_ value: NSNumber, format: PersistentKeyValueStorageFormat) throws -> Any? {
+            value
+        }
     }
 }
 
