@@ -1,3 +1,10 @@
+//
+//  PersistentKeyMigrationError.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 /// Errors thrown during migration setup or reported for individual keys and completion tracking.

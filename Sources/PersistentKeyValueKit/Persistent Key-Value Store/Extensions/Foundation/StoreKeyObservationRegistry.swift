@@ -6,20 +6,17 @@
 //
 
 import Foundation
-import ObjectiveC
 
 /// A registration that delivers one Foundation store's changes for one key to one observer.
 internal protocol StoreKeyObservation: AnyObject {
     /// The context supplied when the observer was registered.
     var context: UnsafeMutableRawPointer? { get }
 
-    /// The identifier of the observed key.
-    var keyID: String { get }
-
-    /// The UTF-16 code units of ``keyID``, read once with ``LiteralKeyID/codeUnits(of:)`` when the observation is
-    /// created.
+    /// The UTF-16 code units of the observed key's identifier, read once with ``LiteralKeyID/codeUnits(of:)`` when the
+    /// observation is created.
     ///
-    /// The registry compares these with its lock held, so the observation must not read them from ``keyID`` on demand.
+    /// The registry compares these with its lock held, so the observation must not read them from the identifier on
+    /// demand.
     var literalKeyID: [UInt16] { get }
 
     /// The registered observer, or `nil` after it has been deallocated.
@@ -66,19 +63,9 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     ///
     /// The registry is retained by the store, so it lives exactly as long as the store instance.
     internal static func registry(for store: NSObject) -> StoreKeyObservationRegistry {
-        creationLock.lock()
-        defer {
-            creationLock.unlock()
+        association.value(for: store) {
+            StoreKeyObservationRegistry()
         }
-
-        if let registry = objc_getAssociatedObject(store, associationAddress) as? StoreKeyObservationRegistry {
-            return registry
-        }
-
-        let registry = StoreKeyObservationRegistry()
-        objc_setAssociatedObject(store, associationAddress, registry, .OBJC_ASSOCIATION_RETAIN)
-
-        return registry
     }
 
     // MARK: Internal Instance Interface
@@ -88,7 +75,7 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     /// The observation is registered before it is activated, so a callback delivered during activation can deregister
     /// it.
     internal func insert(_ observation: any StoreKeyObservation) {
-        let (removed, liveObservers) = withLock {
+        let (removed, liveObservers) = lock.withLockHeld {
             let removed = removeObservations { _, _ in
                 false
             }
@@ -115,7 +102,7 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     internal func remove(_ observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
         let literalKeyID = LiteralKeyID.codeUnits(of: keyID)
 
-        let (removed, liveObservers) = withLock {
+        let (removed, liveObservers) = lock.withLockHeld {
             removeObservations { registeredObserver, observation in
                 registeredObserver === observer
                     && observation.literalKeyID == literalKeyID
@@ -133,13 +120,7 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
 
     // MARK: Private Static Interface
 
-    private static let associationToken = StoreKeyObservationRegistryAssociationKey()
-
-    private static let creationLock = NSLock()
-
-    private static var associationAddress: UnsafeRawPointer {
-        UnsafeRawPointer(Unmanaged.passUnretained(associationToken).toOpaque())
-    }
+    private static let association = ObjectAssociation<StoreKeyObservationRegistry>()
 
     // MARK: Private Instance Interface
 
@@ -177,17 +158,4 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
 
         return (removed, liveObservers)
     }
-
-    private func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
-    }
-}
-
-// A stable object address gives Objective-C associations an immutable process-local key without a mutable global.
-private final class StoreKeyObservationRegistryAssociationKey: Sendable {
 }

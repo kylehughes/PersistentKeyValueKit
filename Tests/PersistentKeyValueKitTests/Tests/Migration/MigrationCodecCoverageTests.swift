@@ -180,21 +180,21 @@ final class MigrationCodecCoverageTests: XCTestCase {
     func testPropertyListStorageFreezeEqualityAndByteCount() throws {
         let url = URL(string: "https://example.com")!
 
-        XCTAssertNoThrow(try PropertyListMigrationStorage.exactCopy(url, allowingLegacyURL: true))
-        XCTAssertThrowsError(try PropertyListMigrationStorage.freeze(NSObject()))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(nil, nil))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(Double.nan, Double.nan))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(Double.nan, 1.0))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(1.0, Double.nan))
-        XCTAssertTrue(PropertyListMigrationStorage.equal([1, 2], [1, 2]))
-        XCTAssertFalse(PropertyListMigrationStorage.equal([1], [1, 2]))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(["a": 1], ["a": 1]))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(["a": 1], ["b": 1]))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(["a": 1], ["a": 1, "b": 2]))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(url, url))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(1, "1"))
-        XCTAssertNoThrow(try PropertyListMigrationStorage.byteCount(["a": 1]))
-        XCTAssertThrowsError(try PropertyListMigrationStorage.byteCount(NSObject()))
+        XCTAssertNoThrow(try PropertyListStorage.exactCopy(url, allowingLegacyURL: true))
+        XCTAssertThrowsError(try PropertyListStorage.freeze(NSObject()))
+        XCTAssertTrue(PropertyListStorage.equal(nil, nil))
+        XCTAssertTrue(PropertyListStorage.equal(Double.nan, Double.nan))
+        XCTAssertFalse(PropertyListStorage.equal(Double.nan, 1.0))
+        XCTAssertFalse(PropertyListStorage.equal(1.0, Double.nan))
+        XCTAssertTrue(PropertyListStorage.equal([1, 2], [1, 2]))
+        XCTAssertFalse(PropertyListStorage.equal([1], [1, 2]))
+        XCTAssertTrue(PropertyListStorage.equal(["a": 1], ["a": 1]))
+        XCTAssertFalse(PropertyListStorage.equal(["a": 1], ["b": 1]))
+        XCTAssertFalse(PropertyListStorage.equal(["a": 1], ["a": 1, "b": 2]))
+        XCTAssertTrue(PropertyListStorage.equal(url, url))
+        XCTAssertFalse(PropertyListStorage.equal(1, "1"))
+        XCTAssertNoThrow(try PropertyListStorage.byteCount(["a": 1]))
+        XCTAssertThrowsError(try PropertyListStorage.byteCount(NSObject()))
     }
 
     func testSuccessfulProxyRawAndLosslessCodecs() throws {

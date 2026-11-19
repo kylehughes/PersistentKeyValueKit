@@ -431,7 +431,7 @@ principles:
     value, so changing that default changes the row's identity under `\.self`),
     `UserDefaultsMigrationBackend` sends `persistentDomain(forName:)` through
     Objective-C to keep the unbridged `NSDictionary` and looks up keys as
-    `NSString`, `PropertyListMigrationStorage.equal` compares strings and
+    `NSString`, `PropertyListStorage.equal` compares strings and
     dictionary keys with `NSString.isEqual` and `NSDictionary.object(forKey:)`,
     duplicate/overlap/`sameStore` validation in `UserDefaults` and
     `NSUbiquitousKeyValueStore` uses literal UTF-16 identity,
@@ -467,11 +467,11 @@ principles:
   those distinctions. Each snapshot is verified according to the rules of the
   store that holds it. Snapshots in
   `UserDefaultsMigrationBackend` and `UbiquitousKeyValueMigrationBackend` capture
-  `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
+  `PropertyListStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
   number's `CFNumber` type, including integer width and `NSDecimalNumber`), so
   migration decodes an exact snapshot of the persisted object, which an
   ordinary `get` can differ from (a launch argument can mask it).
-  `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths:)` checks
+  `PropertyListStorage.equal(_:_:distinguishingIntegerWidths:)` checks
   `CFBooleanGetTypeID()`, `NSDecimalNumber` (which never compares equal to a
   non-decimal `NSNumber` such as a `Double`, and compares two decimals with
   exact `compare(_:) == .orderedSame`), `CFNumberIsFloatType` (by default, for
@@ -499,7 +499,7 @@ principles:
   and string-keyed dictionaries, rejecting keyed-archive UIDs, `NSNull`, `URL`s,
   non-string keys, and self-containing containers itself without relying on
   `PropertyListSerialization.propertyList(_:isValidFor: .binary)`) before
-  taking a throwing `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)`
+  taking a throwing `PropertyListStorage.exactCopy(_:allowingLegacyURL:)`
   (throwing `PersistentKeyValueConversionError.encodingFailed` if the object is
   not a storable property list) and validating that immutable Foundation-bridged
   deep copy with `decode(storageObject:format:)`, so a decoder that consumes or
@@ -507,9 +507,9 @@ principles:
   written. The decoded value is discarded without being compared to the input,
   so a representation that loses precision (such as an ISO 8601 date string
   that stores whole seconds) migrates the lossy value. When preparing a write to `UserDefaults` or
-  `NSUbiquitousKeyValueStore`, `PropertyListMigrationStorage.storableCopy(of:)`
+  `NSUbiquitousKeyValueStore`, `PropertyListStorage.storableCopy(of:)`
   captures `exactCopy(object)`, verifies that
-  `PropertyListMigrationStorage.equal(copy, try freeze(copy))` holds against a
+  `PropertyListStorage.equal(copy, try freeze(copy))` holds against a
   binary-property-list-serialized copy, and returns `copy` so the backend commits
   that exact immutable copy, bypassing the key's `set` accessor, throwing
   `PersistentKeyValueConversionError.encodingFailed` at `.prepare`, before the
@@ -578,13 +578,13 @@ principles:
   snapshots and prepared writes capture an exact immutable copy for Foundation
   property-list objects (such as `NSMutableArray`, including nested
   `NSDecimalNumber` values, including when wrapped in `Optional`) using
-  `PropertyListMigrationStorage.exactCopy` (an immutable deep copy that
+  `PropertyListStorage.exactCopy` (an immutable deep copy that
   preserves exact decimals rather than binary property-list serialization, which
   converts `NSDecimalNumber` to `Double`), the verification snapshot for a
   committed write carries the copy captured when the write was prepared before
   the value was stored and visible to other readers or observers, and
   `migrationSnapshotIsCurrent` compares the current object's contents with
-  `PropertyListMigrationStorage.equal(contents, object, distinguishingIntegerWidths: true)`
+  `PropertyListStorage.equal(contents, object, distinguishingIntegerWidths: true)`
   (treating integer width as significant recursively because in-memory objects
   remain unserialized) outside
   the lock and then rechecks under the lock that the stored entry still has the
@@ -686,7 +686,7 @@ principles:
   comparison result across registrations that share the same comparison object
   reference, including `NSNumber`, and fast-pathing identical cached
   non-`NSNumber` object references before calling
-  `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths: true)`,
+  `PropertyListStorage.equal(_:_:distinguishingIntegerWidths: true)`,
   which compares integer widths recursively across the effective objects that
   `object(forKey:)` returns, so an argument-domain value of a different width
   can mask a persisted value in the writing process),

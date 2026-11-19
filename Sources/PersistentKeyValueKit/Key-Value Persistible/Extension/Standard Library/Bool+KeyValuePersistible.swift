@@ -97,8 +97,7 @@ extension Bool: PrimitiveKeyValuePersistible {
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Self? {
-        // We use the default implementation with `object(forKey)` so that we can differentiate a `nil` value from
-        // a `false` value.
+        // We use `object(forKey:)` so that we can differentiate a `nil` value from a `false` value.
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Self
     }
     

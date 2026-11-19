@@ -27,6 +27,8 @@ import Foundation
 /// uncommon.
 /// Implementations that are not thread-safe will exhibit undefined behavior or crash when used with observation APIs.
 public protocol PersistentKeyValueStore {
+    // MARK: Migrating Values
+
     /// The migration capability for this store.
     ///
     /// Access throws when the backing store's writable persistent domain cannot be identified (such as a non-standard

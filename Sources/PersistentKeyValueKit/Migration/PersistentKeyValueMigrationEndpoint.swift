@@ -1,3 +1,10 @@
+//
+//  PersistentKeyValueMigrationEndpoint.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 // MARK: - Public Interface
@@ -74,12 +81,12 @@ protocol PersistentKeyValueMigrationBackend {
 /// Foundation stores compare key identifiers by their UTF-16 code units, so canonically equivalent spellings, such as
 /// composed and decomposed "café", name different keys. A store keyed by Swift `String` treats them as one key.
 struct PersistentKeyMigrationKeyIdentity: Hashable {
-    private let value: AnyHashable
+    private let storage: Storage
 
     // MARK: Private Initialization
 
-    private init(value: AnyHashable) {
-        self.value = value
+    private init(storage: Storage) {
+        self.storage = storage
     }
 
     // MARK: Internal Static Interface
@@ -87,15 +94,25 @@ struct PersistentKeyMigrationKeyIdentity: Hashable {
     /// An identity that equals another exactly when the identifiers are canonically equivalent, as Swift `String`
     /// equality defines.
     static func canonical(_ keyID: String) -> Self {
-        Self(value: keyID)
+        Self(storage: .canonical(keyID))
     }
 
     /// An identity that equals another exactly when the identifiers have the same UTF-16 code units.
     static func literal(_ keyID: String) -> Self {
-        Self(value: LiteralKeyID.codeUnits(of: keyID))
+        Self(storage: .literal(LiteralKeyID.codeUnits(of: keyID)))
+    }
+
+    // MARK: Storage Definition
+
+    /// The compared form of an identifier. Identities of different forms are never equal.
+    private enum Storage: Hashable {
+        /// The identifier itself, compared as Swift `String` equality defines.
+        case canonical(String)
+
+        /// The identifier's UTF-16 code units.
+        case literal([UInt16])
     }
 }
-
 
 struct PersistentKeyValueMigrationStoreIdentity: Hashable, Sendable {
     let identifier: String

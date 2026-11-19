@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import ObjectiveC
 
 // MARK: - PersistentKeyValueStore Extension
 
@@ -241,9 +240,6 @@ extension PersistentKeyValueStore where Self == UserDefaults {
     }
 }
 
-private final class UserDefaultsMigrationDomainAssociationKey: Sendable {
-}
-
 final class UserDefaultsMigrationDomain: Sendable {
     let name: String
 
@@ -255,8 +251,7 @@ final class UserDefaultsMigrationDomain: Sendable {
 extension UserDefaults {
     // MARK: Fileprivate Static Interface
 
-    // A stable object address gives Objective-C associations an immutable process-local key without a mutable global.
-    fileprivate static let migrationDomainAssociationToken = UserDefaultsMigrationDomainAssociationKey()
+    fileprivate static let migrationDomainAssociation = ObjectAssociation<UserDefaultsMigrationDomain>()
 
     // MARK: Internal Static Interface
 
@@ -315,19 +310,14 @@ extension UserDefaults {
             return nil
         }
 
-        objc_setAssociatedObject(
-            defaults,
-            migrationDomainAssociationAddress,
-            // The metadata is retained by the native object and never retains a backend or the object itself.
-            UserDefaultsMigrationDomain(name: suiteName),
-            .OBJC_ASSOCIATION_RETAIN
-        )
+        // The metadata is retained by the native object and never retains a backend or the object itself.
+        migrationDomainAssociation.setValue(UserDefaultsMigrationDomain(name: suiteName), for: defaults)
 
         return defaults
     }
 
     internal static func migrationDomainMetadata(for defaults: UserDefaults) -> UserDefaultsMigrationDomain? {
-        objc_getAssociatedObject(defaults, migrationDomainAssociationAddress) as? UserDefaultsMigrationDomain
+        migrationDomainAssociation.value(for: defaults)
     }
 
     internal static func migrationDomainName(
@@ -347,11 +337,5 @@ extension UserDefaults {
         }
 
         return metadata.name
-    }
-
-    // MARK: Fileprivate Static Interface
-
-    fileprivate static var migrationDomainAssociationAddress: UnsafeRawPointer {
-        UnsafeRawPointer(Unmanaged.passUnretained(migrationDomainAssociationToken).toOpaque())
     }
 }

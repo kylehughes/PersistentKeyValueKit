@@ -1,3 +1,10 @@
+//
+//  PersistentKeyValueStore+Migration.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 /// Synchronizes in-process migration ownership; store operations never run under this lock.
@@ -15,23 +22,20 @@ private final class PersistentKeyMigrationRegistry: @unchecked Sendable {
     // MARK: Internal Instance Interface
 
     func claim(_ values: Set<Resource>) -> Bool {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
+        lock.withLockHeld {
+            guard values.isDisjoint(with: resources) else {
+                return false
+            }
 
-        guard values.isDisjoint(with: resources) else {
-            return false
+            resources.formUnion(values)
+            return true
         }
-
-        resources.formUnion(values)
-        return true
     }
 
     func release(_ values: Set<Resource>) {
-        lock.lock()
-        resources.subtract(values)
-        lock.unlock()
+        lock.withLockHeld {
+            resources.subtract(values)
+        }
     }
 }
 
@@ -52,14 +56,36 @@ enum PersistentKeyMigrationOperation {
 
     // MARK: Internal Instance Interface
 
-    /// Whether the operation leaves both values in place when the destination already holds one.
-    var keepsSourceAndDestination: Bool {
+    /// How the operation resolves a conflict with a value that the destination already holds.
+    var conflictResolution: ConflictResolution {
         switch self {
-        case .copy(let policy):
-            policy == .keepDestination
-        case .move(let policy):
-            policy == .keepBoth
+        case .copy(.keepDestination):
+            .keepBoth
+        case .copy(.overwriteDestination):
+            .write
+        case .move(.keepBoth):
+            .keepBoth
+        case .move(.keepDestinationAndRemoveSource):
+            .keepDestinationAndRemoveSource
+        case .move(.overwriteDestination):
+            .write
         }
+    }
+}
+
+// MARK: - ConflictResolution Definition
+
+extension PersistentKeyMigrationOperation {
+    /// How an operation resolves a conflict with a value that the destination already holds.
+    enum ConflictResolution {
+        /// Leaves both the source value and the destination value in place.
+        case keepBoth
+
+        /// Leaves the destination value in place and removes the source value.
+        case keepDestinationAndRemoveSource
+
+        /// Writes the source value in place of the destination value.
+        case write
     }
 }
 
@@ -134,39 +160,48 @@ where SourceKey: PersistentKeyProtocol, DestinationKey: PersistentKeyProtocol {
             }
 
             let destinationSnapshot = try destinationStore.migrationSnapshot(for: destinationID)
-            if let destinationSnapshot, operation.keepsSourceAndDestination {
-                // Reading the destination to capture its snapshot runs its value's code, and the source snapshot can
-                // hold the last reference to the source value, whose `deinit` can change the destination. Either can
-                // remove the kept value, so the source snapshot is released and keeping the destination is verified
-                // like a write.
-                _ = consume sourceSnapshot
-                stage = .write
-                guard try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID) else {
-                    throw PersistentKeyMigrationError.destinationChanged
+            if let destinationSnapshot {
+                switch operation.conflictResolution {
+                case .keepBoth:
+                    // Reading the destination to capture its snapshot runs its value's code, and the source snapshot
+                    // can hold the last reference to the source value, whose `deinit` can change the destination.
+                    // Either can remove the kept value, so the source snapshot is released and keeping the destination
+                    // is verified like a write.
+                    _ = consume sourceSnapshot
+                    stage = .write
+                    guard
+                        try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID)
+                    else {
+                        throw PersistentKeyMigrationError.destinationChanged
+                    }
+
+                    return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .keptDestination)
+                case .keepDestinationAndRemoveSource:
+                    // Keeping the destination is verified like a write, so a change found here, before the source is
+                    // removed, fails at the same stage as a change found while writing.
+                    stage = .write
+                    guard
+                        try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID)
+                    else {
+                        throw PersistentKeyMigrationError.destinationChanged
+                    }
+
+                    stage = .cleanup
+                    try Self.remove(consume sourceSnapshot, from: sourceStore, for: sourceID)
+                    // Removal can notify observers synchronously, and they can change the destination. Comparing the
+                    // destination runs its value's code, which can restore the source, so the source is checked last.
+                    guard
+                        try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID)
+                    else {
+                        throw PersistentKeyMigrationError.destinationChanged
+                    }
+
+                    try Self.verifyRemoval(from: sourceStore, for: sourceID)
+
+                    return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .discardedSource)
+                case .write:
+                    break
                 }
-
-                return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .keptDestination)
-            }
-
-            if case .move(.keepDestinationAndRemoveSource) = operation, let destinationSnapshot {
-                // Keeping the destination is verified like a write, so a change found here, before the source is
-                // removed, fails at the same stage as a change found while writing.
-                stage = .write
-                guard try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID) else {
-                    throw PersistentKeyMigrationError.destinationChanged
-                }
-
-                stage = .cleanup
-                try Self.remove(consume sourceSnapshot, from: sourceStore, for: sourceID)
-                // Removal can notify observers synchronously, and they can change the destination. Comparing the
-                // destination runs its value's code, which can restore the source, so the source is checked last.
-                guard try destinationStore.migrationSnapshotIsCurrent(destinationSnapshot, for: destinationID) else {
-                    throw PersistentKeyMigrationError.destinationChanged
-                }
-
-                try Self.verifyRemoval(from: sourceStore, for: sourceID)
-
-                return .init(sourceKeyID: sourceID, destinationKeyID: destinationID, status: .discardedSource)
             }
 
             stage = .decode
@@ -363,18 +398,6 @@ extension PersistentKeyValueStore {
     /// suites, and key default values are neither copied nor treated as destination conflicts. When an existing
     /// destination value makes ``PersistentKeyCopyConflictPolicy/keepDestination`` keep it, neither value is decoded.
     ///
-    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a
-    /// successful write leaves the destination entry absent only when the destination key's top-level encoding is `nil`
-    /// and the value written is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional
-    /// representation encodes its own `.none` as `nil` and delegates `.some` to its base representation. A value that
-    /// is not `nil` at an `Optional` layer but whose top-level encoding is `nil` fails the item at
-    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
-    /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
-    /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
-    /// does not always remove the entry. A type-changing `UserDefaults` replacement, such as `1` over `true`, can
-    /// temporarily remove the old entry before storing the new object, as
-    /// ``PersistentKeyMigrationError/destinationChanged`` describes.
-    ///
     /// `destination` can be this store when the items' source identifiers are unique, their destination identifiers are
     /// unique, and the two sets are disjoint.
     ///
@@ -391,7 +414,19 @@ extension PersistentKeyValueStore {
     /// Completed writes are not rolled back if a later item fails. An empty batch is valid; with completion tracking,
     /// it attempts to record the marker.
     ///
-    /// The backend verifies the commit. The copy then releases its references to the prepared write and to a replaced
+    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a
+    /// successful write leaves the destination entry absent only when the destination key's top-level encoding is `nil`
+    /// and the value written is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional
+    /// representation encodes its own `.none` as `nil` and delegates `.some` to its base representation. A value that
+    /// is not `nil` at an `Optional` layer but whose top-level encoding is `nil` fails the item at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
+    /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
+    /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
+    /// does not always remove the entry. A type-changing `UserDefaults` replacement, such as `1` over `true`, can
+    /// temporarily remove the old entry before storing the new object, as
+    /// ``PersistentKeyMigrationError/destinationChanged`` describes.
+    ///
+    /// Migration verifies the commit and then releases its references to the prepared write and to a replaced
     /// destination value and verifies the destination again, and releases its reference to the source value before
     /// verifying it once more. Under ``PersistentKeyCopyConflictPolicy/keepDestination``, it releases the source value
     /// before verifying the kept destination value. Verification guards against the changes it can observe, including
@@ -504,19 +539,6 @@ extension PersistentKeyValueStore {
     /// decoded. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither moved nor treated as destination conflicts.
     ///
-    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a
-    /// successful write leaves the destination entry absent only when the destination key's top-level encoding is `nil`
-    /// and the value written is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional
-    /// representation encodes its own `.none` as `nil` and delegates `.some` to its base representation. A value that
-    /// is not `nil` at an `Optional` layer but whose top-level encoding is `nil` fails the item at
-    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
-    /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
-    /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
-    /// does not always remove the entry. A type-changing `UserDefaults` replacement, such as `1` over `true`, can
-    /// temporarily remove the old entry before storing the new object, as
-    /// ``PersistentKeyMigrationError/destinationChanged`` describes. A move item can fail at a stage after its
-    /// destination write or source removal.
-    ///
     /// `destination` can be this store when the items' source identifiers are unique, their destination identifiers are
     /// unique, and the two sets are disjoint. A same-store move renames keys within the store.
     ///
@@ -539,7 +561,20 @@ extension PersistentKeyValueStore {
     /// ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` if the marker is already `true` and otherwise
     /// attempts to record the marker.
     ///
-    /// The backend verifies the commit. The move then releases its references to the prepared write and to a replaced
+    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a
+    /// successful write leaves the destination entry absent only when the destination key's top-level encoding is `nil`
+    /// and the value written is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional
+    /// representation encodes its own `.none` as `nil` and delegates `.some` to its base representation. A value that
+    /// is not `nil` at an `Optional` layer but whose top-level encoding is `nil` fails the item at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
+    /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
+    /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
+    /// does not always remove the entry. A type-changing `UserDefaults` replacement, such as `1` over `true`, can
+    /// temporarily remove the old entry before storing the new object, as
+    /// ``PersistentKeyMigrationError/destinationChanged`` describes. A move item can fail at a stage after its
+    /// destination write or source removal.
+    ///
+    /// Migration verifies the commit and then releases its references to the prepared write and to a replaced
     /// destination value and verifies the destination again, and releases its reference to the removed source value
     /// before verifying the removal. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, it releases the source value
     /// before verifying the kept destination value. After removing the source, the move checks that the destination is

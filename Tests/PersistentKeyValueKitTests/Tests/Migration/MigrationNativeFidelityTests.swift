@@ -475,7 +475,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
             ]
         )
         let original = NSMutableArray(array: [nested, NSMutableArray(array: [1.5])])
-        let copy = try XCTUnwrap(PropertyListMigrationStorage.exactCopy(original) as? NSArray)
+        let copy = try XCTUnwrap(PropertyListStorage.exactCopy(original) as? NSArray)
         let dictionary = try XCTUnwrap(copy[0] as? NSDictionary)
         let array = try XCTUnwrap(copy[1] as? NSArray)
 
@@ -485,7 +485,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(dictionary["data"] is NSMutableData)
         XCTAssertFalse(array is NSMutableArray)
         XCTAssertTrue(equal(copy, original))
-        XCTAssertTrue(type(of: try PropertyListMigrationStorage.exactCopy(1.5)) is AnyClass)
+        XCTAssertTrue(type(of: try PropertyListStorage.exactCopy(1.5)) is AnyClass)
     }
 
     func testMemorySourceDecimalEditDuringMoveFailsCleanup() throws {
@@ -595,22 +595,22 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertFalse(equal([composed: 1], dictionary(1, 1)))
         XCTAssertTrue(equal(["nested": [["flag": true]]], ["nested": [["flag": true]]]))
         XCTAssertFalse(equal(["nested": [["flag": true]]], ["nested": [["flag": 1]]]))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(url, url))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(url, URL(string: "https://example.org")!))
+        XCTAssertTrue(PropertyListStorage.equal(url, url))
+        XCTAssertFalse(PropertyListStorage.equal(url, URL(string: "https://example.org")!))
         XCTAssertFalse(equal("1", 1))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(nil, 1))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(nil, nil))
+        XCTAssertFalse(PropertyListStorage.equal(nil, 1))
+        XCTAssertTrue(PropertyListStorage.equal(nil, nil))
     }
 
     func testPropertyListEqualityComparesDecimalsExactly() {
         let decimal = NSDecimalNumber(string: "1.000000000000000001")
 
-        XCTAssertTrue(PropertyListMigrationStorage.equal(decimal, NSDecimalNumber(string: "1.000000000000000001")))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(decimal, NSDecimalNumber(string: "1.000000000000000002")))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(decimal, NSNumber(value: 1.0)))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(NSNumber(value: 1.0), decimal))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, NSDecimalNumber.notANumber))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(NSDecimalNumber.notANumber, decimal))
+        XCTAssertTrue(PropertyListStorage.equal(decimal, NSDecimalNumber(string: "1.000000000000000001")))
+        XCTAssertFalse(PropertyListStorage.equal(decimal, NSDecimalNumber(string: "1.000000000000000002")))
+        XCTAssertFalse(PropertyListStorage.equal(decimal, NSNumber(value: 1.0)))
+        XCTAssertFalse(PropertyListStorage.equal(NSNumber(value: 1.0), decimal))
+        XCTAssertTrue(PropertyListStorage.equal(NSDecimalNumber.notANumber, NSDecimalNumber.notANumber))
+        XCTAssertFalse(PropertyListStorage.equal(NSDecimalNumber.notANumber, decimal))
     }
 
     func testPropertyListEqualityDistinguishingIntegerWidthsComparesWidthsRecursively() {
@@ -618,11 +618,11 @@ final class MigrationNativeFidelityTests: XCTestCase {
         let int64 = NSNumber(value: Int64(-200_000_023))
 
         func equalWidths(_ lhs: Any, _ rhs: Any) -> Bool {
-            PropertyListMigrationStorage.equal(lhs, rhs, distinguishingIntegerWidths: true)
+            PropertyListStorage.equal(lhs, rhs, distinguishingIntegerWidths: true)
         }
 
-        XCTAssertTrue(PropertyListMigrationStorage.equal([int32] as NSArray, [int64] as NSArray))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(["field": int32] as NSDictionary, ["field": int64] as NSDictionary))
+        XCTAssertTrue(PropertyListStorage.equal([int32] as NSArray, [int64] as NSArray))
+        XCTAssertTrue(PropertyListStorage.equal(["field": int32] as NSDictionary, ["field": int64] as NSDictionary))
         XCTAssertTrue(equalWidths(int32, NSNumber(value: Int32(-200_000_023))))
         XCTAssertTrue(equalWidths(int64, NSNumber(value: Int64(-200_000_023))))
         XCTAssertFalse(equalWidths(int32, int64))
@@ -1013,9 +1013,9 @@ final class MigrationNativeFidelityTests: XCTestCase {
 
     /// Compares exact copies of two values, as the native backends do.
     private func equal(_ lhs: Any, _ rhs: Any) -> Bool {
-        PropertyListMigrationStorage.equal(
-            try? PropertyListMigrationStorage.exactCopy(lhs),
-            try? PropertyListMigrationStorage.exactCopy(rhs)
+        PropertyListStorage.equal(
+            try? PropertyListStorage.exactCopy(lhs),
+            try? PropertyListStorage.exactCopy(rhs)
         )
     }
 }

@@ -1,3 +1,10 @@
+//
+//  PersistentKeyMigrationItem.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/17/26.
+//
+
 import Foundation
 
 /// One unit of a migration batch: a source key, the destination key it migrates to, and an optional value transform.

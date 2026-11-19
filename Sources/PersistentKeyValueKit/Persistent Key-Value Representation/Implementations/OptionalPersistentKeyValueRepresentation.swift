@@ -63,19 +63,7 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     }
     
     public func set(_ values: [Value], to propertyListArray: inout [Any]) {
-        var nonOptionalValues: [Base.Value] = []
-        
-        nonOptionalValues.reserveCapacity(values.count)
-        
-        for value in values {
-            guard let value else {
-                continue
-            }
-            
-            nonOptionalValues.append(value)
-        }
-        
-        base.set(nonOptionalValues, to: &propertyListArray)
+        base.set(Self.nonOptionalValues(of: values), to: &propertyListArray)
     }
     
     // MARK: Interfacing with Property List Dictionary
@@ -181,20 +169,7 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
 
     /// Encodes the non-`nil` values as an ordinary write of `base` does.
     func builtInOrdinaryPropertyListArray(encoding values: [Value]) -> [Any]? {
-        // Ordinary writes are a hot path, and this loop runs several times faster than an unspecialized `compactMap`.
-        var nonOptionalValues: [Base.Value] = []
-
-        nonOptionalValues.reserveCapacity(values.count)
-
-        for value in values {
-            guard let value else {
-                continue
-            }
-
-            nonOptionalValues.append(value)
-        }
-
-        return base.propertyListArray(encoding: nonOptionalValues)
+        base.propertyListArray(encoding: Self.nonOptionalValues(of: values))
     }
 
     /// Encodes the non-`nil` values as an ordinary write of `base` does.
@@ -244,6 +219,30 @@ extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
 
             return write(key, value, &objects)
         }
+    }
+}
+
+// MARK: - Value Compaction
+
+extension OptionalPersistentKeyValueRepresentation {
+    // MARK: Private Static Interface
+
+    /// Returns the non-`nil` elements of `values`, in order.
+    private static func nonOptionalValues(of values: [Value]) -> [Base.Value] {
+        // Ordinary writes are a hot path, and this loop runs several times faster than an unspecialized `compactMap`.
+        var nonOptionalValues: [Base.Value] = []
+
+        nonOptionalValues.reserveCapacity(values.count)
+
+        for value in values {
+            guard let value else {
+                continue
+            }
+
+            nonOptionalValues.append(value)
+        }
+
+        return nonOptionalValues
     }
 }
 

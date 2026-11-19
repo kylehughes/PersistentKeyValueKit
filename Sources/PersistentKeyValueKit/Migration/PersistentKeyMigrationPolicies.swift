@@ -1,3 +1,10 @@
+//
+//  PersistentKeyMigrationPolicies.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 /// Determines how a copy operation handles a key that already has a persisted value in the destination store.

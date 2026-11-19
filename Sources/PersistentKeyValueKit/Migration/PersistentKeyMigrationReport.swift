@@ -1,3 +1,10 @@
+//
+//  PersistentKeyMigrationReport.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 /// The result of a key migration operation, containing per-item outcomes in input order and the completion-tracking

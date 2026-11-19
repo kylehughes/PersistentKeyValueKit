@@ -1,3 +1,10 @@
+//
+//  UserDefaultsMigrationBackend.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 /// The migration backend for one UserDefaults persistent domain.
@@ -47,9 +54,9 @@ extension UserDefaultsMigrationBackend {
     }
 }
 
-// MARK: - PersistentKeyValueMigrationBackend Extension
+// MARK: - FoundationMigrationBackend Extension
 
-extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
+extension UserDefaultsMigrationBackend: FoundationMigrationBackend {
     // MARK: Internal Instance Interface
 
     func commitMigrationWrite(
@@ -72,7 +79,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
             // Foundation ignores a write that Core Foundation considers equal to the stored value, such as `1` over
             // `true`, so a type-only change must replace the stored value.
             if let snapshot,
-                !PropertyListMigrationStorage.equal(snapshot.object, object),
+                !PropertyListStorage.equal(snapshot.object, object),
                 CFEqual(snapshot.object as AnyObject, object as AnyObject)
             {
                 userDefaults.removeObject(forKey: write.keyID)
@@ -88,7 +95,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         }
 
         let committed = try migrationSnapshot(for: write.keyID)
-        guard PropertyListMigrationStorage.equal(write.object, committed?.object) else {
+        guard PropertyListStorage.equal(write.object, committed?.object) else {
             throw PersistentKeyMigrationError.writeVerificationFailed
         }
 
@@ -99,10 +106,6 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         false
     }
 
-    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
-        .literal(keyID)
-    }
-
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         guard let object = persistentDomain()?.object(forKey: keyID as NSString) else {
             return nil
@@ -111,24 +114,15 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         return MigrationSnapshot(
             identity: migrationIdentity,
             keyID: keyID,
-            object: try PropertyListMigrationStorage.exactCopy(object)
+            object: try PropertyListStorage.exactCopy(object)
         )
-    }
-
-    func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
-        guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
-            throw PersistentKeyMigrationError.internalInconsistency
-        }
-
-        let current = try migrationSnapshot(for: keyID)
-        return PropertyListMigrationStorage.equal(snapshot.object, current?.object)
     }
 
     func migrationValue<Key>(
         for key: Key,
         in snapshot: MigrationSnapshot
     ) throws -> Key.Value where Key: PersistentKeyProtocol {
-        guard snapshot.identity == migrationIdentity, snapshot.keyID == key.id else {
+        guard snapshot.identity == migrationIdentity, LiteralKeyID.match(snapshot.keyID, key.id) else {
             throw PersistentKeyMigrationError.internalInconsistency
         }
 
@@ -144,7 +138,7 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
             return MigrationWrite(
                 identity: migrationIdentity,
                 keyID: key.id,
-                object: try PropertyListMigrationStorage.storableCopy(of: object)
+                object: try PropertyListStorage.storableCopy(of: object)
             )
         }
 
@@ -160,25 +154,5 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueMigrationBackend {
         guard try migrationSnapshot(for: keyID) == nil else {
             throw PersistentKeyMigrationError.removalVerificationFailed
         }
-    }
-}
-
-// MARK: - MigrationSnapshot Extension
-
-extension UserDefaultsMigrationBackend {
-    struct MigrationSnapshot {
-        let identity: PersistentKeyValueMigrationStoreIdentity
-        let keyID: String
-        let object: Any
-    }
-}
-
-// MARK: - MigrationWrite Extension
-
-extension UserDefaultsMigrationBackend {
-    struct MigrationWrite {
-        let identity: PersistentKeyValueMigrationStoreIdentity
-        let keyID: String
-        let object: Any?
     }
 }

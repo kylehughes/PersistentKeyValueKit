@@ -231,11 +231,11 @@ extension PersistentKeyValueRepresentation {
         objects.reserveCapacity(values.count)
 
         for value in values {
-            guard let object = encodedObject(for: value, format: .propertyList) else {
+            guard let encoding = storageEncoding(of: value, format: .propertyList) else {
                 return
             }
 
-            if let object {
+            if case .store(let object) = encoding {
                 objects.append(object)
             }
         }
@@ -255,13 +255,14 @@ extension PersistentKeyValueRepresentation {
     /// Writes the encoded object, removes `dictionaryKey` when `encode` returns `nil`, and leaves
     /// `propertyListDictionary` unchanged when `encode` throws or returns an object that is not a property list.
     public func set(_ dictionaryKey: String, to value: Value, in propertyListDictionary: inout [String: Any]) {
-        guard let object = encodedObject(for: value, format: .propertyList) else {
+        guard let encoding = storageEncoding(of: value, format: .propertyList) else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             propertyListDictionary[dictionaryKey] = object
-        } else {
+        case .remove:
             propertyListDictionary.removeValue(forKey: dictionaryKey)
         }
     }
@@ -281,13 +282,14 @@ extension PersistentKeyValueRepresentation {
     /// Writes the encoded object, removes the key when `encode` returns `nil`, and leaves `userDefaults` unchanged
     /// when `encode` throws or returns an object that is not a property list.
     public func set(_ userDefaultsKey: String, to value: Value, in userDefaults: UserDefaults) {
-        guard let object = encodedObject(for: value, format: .userDefaults) else {
+        guard let encoding = storageEncoding(of: value, format: .userDefaults) else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             userDefaults.set(object, forKey: userDefaultsKey)
-        } else {
+        case .remove:
             userDefaults.removeObject(forKey: userDefaultsKey)
         }
     }
@@ -306,13 +308,14 @@ extension PersistentKeyValueRepresentation {
     /// when `encode` throws or returns an object that is not a property list.
     @available(watchOS 9.0, *)
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
-        guard let object = encodedObject(for: value, format: .ubiquitousKeyValueStore) else {
+        guard let encoding = storageEncoding(of: value, format: .ubiquitousKeyValueStore) else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             ubiquitousStore.set(object, forKey: ubiquitousStoreKey)
-        } else {
+        case .remove:
             ubiquitousStore.removeObject(forKey: ubiquitousStoreKey)
         }
     }
@@ -323,14 +326,10 @@ extension PersistentKeyValueRepresentation {
         try? decode(storageObject: object, format: format)
     }
 
-    // `try?` would flatten `Any??`, conflating a failed encoding with a request to remove the key. The outer `nil`
-    // means `encode` threw or produced an object that is not a property list; `.some(nil)` means remove.
-    private func encodedObject(for value: Value, format: PersistentKeyValueStorageFormat) -> Any?? {
-        do {
-            return storableEncoding(try encode(value, format: format))
-        } catch {
-            return nil
-        }
+    /// Returns how a write stores `value`, or `nil` when `encode` throws or returns an object that is not a property
+    /// list.
+    private func storageEncoding(of value: Value, format: PersistentKeyValueStorageFormat) -> StorableEncoding? {
+        try? storableEncoding(encode(value, format: format))
     }
 }
 
@@ -901,28 +900,39 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
     case encodingFailed
 }
 
-/// Returns `object` wrapped for storage, or `nil` when it is not a property list that a store accepts.
+/// Returns how a write stores the object that `encode` returned, or `nil` when it is not a property list that a store
+/// accepts.
 ///
 /// Foundation stores raise an Objective-C exception for non-property-list objects, so the default write paths treat
-/// such an object as a failed encoding. The wrapped object is `object` itself if it is a Swift `String`, `Int`,
-/// `Double`, `Bool`, `Data`, or `Date` value, which validation need not bridge, and otherwise the snapshot that
-/// ``storablePropertyList(_:)`` returns, so a store, or a later validation of a collection that holds it, does not
-/// bridge it again. Either way, a later conversion that changes a mutable object that `object` is or holds does not
-/// change what is stored, except a mutable dictionary key, which the snapshot may share.
-internal func storableEncoding(_ object: Any?) -> Any?? {
+/// such an object as a failed encoding. An encoding of `nil` removes the key. Any other object is stored as `object`
+/// itself if it is a Swift `String`, `Int`, `Double`, `Bool`, `Data`, or `Date` value, which validation need not
+/// bridge, and otherwise as the snapshot that ``storablePropertyList(_:)`` returns, so a store, or a later validation
+/// of a collection that holds it, does not bridge it again. Either way, a later conversion that changes a mutable
+/// object that `object` is or holds does not change what is stored, except a mutable dictionary key, which the
+/// snapshot may share.
+internal func storableEncoding(_ object: Any?) -> StorableEncoding? {
     guard let object else {
-        return .some(nil)
+        return .remove
     }
 
     guard !isSwiftPropertyListLeaf(object) else {
-        return .some(object)
+        return .store(object)
     }
 
     guard let storableObject = storablePropertyList(object) else {
         return nil
     }
 
-    return .some(storableObject)
+    return .store(storableObject)
+}
+
+/// How a write stores an encoded value that a store accepts.
+internal enum StorableEncoding {
+    /// The value encodes to `nil`, so the write removes the key or omits the element.
+    case remove
+
+    /// The write stores this object.
+    case store(Any)
 }
 
 /// Returns whether `object` is a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept.
@@ -1233,14 +1243,6 @@ internal func checkedStorageValue<Value>(from object: Any, as type: Value.Type =
     return value
 }
 
-internal func decodeStorageValue<Key: PersistentKeyProtocol>(
-    for key: Key,
-    object: Any,
-    format: PersistentKeyValueStorageFormat
-) throws -> Key.Value {
-    try key.representation.decode(storageObject: object, format: format)
-}
-
 /// Returns an immutable copy of the object that `representation` encodes for `value`, after verifying that the copy
 /// decodes.
 ///
@@ -1258,47 +1260,10 @@ where Representation.Value == Value {
         return nil
     }
 
-    guard isStorablePropertyList(encoded), let object = try? PropertyListMigrationStorage.exactCopy(encoded) else {
+    guard isStorablePropertyList(encoded), let object = try? PropertyListStorage.exactCopy(encoded) else {
         throw PersistentKeyValueConversionError.encodingFailed
     }
 
     _ = try representation.decode(storageObject: object, format: format)
     return object
-}
-
-/// Returns the checked storage object for `value` that migration writes, or `nil` when `value` is an optional that is
-/// `nil`, which a Foundation store keeps as an absent key.
-///
-/// Throws ``PersistentKeyValueConversionError/encodingFailed`` when the key's representation encodes any other value
-/// to `nil`, because removing the destination entry would discard a value that migration could not write.
-internal func encodeStorageValue<Key: PersistentKeyProtocol>(
-    _ value: Key.Value,
-    for key: Key,
-    format: PersistentKeyValueStorageFormat
-) throws -> Any? {
-    guard let object = try encodeStorageRepresentation(key.representation, value: value, format: format) else {
-        guard isNilOptional(value) else {
-            throw PersistentKeyValueConversionError.encodingFailed
-        }
-
-        return nil
-    }
-
-    return object
-}
-
-/// Whether `value` is an optional that is `nil` at any level of nesting, as `Int??.some(nil)` is.
-private func isNilOptional(_ value: Any) -> Bool {
-    var value = value
-    // The dynamic type check comes first because a cast unwraps an `AnyHashable`, which would make a boxed `nil` look
-    // like an optional.
-    while type(of: value) is any OptionalElement.Type, let optional = value as? any OptionalElement {
-        guard let wrapped = optional.wrappedObject else {
-            return true
-        }
-
-        value = wrapped
-    }
-
-    return false
 }

@@ -92,7 +92,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// - Returns: The stored value, or `nil` if the store has no entry for the key.
     public func object(forKey key: String) -> Any? {
         Self.withStorageKey(for: key) { storageKey in
-            withLock {
+            lock.withLockHeld {
                 storage[storageKey]?.object
             }
         }
@@ -107,7 +107,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// - Parameter key: The identifier of the entry.
     public func removeObject(forKey key: String) {
         let (removedEntry, observations) = Self.withStorageKey(for: key) { storageKey in
-            withLock {
+            lock.withLockHeld {
                 (removeEntry(forKey: storageKey), registeredObservations(for: storageKey))
             }
         }
@@ -138,7 +138,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
         let storedValue = Self.normalizedValue(value)
 
         let (replacedValue, observations) = Self.withStorageKey(for: key) { storageKey in
-            withLock {
+            lock.withLockHeld {
                 nextRevision &+= 1
 
                 return (
@@ -264,7 +264,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// before it is called. The observer is retained by that read and released after the lock is unlocked.
     private func notify(_ observations: [Observation], keyPath: String?) {
         for observation in observations {
-            let observer = withLock {
+            let observer = lock.withLockHeld {
                 observation.isActive ? observation.observer : nil
             }
 
@@ -275,16 +275,6 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
                 context: observation.context
             )
         }
-    }
-
-    @discardableResult
-    private func withLock<Result>(_ body: () throws -> Result) rethrows -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return try body()
     }
 }
 
@@ -316,7 +306,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
         let storageKey = Self.storageKey(for: write.keyID)
 
-        let result: (UInt64, [Observation], StoredValue?) = try withLock {
+        let result: (UInt64, [Observation], StoredValue?) = try lock.withLockHeld {
             if let snapshot, storage[storageKey]?.revision != snapshot.revision {
                 throw PersistentKeyMigrationError.destinationChanged
             }
@@ -358,7 +348,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         let storageKey = Self.storageKey(for: keyID)
 
-        let storedValue = withLock {
+        let storedValue = lock.withLockHeld {
             storage[storageKey]
         }
 
@@ -383,7 +373,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
         let storageKey = Self.storageKey(for: keyID)
 
-        return withLock {
+        return lock.withLockHeld {
             storage[storageKey]?.revision == snapshot.revision
         }
     }
@@ -423,7 +413,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
         let storageKey = Self.storageKey(for: keyID)
 
-        let (removedEntry, observations) = try withLock {
+        let (removedEntry, observations) = try lock.withLockHeld {
             () -> ((key: String, value: StoredValue)?, [Observation]) in
             guard storage[storageKey]?.revision == snapshot.revision else {
                 throw PersistentKeyMigrationError.sourceChanged
@@ -475,7 +465,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     ) where Key: PersistentKeyProtocol {
         let keyID = Self.storageKey(for: key.id)
 
-        let references = withLock {
+        let references = lock.withLockHeld {
             removeObservations { registeredObserver, observation in
                 registeredObserver === observer && observation.keyID == keyID && observation.context == context
             }
@@ -493,7 +483,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     ) where Key: PersistentKeyProtocol {
         let keyID = Self.storageKey(for: key.id)
 
-        let references = withLock {
+        let references = lock.withLockHeld {
             let references = removeObservations { _, _ in
                 false
             }
@@ -563,7 +553,7 @@ extension InMemoryPersistentKeyValueStore {
             }
 
             // The store keeps objects unserialized, so an edit that changes only an integer's width is a change.
-            return PropertyListMigrationStorage.equal(contents, object, distinguishingIntegerWidths: true)
+            return PropertyListStorage.equal(contents, object, distinguishingIntegerWidths: true)
         }
 
         // MARK: Internal Static Interface
@@ -587,7 +577,7 @@ extension InMemoryPersistentKeyValueStore {
                 return nil
             }
 
-            return try? PropertyListMigrationStorage.exactCopy(value)
+            return try? PropertyListStorage.exactCopy(value)
         }
     }
 }
@@ -646,29 +636,6 @@ private extension InMemoryPersistentKeyValueStore {
 /// A Swift collection whose `nil` elements the in-memory store removes, matching the property-list stores.
 private protocol OptionalElementCollection {
     func compactedValue() -> Any
-}
-
-/// An `Optional`, used to constrain ``OptionalElementCollection`` conformances to collections of optionals and to
-/// find a `nil` value during migration.
-protocol OptionalElement {
-    associatedtype Wrapped
-
-    var optionalValue: Wrapped? { get }
-}
-
-extension OptionalElement {
-    /// The wrapped value, if any, as `Any`.
-    var wrappedObject: Any? {
-        optionalValue.map {
-            $0 as Any
-        }
-    }
-}
-
-extension Optional: OptionalElement {
-    var optionalValue: Wrapped? {
-        self
-    }
 }
 
 extension Array: OptionalElementCollection where Element: OptionalElement {

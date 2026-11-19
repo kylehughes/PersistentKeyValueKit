@@ -199,9 +199,9 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
     }
 
     func invalidate() {
-        lock.lock()
-        isInvalidated = true
-        lock.unlock()
+        lock.withLockHeld {
+            isInvalidated = true
+        }
 
         NotificationCenter.default.removeObserver(self)
     }
@@ -222,12 +222,9 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
     }
 
     private func isInvalidatedWithLock() -> Bool {
-        lock.lock()
-        defer {
-            lock.unlock()
+        lock.withLockHeld {
+            isInvalidated
         }
-
-        return isInvalidated
     }
 }
 

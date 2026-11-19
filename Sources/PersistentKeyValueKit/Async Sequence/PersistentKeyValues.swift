@@ -365,7 +365,7 @@ extension Observer {
 
         /// Discards changes reported before the initial value is read.
         func discardPendingChange() {
-            withLock {
+            lock.withLockHeld {
                 hasPendingChange = false
             }
         }
@@ -374,7 +374,7 @@ extension Observer {
         ///
         /// The caller releases the continuation after the lock is unlocked.
         func markDeregistered() -> (isFirstDeregistration: Bool, released: AsyncStream<Key.Value>.Continuation?) {
-            withLock {
+            lock.withLockHeld {
                 guard !isDeregistered else {
                     return (false, nil)
                 }
@@ -390,7 +390,7 @@ extension Observer {
 
         /// Records a change and returns whether the caller became responsible for emitting it.
         func markPendingChange() -> Bool {
-            withLock {
+            lock.withLockHeld {
                 guard continuation != nil else {
                     return false
                 }
@@ -408,7 +408,7 @@ extension Observer {
         }
 
         func setContinuation(_ continuation: AsyncStream<Key.Value>.Continuation, isEmitting: Bool) {
-            withLock {
+            lock.withLockHeld {
                 self.continuation = continuation
                 self.isEmitting = isEmitting
             }
@@ -416,7 +416,7 @@ extension Observer {
 
         /// Consumes the pending change for the emitting caller, or releases emission when none remains.
         func takePendingChange() -> AsyncStream<Key.Value>.Continuation? {
-            withLock {
+            lock.withLockHeld {
                 guard hasPendingChange, let continuation else {
                     // Release emission while holding the lock so a concurrent change cannot be recorded between the
                     // final check and the release.
@@ -429,16 +429,6 @@ extension Observer {
 
                 return continuation
             }
-        }
-
-        @discardableResult
-        private func withLock<Result>(_ body: () -> Result) -> Result {
-            lock.lock()
-            defer {
-                lock.unlock()
-            }
-
-            return body()
         }
     }
 }

@@ -1,3 +1,10 @@
+//
+//  PersistentKeyMigrationIncompleteError.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 11/17/26.
+//
+
 import Foundation
 
 /// The error thrown by ``PersistentKeyMigrationReport/throwIfIncomplete()`` when a migration did not complete.

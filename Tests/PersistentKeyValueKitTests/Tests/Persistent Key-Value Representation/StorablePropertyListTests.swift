@@ -148,7 +148,10 @@ extension StorablePropertyListTests {
 
         for value in values {
             let encoding = try XCTUnwrap(storableEncoding(value), "\(value)")
-            let object = try XCTUnwrap(encoding, "\(value)")
+            guard case .store(let object) = encoding else {
+                XCTFail("\(value)")
+                continue
+            }
 
             XCTAssertTrue(type(of: object) == type(of: value), "\(value)")
             XCTAssertTrue(isStorablePropertyList(value), "\(value)")
@@ -656,13 +659,13 @@ extension StorablePropertyListTests {
     func test_equal_comparesArchiveUIDsByValue() throws {
         let uids = try arrayArchiveUIDs()
 
-        XCTAssertTrue(PropertyListMigrationStorage.equal(try archiveUID(), try archiveUID()))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(try archivedPropertyList(), try archivedPropertyList()))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(uids[0], uids[1]))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(uids[0], nil))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(nil, uids[0]))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(uids[0], 2))
-        XCTAssertFalse(PropertyListMigrationStorage.equal(NSNull(), NSNull()))
+        XCTAssertTrue(PropertyListStorage.equal(try archiveUID(), try archiveUID()))
+        XCTAssertTrue(PropertyListStorage.equal(try archivedPropertyList(), try archivedPropertyList()))
+        XCTAssertFalse(PropertyListStorage.equal(uids[0], uids[1]))
+        XCTAssertFalse(PropertyListStorage.equal(uids[0], nil))
+        XCTAssertFalse(PropertyListStorage.equal(nil, uids[0]))
+        XCTAssertFalse(PropertyListStorage.equal(uids[0], 2))
+        XCTAssertFalse(PropertyListStorage.equal(NSNull(), NSNull()))
     }
 
     func test_inMemorySnapshot_ofArchivePropertyList_detectsChangedUID() throws {
@@ -700,7 +703,7 @@ extension StorablePropertyListTests {
 
         XCTAssertEqual(report.outcomes.map(\.status), [.moved])
         XCTAssertEqual(report.completion, .recorded)
-        XCTAssertTrue(PropertyListMigrationStorage.equal(destination.get(key), archive))
+        XCTAssertTrue(PropertyListStorage.equal(destination.get(key), archive))
         XCTAssertNil(source.object(forKey: key.id))
     }
 
@@ -721,8 +724,8 @@ extension StorablePropertyListTests {
 
         XCTAssertEqual(report.outcomes.map(\.status), [.copied])
         XCTAssertEqual(report.completion, .recorded)
-        XCTAssertTrue(PropertyListMigrationStorage.equal(destination.get(key), archive))
-        XCTAssertTrue(PropertyListMigrationStorage.equal(source.get(key), archive))
+        XCTAssertTrue(PropertyListStorage.equal(destination.get(key), archive))
+        XCTAssertTrue(PropertyListStorage.equal(source.get(key), archive))
     }
 }
 

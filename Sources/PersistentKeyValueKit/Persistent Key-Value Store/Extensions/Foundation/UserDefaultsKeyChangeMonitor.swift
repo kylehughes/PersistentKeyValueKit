@@ -7,7 +7,6 @@
 
 import Darwin
 import Foundation
-import ObjectiveC
 
 // MARK: - UserDefaultsKeyChangeObservation Definition
 
@@ -168,19 +167,9 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     ///
     /// The monitor is retained by the instance, so it lives exactly as long as the instance.
     internal static func monitor(for userDefaults: UserDefaults) -> UserDefaultsKeyChangeMonitor {
-        creationLock.lock()
-        defer {
-            creationLock.unlock()
+        association.value(for: userDefaults) {
+            UserDefaultsKeyChangeMonitor(userDefaults: userDefaults)
         }
-
-        if let monitor = objc_getAssociatedObject(userDefaults, associationAddress) as? UserDefaultsKeyChangeMonitor {
-            return monitor
-        }
-
-        let monitor = UserDefaultsKeyChangeMonitor(userDefaults: userDefaults)
-        objc_setAssociatedObject(userDefaults, associationAddress, monitor, .OBJC_ASSOCIATION_RETAIN)
-
-        return monitor
     }
 
     // MARK: Internal Instance Interface
@@ -194,7 +183,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     internal func add(_ observation: UserDefaultsKeyChangeObservation) {
         let thread = pthread_self()
 
-        let read: PendingRead? = withLock {
+        let read: PendingRead? = lock.withLockHeld {
             guard !observation.isInvalidated else {
                 return nil
             }
@@ -219,7 +208,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
         // Read without the lock held: an overridden getter can write the store, report a change, or register.
         let object = userDefaults?.object(forKey: read.keyID) as AnyObject?
 
-        let isChangedDuringRead = withLock {
+        let isChangedDuringRead = lock.withLockHeld {
             pendingReads.removeAll {
                 $0 === read
             }
@@ -270,7 +259,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     /// Stops delivering changes to `observation`.
     internal func remove(_ observation: UserDefaultsKeyChangeObservation) {
-        let removedKey: ObservedKey? = withLock {
+        let removedKey: ObservedKey? = lock.withLockHeld {
             observation.isInvalidated = true
 
             guard let index = observedKeys.firstIndex(where: { $0.observations.contains { $0 === observation } }) else {
@@ -296,13 +285,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     // MARK: Private Static Interface
 
-    private static let associationToken = UserDefaultsKeyChangeMonitorAssociationKey()
-
-    private static let creationLock = NSLock()
-
-    private static var associationAddress: UnsafeRawPointer {
-        UnsafeRawPointer(Unmanaged.passUnretained(associationToken).toOpaque())
-    }
+    private static let association = ObjectAssociation<UserDefaultsKeyChangeMonitor>()
 
     /// Returns whether a read differs from a comparison value.
     ///
@@ -310,7 +293,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     /// change that the key's getter can observe.
     private static func isChanged(from lastObject: AnyObject?, to object: AnyObject?) -> Bool {
         !isSameObject(lastObject, object)
-            && !PropertyListMigrationStorage.equal(lastObject, object, distinguishingIntegerWidths: true)
+            && !PropertyListStorage.equal(lastObject, object, distinguishingIntegerWidths: true)
     }
 
     /// Returns whether two reads returned the same object, which makes a recursive comparison unnecessary.
@@ -387,7 +370,11 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
             }
 
             // An observer notified earlier in this loop can deregister a later one.
-            guard isChanged, let observer = observation.observer, !withLock({ observation.isInvalidated }) else {
+            guard
+                isChanged,
+                let observer = observation.observer,
+                !lock.withLockHeld({ observation.isInvalidated })
+            else {
                 continue
             }
 
@@ -402,7 +389,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     /// Returns the reconciliation the caller became responsible for, or `nil` if another caller is reconciling.
     private func beginReconciling() -> Int? {
-        withLock {
+        lock.withLockHeld {
             guard !isReconciling else {
                 return nil
             }
@@ -420,7 +407,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     /// A key is read even when its observers have been deallocated, so its comparison values stay current until its
     /// registrations are removed.
     private func takePendingKeys() -> (observedKeys: [ObservedKey], changeCount: Int)? {
-        withLock {
+        lock.withLockHeld {
             guard hasPendingChange else {
                 // Release reconciliation while holding the lock so a concurrent change cannot be recorded between the
                 // final check and the release.
@@ -437,21 +424,12 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     @objc
     private func userDefaultsDidChange(_ notification: Notification) {
-        withLock {
+        lock.withLockHeld {
             changeCount &+= 1
             hasPendingChange = true
         }
 
         reconcile()
-    }
-
-    private func withLock<Result>(_ body: () -> Result) -> Result {
-        lock.lock()
-        defer {
-            lock.unlock()
-        }
-
-        return body()
     }
 }
 
@@ -498,10 +476,4 @@ extension UserDefaultsKeyChangeMonitor {
             pthread_equal(self.thread, thread) != 0 && self.literalKeyID == literalKeyID
         }
     }
-}
-
-// MARK: - UserDefaultsKeyChangeMonitorAssociationKey Definition
-
-// A stable object address gives Objective-C associations an immutable process-local key without a mutable global.
-private final class UserDefaultsKeyChangeMonitorAssociationKey: Sendable {
 }

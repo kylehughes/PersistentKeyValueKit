@@ -28,7 +28,6 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// The type of the value for the key.
     associatedtype Value
 
-    
     // MARK: Instance Interface
 
     /// The default value for the key.
@@ -170,13 +169,14 @@ extension PersistentKeyProtocol {
     ///
     /// - Parameter propertyListDictionary: The dictionary to register the default value in.
     public func registerDefault(in propertyListDictionary: inout [String: Any]) {
-        guard let object = registeredDefaultObject() else {
+        guard let encoding = registeredDefaultEncoding() else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             propertyListDictionary[id] = object
-        } else {
+        case .remove:
             propertyListDictionary.removeValue(forKey: id)
         }
     }
@@ -230,27 +230,23 @@ extension PersistentKeyProtocol {
     ///
     /// Behaves like ``registerDefault(in:)`` otherwise.
     internal func registerDefault(inLiteralDictionary propertyListDictionary: NSMutableDictionary) {
-        guard let object = registeredDefaultObject() else {
+        guard let encoding = registeredDefaultEncoding() else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             propertyListDictionary[id as NSString] = object
-        } else {
+        case .remove:
             propertyListDictionary.removeObject(forKey: id as NSString)
         }
     }
 
     // MARK: Private Instance Interface
 
-    /// Returns the object to register for the default value: `nil` when encoding fails, or `.some(nil)` when the
-    /// default value encodes to `nil` and its entry should be removed.
-    private func registeredDefaultObject() -> Any?? {
-        do {
-            return storableEncoding(try representation.encode(defaultValue, format: .userDefaults))
-        } catch {
-            return nil
-        }
+    /// Returns how to register the default value, or `nil` when encoding it fails.
+    private func registeredDefaultEncoding() -> StorableEncoding? {
+        try? storableEncoding(representation.encode(defaultValue, format: .userDefaults))
     }
 }
 

@@ -202,11 +202,11 @@ extension PrimitiveKeyValuePersistible {
         objects.reserveCapacity(values.count)
 
         for value in values {
-            guard let object = encodedObject(for: value, format: .propertyList) else {
+            guard let encoding = storageEncoding(of: value, format: .propertyList) else {
                 return
             }
 
-            if let object {
+            if case .store(let object) = encoding {
                 objects.append(object)
             }
         }
@@ -227,13 +227,14 @@ extension PrimitiveKeyValuePersistible {
     /// Writes the object returned by ``encode(format:)``, removes `dictionaryKey` when it returns `nil`, and leaves
     /// `propertyListDictionary` unchanged when it throws or returns an object that is not a property list.
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
-        guard let object = encodedObject(for: value, format: .propertyList) else {
+        guard let encoding = storageEncoding(of: value, format: .propertyList) else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             propertyListDictionary[dictionaryKey] = object
-        } else {
+        case .remove:
             propertyListDictionary.removeValue(forKey: dictionaryKey)
         }
     }
@@ -254,13 +255,14 @@ extension PrimitiveKeyValuePersistible {
     /// Writes the object returned by ``encode(format:)``, removes the key when it returns `nil`, and leaves
     /// `userDefaults` unchanged when it throws or returns an object that is not a property list.
     public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
-        guard let object = encodedObject(for: value, format: .userDefaults) else {
+        guard let encoding = storageEncoding(of: value, format: .userDefaults) else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             userDefaults.set(object, forKey: userDefaultsKey)
-        } else {
+        case .remove:
             userDefaults.removeObject(forKey: userDefaultsKey)
         }
     }
@@ -284,26 +286,23 @@ extension PrimitiveKeyValuePersistible {
         to value: Self,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        guard let object = encodedObject(for: value, format: .ubiquitousKeyValueStore) else {
+        guard let encoding = storageEncoding(of: value, format: .ubiquitousKeyValueStore) else {
             return
         }
 
-        if let object {
+        switch encoding {
+        case .store(let object):
             ubiquitousStore.set(object, forKey: ubiquitousStoreKey)
-        } else {
+        case .remove:
             ubiquitousStore.removeObject(forKey: ubiquitousStoreKey)
         }
     }
 
     // MARK: Private Static Interface
 
-    // `try?` would flatten `Any??`, conflating a failed encoding with a request to remove the key. The outer `nil`
-    // means `encode` threw or produced an object that is not a property list; `.some(nil)` means remove.
-    private static func encodedObject(for value: Self, format: PersistentKeyValueStorageFormat) -> Any?? {
-        do {
-            return storableEncoding(try value.encode(format: format))
-        } catch {
-            return nil
-        }
+    /// Returns how a write stores `value`, or `nil` when ``encode(format:)`` throws or returns an object that is not a
+    /// property list.
+    private static func storageEncoding(of value: Self, format: PersistentKeyValueStorageFormat) -> StorableEncoding? {
+        try? storableEncoding(value.encode(format: format))
     }
 }

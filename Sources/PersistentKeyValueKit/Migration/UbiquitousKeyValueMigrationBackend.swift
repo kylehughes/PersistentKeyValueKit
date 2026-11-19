@@ -1,3 +1,10 @@
+//
+//  UbiquitousKeyValueMigrationBackend.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
 import Foundation
 
 /// The migration backend for an iCloud key-value store.
@@ -20,7 +27,7 @@ final class UbiquitousKeyValueMigrationBackend: @unchecked Sendable {
     /// Creates a backend for the supplied iCloud key-value store.
     ///
     /// Instances use the canonical ubiquitous-store identity because Foundation instances share one backing store.
-    init(_ store: NSUbiquitousKeyValueStore = .default) {
+    init(_ store: NSUbiquitousKeyValueStore) {
         ubiquitousStore = store
         migrationIdentity = PersistentKeyValueMigrationStoreIdentity(
             namespace: "NSUbiquitousKeyValueStore",
@@ -34,10 +41,10 @@ final class UbiquitousKeyValueMigrationBackend: @unchecked Sendable {
     }
 }
 
-// MARK: - PersistentKeyValueMigrationBackend Extension
+// MARK: - FoundationMigrationBackend Extension
 
 @available(watchOS 9.0, *)
-extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend {
+extension UbiquitousKeyValueMigrationBackend: FoundationMigrationBackend {
     // MARK: Internal Instance Interface
 
     func commitMigrationWrite(
@@ -64,7 +71,7 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
 
         NSUbiquitousKeyValueStore.postInternalChangeNotification(for: write.keyID, from: ubiquitousStore)
         let committed = try migrationSnapshot(for: write.keyID)
-        guard PropertyListMigrationStorage.equal(write.object, committed?.object) else {
+        guard PropertyListStorage.equal(write.object, committed?.object) else {
             throw PersistentKeyMigrationError.writeVerificationFailed
         }
 
@@ -75,33 +82,20 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
         keyID.utf16.count > 128
     }
 
-    func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
-        .literal(keyID)
-    }
-
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         guard let object = ubiquitousStore.object(forKey: keyID) else {
             return nil
         }
 
-        let copy = try PropertyListMigrationStorage.exactCopy(object, allowingLegacyURL: true)
+        let copy = try PropertyListStorage.exactCopy(object, allowingLegacyURL: true)
         return MigrationSnapshot(identity: migrationIdentity, keyID: keyID, object: copy)
-    }
-
-    func migrationSnapshotIsCurrent(_ snapshot: MigrationSnapshot, for keyID: String) throws -> Bool {
-        guard snapshot.identity == migrationIdentity, snapshot.keyID == keyID else {
-            throw PersistentKeyMigrationError.internalInconsistency
-        }
-
-        let current = try migrationSnapshot(for: keyID)
-        return PropertyListMigrationStorage.equal(snapshot.object, current?.object)
     }
 
     func migrationValue<Key>(
         for key: Key,
         in snapshot: MigrationSnapshot
     ) throws -> Key.Value where Key: PersistentKeyProtocol {
-        guard snapshot.identity == migrationIdentity, snapshot.keyID == key.id else {
+        guard snapshot.identity == migrationIdentity, LiteralKeyID.match(snapshot.keyID, key.id) else {
             throw PersistentKeyMigrationError.internalInconsistency
         }
 
@@ -114,8 +108,8 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
     ) throws -> MigrationWrite where Key: PersistentKeyProtocol {
         let object = try encodeStorageValue(value, for: key, format: .ubiquitousKeyValueStore)
         if let object {
-            let copy = try PropertyListMigrationStorage.storableCopy(of: object)
-            if try PropertyListMigrationStorage.byteCount(copy) > 1_048_576 {
+            let copy = try PropertyListStorage.storableCopy(of: object)
+            if try PropertyListStorage.byteCount(copy) > 1_048_576 {
                 throw PersistentKeyValueConversionError.invalidStorageValue
             }
 
@@ -135,27 +129,5 @@ extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueMigrationBackend
         guard try migrationSnapshot(for: keyID) == nil else {
             throw PersistentKeyMigrationError.removalVerificationFailed
         }
-    }
-}
-
-// MARK: - MigrationSnapshot Extension
-
-@available(watchOS 9.0, *)
-extension UbiquitousKeyValueMigrationBackend {
-    struct MigrationSnapshot {
-        let identity: PersistentKeyValueMigrationStoreIdentity
-        let keyID: String
-        let object: Any
-    }
-}
-
-// MARK: - MigrationWrite Extension
-
-@available(watchOS 9.0, *)
-extension UbiquitousKeyValueMigrationBackend {
-    struct MigrationWrite {
-        let identity: PersistentKeyValueMigrationStoreIdentity
-        let keyID: String
-        let object: Any?
     }
 }
