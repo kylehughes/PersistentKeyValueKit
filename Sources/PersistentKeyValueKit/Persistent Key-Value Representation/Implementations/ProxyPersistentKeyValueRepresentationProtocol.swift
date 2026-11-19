@@ -25,8 +25,10 @@ import Foundation
 /// checked decoder calls `Proxy.persistentKeyValueRepresentation.decode`, but when the type is a collection member,
 /// checked collection conversion calls its `get(from:)`, `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)`
 /// implementations as written, and the default container readers can omit unreadable nested entries. A custom type
-/// whose `Proxy` is a dictionary with an unreadable entry therefore fails to migrate as a top-level value, while inside
-/// an array it migrates without that entry, and a move removes its source.
+/// whose `Proxy` is a dictionary with an unreadable entry therefore fails to migrate as a top-level value. Inside an
+/// array, the default dictionary reader omits that entry before calling ``from(_:)``. If ``from(_:)`` accepts every
+/// filtered dictionary, a move can succeed and remove its source; if it rejects one, the item fails at
+/// ``PersistentKeyMigrationReport/FailureStage/decode`` and keeps its source.
 public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: PersistentKeyValueRepresentation {
     // MARK: Associated Types
     

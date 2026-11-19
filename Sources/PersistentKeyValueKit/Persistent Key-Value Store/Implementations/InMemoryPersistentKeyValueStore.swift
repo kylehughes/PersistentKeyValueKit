@@ -698,6 +698,9 @@ extension PersistentKeyValueStore where Self == InMemoryPersistentKeyValueStore 
     // MARK: Public Static Interface
 
     /// A store suitable for use in development, e.g. SwiftUI previews.
+    ///
+    /// Returns a new, empty in-memory store on each access. Keep the returned instance to share values or observations
+    /// across operations.
     @inlinable
     public static var ephemeral: Self {
         InMemoryPersistentKeyValueStore()

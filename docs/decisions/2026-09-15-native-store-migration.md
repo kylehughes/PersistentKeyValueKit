@@ -833,8 +833,10 @@ principles:
   persistence. `NSUbiquitousKeyValueStore` notification observers filter by
   changed key without comparing widths, except that account changes and
   notifications without a usable key list refresh every observed key. A manual
-  observer's selector receives only notifications for its registered literal
-  key, whereas 1.x delivered every change notification from the store to it.
+  observer's selector receives the original notification when it names the
+  registered literal key, and also on an account change or when the notification
+  lacks a usable changed-key list, because either can affect every observed key;
+  1.x delivered every change notification from the store to it.
   A manual `UserDefaults` observer receives
   `observeValue(forKeyPath:of:change:context:)` for its registered keys only,
   including keys observed through `UserDefaults.didChangeNotification`; the

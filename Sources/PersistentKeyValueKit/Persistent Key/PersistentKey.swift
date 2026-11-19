@@ -76,8 +76,8 @@ public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     
     /// Creates a new key with the given identifier, default value, and representation.
     ///
-    /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for `Value?`.
+    /// Use this initializer to supply a custom representation of the wrapped value for this specific key. The
+    /// initializer wraps it in ``OptionalPersistentKeyValueRepresentation`` to represent the key's optional value.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.

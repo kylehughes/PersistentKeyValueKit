@@ -67,9 +67,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// `nil` at an actual `Optional` layer. If it returns `nil` for any other top-level value, the item fails at
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with
     /// ``PersistentKeyValueConversionError/encodingFailed``, writes neither entry, and the other items in the batch
-    /// proceed independently. This does not cover a `nil` element inside a collection, such as a custom element
-    /// encoder that returns `nil` for one array element, which the collection write omits, so a move can succeed with
-    /// fewer elements.
+    /// proceed independently. This does not cover a `nil` element inside a collection. The default ``set(_:to:)``
+    /// omits an element whose encoding is `nil`, so a move can succeed with fewer elements, or fail at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` when it omits every element of a nonempty array. A custom
+    /// ``set(_:to:)`` can store its own encoding for such an element.
     ///
     /// - Parameter value: The value to encode.
     /// - Parameter format: The target storage format.
