@@ -8,13 +8,13 @@
 
 ## About
 
-PersistentKeyValueKit provides a single, type-safe interface for [`UserDefaults`][user-defaults-docs], [`NSUbiquitousKeyValueStore`][ubiquitous-store-docs], and an in-memory store. Define a key once and use it to read, write, remove, bind in SwiftUI, observe from async tasks or Combine, and migrate values between stores without branching on the backing storage engine.
+PersistentKeyValueKit provides one type-safe interface for [`UserDefaults`][user-defaults-docs], [`NSUbiquitousKeyValueStore`][ubiquitous-store-docs], and an in-memory store. Define a key once and use it to read, write, remove, bind in SwiftUI, observe from async tasks or Combine, and migrate values between stores without branching on the backing store.
 
 The library is built around three ideas:
 
-- Defining persistence logic once per value type through `KeyValuePersistible`
-- Composing custom persistence formats from reusable `PersistentKeyValueRepresentation` building blocks
-- Declaring keys centrally with the static accessor pattern
+- Define persistence logic once per value type with `KeyValuePersistible`.
+- Compose custom persistence formats from reusable `PersistentKeyValueRepresentation` building blocks.
+- Declare keys centrally with the static accessor pattern.
 
 All platform constraints of [`UserDefaults`][user-defaults-docs] and [`NSUbiquitousKeyValueStore`][ubiquitous-store-docs] apply. Each app target that uses `.ubiquitous` needs the iCloud capability with Key-value storage selected, including for local reads and writes.
 
@@ -47,10 +47,6 @@ All platform constraints of [`UserDefaults`][user-defaults-docs] and [`NSUbiquit
 - Swift 6.2+
 - Xcode 26.0+
 
-## Documentation
-
-This README covers common use. The [API documentation](https://kylehughes.github.io/PersistentKeyValueKit) is the reference for each symbol's contract and edge cases, including observation timing, collection and `URL` storage rules, representation requirements, and migration failure modes. Upgrading from 1.x? Read the [2.0.0 Release Notes](docs/release-notes/2.0.0.md).
-
 ## Installation
 
 ### Swift Package Manager
@@ -61,13 +57,17 @@ dependencies: [
 ]
 ```
 
-Add `.product(name: "PersistentKeyValueKit", package: "PersistentKeyValueKit")` to the dependencies of each target that imports the library.
+Add `.product(name: "PersistentKeyValueKit", package: "PersistentKeyValueKit")` to the `dependencies` of each target that imports the library.
 
 The `PersistentKeyValueKit` target bundles an Apple privacy manifest (`PrivacyInfo.xcprivacy`) declaring `UserDefaults` access (`NSPrivacyAccessedAPICategoryUserDefaults`) with reasons `CA92.1` and `1C8F.1`.
 
+## Documentation
+
+This README covers common use. The [API documentation](https://kylehughes.github.io/PersistentKeyValueKit) is the reference for each symbol's contract and edge cases, including observation timing, collection and `URL` storage rules, representation requirements, and migration failure modes. Upgrading from 1.x? Read the [2.0.0 Release Notes](docs/release-notes/2.0.0.md).
+
 ## Quick Start
 
-Conform your type to `KeyValuePersistible`. The examples declare persistible types `nonisolated` so that a target whose default isolation is `MainActor` can use them as a key's value:
+Conform your type to `KeyValuePersistible`. Examples declare persistible types `nonisolated` so targets with `MainActor` default isolation can use them as key values:
 
 ```swift
 import PersistentKeyValueKit
@@ -136,7 +136,7 @@ for await runtimeColorScheme in userDefaults.values(for: .runtimeColorScheme) {
 
 ### Keys and Stores
 
-A `PersistentKey<Value>` pairs a string identifier with a default value and a representation. The identifier must be unique for each logical key within its store. Define keys as static members on `PersistentKeyProtocol` to get leading-dot syntax across stores, property wrappers, observation, and migration:
+`PersistentKey<Value>` pairs a string identifier with a default value and a representation. Each logical key's identifier must be unique within its store. Define keys as static members on `PersistentKeyProtocol` for leading-dot syntax across stores, property wrappers, observation, and migration:
 
 ```swift
 extension PersistentKeyProtocol where Self == PersistentKey<Int> {
@@ -146,7 +146,7 @@ extension PersistentKeyProtocol where Self == PersistentKey<Int> {
 }
 ```
 
-Keys with dynamic identifiers can be static functions. Resolve the identifier when you construct the key, and keep a custom key's `id` stable for the lifetime of a migration or observation:
+Keys with dynamic identifiers can be static functions. Resolve the identifier when constructing the key, and keep a custom key's `id` stable for the lifetime of any migration or observation:
 
 ```swift
 extension PersistentKeyProtocol where Self == PersistentKey<String?> {
@@ -156,7 +156,7 @@ extension PersistentKeyProtocol where Self == PersistentKey<String?> {
 }
 ```
 
-The same key works with `UserDefaults` (`UserDefaults.standard` or `UserDefaults(suiteName:)`), `NSUbiquitousKeyValueStore.default`, and `InMemoryPersistentKeyValueStore`, which keeps Swift values in memory for tests and previews:
+The same key works with `UserDefaults` (`UserDefaults.standard` or `UserDefaults(suiteName:)`), `NSUbiquitousKeyValueStore.default`, and `InMemoryPersistentKeyValueStore` (which keeps Swift values in memory for tests and previews):
 
 ```swift
 userDefaults.set(.launchCount, to: 1)
@@ -166,9 +166,42 @@ if let layoutID = NSUbiquitousKeyValueStore.default.get(.selectedLayoutID(forLis
 }
 ```
 
-Read with `store[.launchCount]` and delete a persisted value with `remove(_:)`. Reads then return the key's `defaultValue` unless another `UserDefaults` domain, such as launch arguments or registered defaults, supplies a value. `NSUbiquitousKeyValueStore` limits key identifiers to 128 UTF-16 code units. Built-in `Bool`, numeric, and `URL` representations accept `UserDefaults` launch arguments passed as strings.
+Read with `store[.launchCount]` and delete a persisted value with `remove(_:)`. After removal, reads return the key's `defaultValue` unless another `UserDefaults` domain, such as launch arguments or registered defaults, supplies a value. Built-in `Bool`, numeric, and `URL` representations accept string `UserDefaults` launch arguments. `NSUbiquitousKeyValueStore` limits key identifiers to 128 UTF-16 code units.
 
-`PersistentDebugKey<Value>` is mutable in Debug builds and locked to its release default in Release builds. Both key types require a `Sendable` value type.
+<a name="behavior-differences"></a>
+### No Implicit Defaults
+
+Raw `UserDefaults` and `NSUbiquitousKeyValueStore` getters such as `bool(forKey:)` and `integer(forKey:)` return `false` or `0` when a key is unset. `PersistentKeyValueKit` requires an explicit `defaultValue` on every key and distinguishes missing values from stored `false` or `0`. Use an `Optional` value type with `defaultValue: nil` when `nil` should mean there is no readable value:
+
+```swift
+extension PersistentKeyProtocol where Self == PersistentKey<Bool?> {
+    static var arePushNotificationsEnabled: Self {
+        Self("ArePushNotificationsEnabled", defaultValue: nil)
+    }
+}
+```
+
+When a non-optional default suffices, use a non-optional value type:
+
+```swift
+extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
+    static var arePushNotificationsEnabled: Self {
+        Self("ArePushNotificationsEnabled", defaultValue: true)
+    }
+}
+```
+
+### `UserDefaults` Registration
+
+Register key defaults in the `UserDefaults` registration domain when other code reads raw `UserDefaults` APIs. Because the registration domain does not persist, register on every launch in each app or extension process:
+
+```swift
+userDefaults.register(.launchCount)
+```
+
+### Keys Mutable Only in Debug Builds
+
+`PersistentDebugKey<Value>` is mutable in Debug builds and locked to its release default in Release builds. Both `PersistentKey` and `PersistentDebugKey` require a `Sendable` value type:
 
 ```swift
 extension PersistentKeyProtocol where Self == PersistentDebugKey<Bool> {
@@ -190,7 +223,7 @@ let isRatingEnabled = userDefaults.get(.isAppStoreRatingEnabled) // Debug: false
 
 ### SwiftUI
 
-`@PersistentValue` reads, writes, and observes a key. It uses `defaultPersistentKeyValueStore` from the environment, which defaults to `UserDefaults.standard`, unless you pass `store:`:
+`@PersistentValue` reads, writes, and observes a key. It uses the `defaultPersistentKeyValueStore` environment value (`UserDefaults.standard` by default) unless you pass `store:`:
 
 ```swift
 @PersistentValue(.isAppStoreRatingEnabled)
@@ -200,7 +233,7 @@ var isAppStoreRatingEnabled: Bool
 var isSyncedRatingEnabled: Bool
 ```
 
-Use `.defaultPersistentKeyValueStore(_:)` to set the default store for a view hierarchy. An explicit `store:` argument takes precedence:
+Set the default store for a view hierarchy with `.defaultPersistentKeyValueStore(_:)`. An explicit `store:` argument takes precedence:
 
 ```swift
 struct MyApp: App {
@@ -213,11 +246,11 @@ struct MyApp: App {
 }
 ```
 
-When you list keys in `ForEach`, use `ForEach(keys, id: \.id.utf8CString)` so identifiers that differ only in Unicode composition stay distinct.
+When listing keys in `ForEach`, use `ForEach(keys, id: \.id.utf8CString)` so identifiers that differ only in Unicode composition stay distinct.
 
 ### Observation
 
-`PersistentKeyValues` is an `AsyncSequence` that emits a key's current value when iteration starts, followed by values read in response to change notifications. Entry points are on both the store and the key. Each loop runs until its task is cancelled, so run it in a task you can cancel. This one updates a UIKit label, so run it on the main actor:
+`PersistentKeyValues` is an `AsyncSequence` that emits a key's current value when iteration starts, then values read on change notifications. Both the store and the key provide entry points. The example loops run until their tasks are cancelled, so start them in cancellable tasks (on the main actor here to update a UIKit label):
 
 ```swift
 for await username in UserDefaults.standard.values(for: .username) {
@@ -233,9 +266,9 @@ for await username in UserDefaults.standard.changes(for: .username) {
 }
 ```
 
-Pending changes default to `.bufferingNewest(1)`, so a slow consumer sees the latest value. Pass `bufferingPolicy: .unbounded` to keep every emitted value. Each emission reads the latest value from the store, so changes made close together can arrive as one value and consecutive values can be equal.
+Pending changes default to `.bufferingNewest(1)`, so a slow consumer gets the latest value; pass `bufferingPolicy: .unbounded` to keep every emission. Each emission reads the latest value from the store, so rapid changes can arrive as one value and consecutive values can be equal.
 
-`PersistentKeyValuePublisher` is the Combine equivalent. `publisher(for:)` and `publisher(in:)` deliver the current value first, and `changesPublisher(for:)` and `changesPublisher(in:)` skip it. Retain each returned `AnyCancellable` for as long as the observation should run. Delivery is serial per subscription and can occur on a background thread, so use `.receive(on: DispatchQueue.main)` before updating UI. This example runs in a `@MainActor` view controller that has `usernameLabel` and `cancellables` (a `Set<AnyCancellable>`) as stored properties:
+`PersistentKeyValuePublisher` is the Combine equivalent. `publisher(for:)` and `publisher(in:)` start with the current value, while `changesPublisher(for:)` and `changesPublisher(in:)` skip it. Retain each returned `AnyCancellable` while its observation should run. Delivery is serial per subscription and can occur on a background thread, so use `.receive(on: DispatchQueue.main)` before updating UI. In this example, the `@MainActor` view controller has two stored properties, `usernameLabel` and `cancellables` (`Set<AnyCancellable>`):
 
 ```swift
 UserDefaults.standard.publisher(for: .username)
@@ -246,7 +279,7 @@ UserDefaults.standard.publisher(for: .username)
     .store(in: &cancellables)
 ```
 
-`UserDefaults` observes most keys with key-value observation, which also sees changes from other processes such as app extensions. Keys that key-value observation cannot observe use `UserDefaults.didChangeNotification` instead, which reports only changes made in the current process. Observation of `NSUbiquitousKeyValueStore` sees remote iCloud updates and local changes made through the store's `set(_:to:)` and `remove(_:)`, so use those methods and `NSUbiquitousKeyValueStore.default` everywhere. The API documentation on `PersistentKeyValues` and `PersistentKeyValuePublisher` covers delivery order, cancellation, and these store differences.
+`UserDefaults` observes most keys with key-value observation, which also sees changes from other processes such as app extensions. Keys that key-value observation cannot observe fall back to `UserDefaults.didChangeNotification`, which reports only changes made in the current process. `NSUbiquitousKeyValueStore` observation sees remote iCloud updates and local writes made through the store's `set(_:to:)` and `remove(_:)`, so use those methods and `NSUbiquitousKeyValueStore.default` everywhere. See `PersistentKeyValues` and `PersistentKeyValuePublisher` in the API documentation for delivery order, cancellation, and store differences.
 
 ### Making a Type Persistible
 
@@ -260,7 +293,7 @@ public protocol KeyValuePersistible {
 }
 ```
 
-`Array`, `Bool`, `Data`, `Dictionary` (with `String` keys), `Double`, `Float`, `Int`, `Optional`, `String`, and `URL` are persistible when their elements are. For most other types, pick a built-in representation.
+`Array`, `Bool`, `Data`, `Dictionary` (with `String` keys), `Double`, `Float`, `Int`, `Optional`, `String`, and `URL` are persistible when their elements are. For most other types, pick a built-in representation. You can also implement one directly.
 
 `RawRepresentablePersistentKeyValueRepresentation` persists a `RawValue`:
 
@@ -307,7 +340,7 @@ extension Date: @retroactive KeyValuePersistible {
 }
 ```
 
-Supply `representation:` on a key for a format specific to that key:
+Pass `representation:` on a key for a per-key format:
 
 ```swift
 extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
@@ -324,13 +357,26 @@ extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
 }
 ```
 
-To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)`, which convert between Swift values and the objects a store keeps. Do not mutate an object after you return it from `encode` or write it with a `set` method. Ordinary reads and writes stay non-throwing. Foundation migration endpoints use the checked conversions, and `UserDefaults` registration uses checked encoding. The `PersistentKeyValueRepresentation` documentation lists the rest of the contract, including how collections are written.
+To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)` to convert between Swift values and storage objects. Do not mutate an object after returning it from `encode` or writing it with `set`. Ordinary reads and writes stay non-throwing; Foundation migration endpoints use checked conversions, and `UserDefaults` registration uses checked encoding. See `PersistentKeyValueRepresentation` for the full contract, including collection writes.
+
+### Collections
+
+Only homogeneous collections are persistible:
+
+| Supported (`KeyValuePersistible`) | Not supported |
+| --- | --- |
+| `[Element] where Element: KeyValuePersistible` | `[any KeyValuePersistible]` |
+| `[String: Value] where Value: KeyValuePersistible` | `[String: any KeyValuePersistible]` |
+
+For structured heterogeneous data, use `CodablePersistentKeyValueRepresentation` or implement `PrimitiveKeyValuePersistible`.
+
+Collection writes are all or nothing. With built-in element readers, an array read falls back to the key's default if any element fails to decode. A dictionary read omits entries it cannot decode, and saving the decoded dictionary back deletes those entries from the writable store, so an older client can erase an entry written by a newer client. See `Array` and `Dictionary` for details.
 
 ### Migrating Values Between Stores
 
-Use `copy` or `move` to transfer persisted values between stores, or to rename and transform keys within one store. Every call requires `onConflict:` and `tracking:` and returns a `PersistentKeyMigrationReport`. Migration is not transactional: it does not roll back completed writes. Coordinate any other writers, in this process or others, before you migrate.
+Use `copy` or `move` to transfer persisted values between stores or to rename and transform keys within one store. Both require `onConflict:` and `tracking:` and return a `PersistentKeyMigrationReport`. Migration is not transactional and does not roll back completed writes. Coordinate other writers in this or any other process before migrating.
 
-A named `UserDefaults` suite that takes part in a migration must come from `UserDefaults.migratable(suiteName:)`. Sharing preferences requires the same App Group on each target (substitute its identifier for `group.example.app`), and `NSUbiquitousKeyValueStore` requires the Key-value storage service:
+Create any named `UserDefaults` suite that takes part in a migration with `UserDefaults.migratable(suiteName:)`. Sharing preferences requires the same App Group on each target (replace `group.example.app` with its identifier), and `NSUbiquitousKeyValueStore` requires the Key-value storage service:
 
 ```swift
 func makeAppGroupDefaults() throws -> UserDefaults? {
@@ -350,9 +396,9 @@ func makeAppGroupDefaults() throws -> UserDefaults? {
 }
 ```
 
-Call this helper only from the target that owns the legacy defaults. A target with nothing to move still records the shared marker, so the owning target's later call returns `.alreadyRecorded` and skips its migration. Other targets can open the suite directly, and one that also migrates values needs its own marker `id`.
+Call this helper only from the target that owns the legacy defaults. A target with nothing to move still records the shared marker, causing the owning target's later call to return `.alreadyRecorded` and skip migration. Other targets can open the suite directly. If another target runs an independent migration that records completion in the shared suite, give that migration its own marker `id`.
 
-Pass `PersistentKeyMigrationItem` values when keys change name or value type. Within one store, source identifiers must be unique, destination identifiers must be unique, and the two sets must be disjoint, so changing how a key is stored means moving it to a new key:
+Pass `PersistentKeyMigrationItem` values when keys change name or value type. Within one store, source identifiers and destination identifiers must each be unique and the two sets must be disjoint, so changing how a key is stored requires moving it to a new key:
 
 ```swift
 let report = try UserDefaults.standard.move(
@@ -383,7 +429,9 @@ The conflict policy decides what happens when the destination already has a valu
 | Move | `.overwriteDestination` | Replace destination, then remove source (`.moved`). |
 | Move | `.keepDestinationAndRemoveSource` | Keep destination and remove source (`.discardedSource`). |
 
-Migration reads and writes only values persisted in each store's own domain, so registered defaults, launch arguments, and a key's `defaultValue` are ignored. For a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a successful write leaves the destination entry absent only for a value that is `nil` at an actual `Optional` layer and encodes to `nil`. Any other value that encodes to `nil` fails that item at `.prepare`, writing neither entry. A type-changing `UserDefaults` replacement can temporarily remove the old entry before storing the new object. Setup problems throw before any item runs, while a failure in one item goes into `report.outcomes` and the remaining items continue. `try report.throwIfIncomplete()` throws if any item or completion marker failed.
+Migration reads and writes only values persisted in each store's own domain, ignoring registered defaults, launch arguments, and `defaultValue`. For a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a successful write leaves the destination entry absent only when the value is `nil` at an actual `Optional` layer and encodes to `nil`; any other value that encodes to `nil` fails that item at `.prepare`, writing neither entry. A type-changing `UserDefaults` replacement can temporarily remove the old entry before storing the new object.
+
+Setup problems throw before any item runs. A failure in one item is recorded in `report.outcomes` while remaining items continue, and `try report.throwIfIncomplete()` throws if any item or completion marker failed:
 
 ```swift
 let report = try UserDefaults.standard.copy(
@@ -400,52 +448,7 @@ if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.e
 try report.throwIfIncomplete()
 ```
 
-With `.once(id:)`, the migration attempts to record a completion marker once every item resolves without failure. After setup succeeds, a true marker for that `id` in the selected recording store skips the whole batch (`.alreadyRecorded`). The marker depends only on its `id` and recording store, so give each independent source its own. A marker in `NSUbiquitousKeyValueStore` syncs to other devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data has arrived. Remove `.isMigrationCompleted(id:)` or choose a new `id` to run a migration again.
-
-### `UserDefaults` Registration
-
-Register key default values in the `UserDefaults` registration domain when other code reads raw `UserDefaults` APIs. Register on every launch in each app or extension process, because the registration domain does not persist:
-
-```swift
-userDefaults.register(.launchCount)
-```
-
-## Behavior Differences
-
-### No Implicit Defaults
-
-Raw `UserDefaults` and `NSUbiquitousKeyValueStore` getters such as `bool(forKey:)` and `integer(forKey:)` return `false` or `0` when a key is unset. `PersistentKeyValueKit` requires an explicit `defaultValue` on every key and distinguishes missing values from stored `false` or `0`. Use an `Optional` value type with `defaultValue: nil` when `nil` should mean there is no readable value:
-
-```swift
-extension PersistentKeyProtocol where Self == PersistentKey<Bool?> {
-    static var arePushNotificationsEnabled: Self {
-        Self("ArePushNotificationsEnabled", defaultValue: nil)
-    }
-}
-```
-
-When a non-optional default is sufficient, use a non-optional value type:
-
-```swift
-extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
-    static var arePushNotificationsEnabled: Self {
-        Self("ArePushNotificationsEnabled", defaultValue: true)
-    }
-}
-```
-
-### Collections
-
-Only homogeneous collections are persistible:
-
-| Supported (`KeyValuePersistible`) | Not supported |
-| --- | --- |
-| `[Element] where Element: KeyValuePersistible` | `[any KeyValuePersistible]` |
-| `[String: Value] where Value: KeyValuePersistible` | `[String: any KeyValuePersistible]` |
-
-For structured heterogeneous data, use `CodablePersistentKeyValueRepresentation` or implement `PrimitiveKeyValuePersistible`.
-
-Collection writes are all or nothing. With built-in element readers, an array read falls back to the key's default if an element cannot decode. A dictionary read omits entries it cannot decode, and saving the decoded dictionary back deletes those entries from the writable store, so an older client can erase an entry that a newer client wrote. The `Array` and `Dictionary` documentation has the details.
+With `.once(id:)`, migration attempts to record a completion marker once every item resolves without failure. After setup succeeds, a true marker for that `id` in the selected recording store skips the batch (`.alreadyRecorded`). Give each independent source its own completion marker. Sources that share a recording store need distinct `id` values. A marker in `NSUbiquitousKeyValueStore` syncs across devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as shown above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data arrives. Remove `.isMigrationCompleted(id:)` or choose a new `id` to run a migration again.
 
 ## Contributions
 
