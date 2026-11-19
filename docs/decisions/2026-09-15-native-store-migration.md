@@ -329,8 +329,10 @@ principles:
   with default container methods delegates to `[String: Value]`'s container
   methods and reads nested dictionaries leniently. Container write hooks receive
   an empty array (or a dictionary without `dictionaryKey`): array hooks may
-  only assign to or append to that empty array (preserving 1.x representations
-  that append to `propertyListArray`), and dictionary hooks write only the
+  only assign to or append to that empty array, and only after every element
+  succeeds, leaving it empty on failure, because the package stores a nonempty
+  result as written (this preserves 1.x representations that append to
+  `propertyListArray`), and dictionary hooks write only the
   entry for `dictionaryKey` without reading, modifying, adding, or removing
   other entries. On every collection write path (arrays, dictionaries, nested
   collections, and `Optional` or proxy paths, in both ordinary writes and
@@ -429,7 +431,9 @@ principles:
   UTF-8 repairs unpaired UTF-16 surrogates, also merges identifiers that differ
   only in such surrogates (a test that needs them distinct needs a Foundation
   store); and bridging a stored Foundation dictionary to `[String: Value]`
-  collapses canonically equivalent `NSString` keys into one Swift key, so
+  collapses `NSString` keys that compare equal as Swift strings (canonically
+  equivalent spellings, and keys that differ only in unpaired UTF-16 surrogates,
+  which Swift repairs) into one Swift key, so
   checked conversion (`Dictionary.decode`) rejects `NSDictionary` instances
   whose entry count shrinks on bridging (failing at `.decode` and, when the
   conflict policy selects a write, leaving the source entry in place during
@@ -493,11 +497,14 @@ principles:
   item writes its destination or removes its source, when binary property-list
   serialization would change the value or stored type (including any `NSDecimalNumber`, even when exact, because binary
   property lists store decimals as `Double`, while allowing integers of any width
-  such as `Int32`). A `nil` encoding prepares a removal of the destination entry,
-  so an `.overwriteDestination` move whose destination representation encodes the
-  value as `nil` (as the built-in optional representation does for `nil`) removes
-  the destination entry, then the source, and still reports `.moved`. An
-  in-memory destination does not call the representation: it preserves an
+  such as `Int32`). A value that is `nil` at an actual `Optional` layer and that the
+  destination key encodes as `nil` prepares a removal of the destination entry
+  (as the built-in optional representation encodes `nil`), so an
+  `.overwriteDestination` move of such a value removes the destination
+  entry, then the source, and still reports `.moved`. A value that is not `nil`
+  at an `Optional` layer but whose top-level encoding is `nil` fails at
+  `.prepare` with `encodingFailed` and writes neither entry (see the
+  nil-encoding bullet below). An in-memory destination does not call the representation: it preserves an
   explicit optional `nil` and applies the ordinary setter's shallow compaction
   to a qualifying array or dictionary of optionals, including one wrapped in an
   `Optional`.
@@ -693,6 +700,25 @@ principles:
   `PersistentKeyValueKit_MigrationCompleted_` (no `.` characters; the prefix is
   41 UTF-16 code units and the complete marker key is 84) so `UserDefaults` key-value observation can observe marker
   keys directly.
+- **Migration fails a non-`nil` value that encodes to `nil`**: Before this
+  change, a `nil` encoding of any value prepared a removal of the Foundation
+  destination entry, so an `.overwriteDestination` move whose custom encoder
+  returned `nil` for a non-`nil` value never ran the destination decoder, deleted
+  both entries, and still reported `.moved`. Migration must not delete a non-`nil`
+  value it could not write, so `encodeStorageValue` now returns `nil` only when the
+  top-level encoding is `nil` and the value is `nil` at an actual `Optional` layer
+  (`Int??.some(nil)` included), and throws
+  `PersistentKeyValueConversionError.encodingFailed` for every other `nil`
+  encoding, which fails the item at `.prepare` before either store changes while
+  the other items in the batch proceed independently. A custom `Int?` representation
+  that encodes `nil` as an object writes that object, so a `nil` value does not
+  always remove the entry. The rule covers the top-level encoding only: a `nil`
+  element inside a collection is omitted by the collection write, so a move can
+  succeed with fewer elements. Ordinary
+  `set` is unchanged: `nil` from `encode` still removes the key, as the optional
+  representation relies on. An in-memory destination does not call the
+  representation, so it is unaffected. `MigrationNilEncodingTests` covers the
+  `UserDefaults`, iCloud, wrapped-value, nested-`nil`, and in-memory cases.
 - **Dictionary-read leniency versus strict migration (and all-or-nothing writes)**:
   Writes for both `Array` and `Dictionary` are all-or-nothing so a single
   unencodable element or entry leaves the existing stored collection unchanged.
@@ -703,7 +729,11 @@ principles:
   that could decode; if an added suite supplied the original array, the
   replacement hides it and the suite keeps every element), whereas `Dictionary` keeps readable entries
   and drops only undecodable ones so a single unknown entry (such as an enum
-  case written by a newer app version) does not blank the whole dictionary. A
+  case written by a newer app version) does not blank the whole dictionary. An
+  ordinary read also keeps at most one entry for keys that compare equal as Swift
+  strings (three readable Foundation entries collapsed to one when Swift repaired
+  their keys' unpaired surrogates, and saving an unrelated edit erased the other
+  two), whereas checked conversion rejects the collision. A
   dictionary element inside such an array keeps its readable
   entries, and an external array or dictionary-entry reader can filter
   elements or nested entries. An ordinary read leaves the omitted entries in
@@ -735,8 +765,10 @@ principles:
   conversion, or written through any `set` hook is handed over to the caller
   and must not be mutated afterward (including mutable string or data buffers,
   mutable dictionary keys, or containers); behavior is unspecified otherwise.
-  Array hooks may only assign to or append to the empty array passed in, and
-  dictionary hooks write only the entry for `dictionaryKey`. Mutating an encoded
+  Array hooks may only assign to or append to the empty array passed in, after
+  every element succeeds (an append before a later failure would store the
+  partial result over the existing array), and dictionary hooks write only the
+  entry for `dictionaryKey`. Mutating an encoded
   object or earlier dictionary entry during collection conversion could corrupt
   a write or bypass validation, and copying every mutable object on every
   forwarding or key-table path (such as dictionary keys or the forwarding
@@ -897,6 +929,10 @@ The regression tests preserve these guarantees:
   checks consumer composition and the `id` storage-location contract without
   `@testable import`; compile-fail fixtures keep the endpoint opaque and enforce
   required protocol members, `tracking:`, and the `items:` label.
+
+[`MigrationNilEncodingTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationNilEncodingTests.swift)
+covers the `.prepare` failure for a non-`nil` value that encodes to `nil` and the
+unchanged removal for an optional `nil`.
 
 The existing migration tests continue to cover representation conversion,
 verification, conflict policies, observation, and partial failures.

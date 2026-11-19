@@ -13,6 +13,12 @@ import Foundation
 /// `NSUbiquitousKeyValueStore`. It takes necessary liberties by being fully aware of these implementations. It is not
 /// intended to support a generic key-value store implementation.
 ///
+/// Use any of the built-in stores through the same typed keys: `UserDefaults.standard`, a `UserDefaults` suite,
+/// `NSUbiquitousKeyValueStore.default`, or ``InMemoryPersistentKeyValueStore``. Using
+/// `NSUbiquitousKeyValueStore.default`, including for local reads and writes, requires the iCloud capability with
+/// Key-value storage selected on each app target that uses it; without the entitlement, a typed read can return the
+/// key's default after a typed write.
+///
 /// ## Thread Safety
 ///
 /// Conforming types are expected to be thread-safe. `UserDefaults` and `NSUbiquitousKeyValueStore` are documented by
@@ -54,6 +60,9 @@ public protocol PersistentKeyValueStore {
     
     /// Removes the value for the given key.
     ///
+    /// A `UserDefaults` store removes the value from its persistent domain only, so later reads return the key's default
+    /// value unless another domain, such as launch arguments or registered defaults, supplies a value.
+    ///
     /// - Parameter key: The key to remove the value for.
     func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol
     
@@ -64,8 +73,19 @@ public protocol PersistentKeyValueStore {
     /// Only registrations matching `observer`, `key`, and `context` are removed; the observer's registrations for
     /// other keys or contexts remain active. A store that keeps its own registrations, such as
     /// `NSUbiquitousKeyValueStore`, removes every matching registration in one call, whereas a `UserDefaults` key
-    /// observed through key-value observation removes one per call. `UserDefaults` and `NSUbiquitousKeyValueStore` match key identifiers
-    /// literally, as Foundation compares keys, so canonically equivalent spellings are different keys.
+    /// observed through key-value observation removes one per call. `UserDefaults` and `NSUbiquitousKeyValueStore` match
+    /// key identifiers literally, as Foundation compares keys, so canonically equivalent spellings are different keys.
+    /// ``InMemoryPersistentKeyValueStore`` matches identifiers as Swift strings, so one call removes every matching
+    /// registration.
+    ///
+    /// Deregister before releasing a manual observer. A `UserDefaults` key observed through
+    /// `UserDefaults.didChangeNotification` continues to be sampled until its registration is removed or pruned, even
+    /// after its observer deallocates. A repeated removal for a key that key-value observation can observe raises an
+    /// exception, so cleanup after a callback must account for it. Deregistration prevents later callbacks from
+    /// starting delivery, but a callback already in flight can still reach the observer. When several threads
+    /// deregister the same notification-backed observation concurrently, only the call that removes the registrations
+    /// invalidates them, so wait for that call to finish before relying on the observer being quiet: another call can
+    /// return first, and a notification posted in that window can still reach the observer.
     ///
     /// - Parameter observer: The object to remove as an observer.
     /// - Parameter key: The key to stop observing.
@@ -94,8 +114,9 @@ public protocol PersistentKeyValueStore {
     /// each such notification, the key is read from this instance, and `target` is notified when the property-list
     /// value read differs from the previous read (or, for a registration inserted while a reconciliation was in
     /// progress, also once if the change count advanced between the start of its initial read and the start of the
-    /// first pass that includes it, even when the value read equals its comparison value). Several notifications can
-    /// share one read of the key. Changes are sampled rather than queued, so rapid writes between reads can
+    /// first pass that includes it, even when the value read equals its comparison value). The comparison reads the
+    /// effective value and compares the widths of the integers it reads. Several notifications can share one read of
+    /// the key. Changes are sampled rather than queued, so rapid writes between reads can
     /// coalesce and a change that is undone before it is sampled can produce no notification. Foundation posts that
     /// notification only for changes made in the current process, and not for `addSuite(named:)` or
     /// `removeSuite(named:)`, so changes to such a key made by another process, or caused only by a suite-list change,
@@ -103,11 +124,22 @@ public protocol PersistentKeyValueStore {
     /// change, while that thread delivers concurrent changes.
     ///
     /// If `Self` is `NSUbiquitousKeyValueStore` then notifications will be used and `target` will be notified through
-    /// the `selector` with the store's change notification. `target` is notified when the notification lists `key`, and
-    /// when it might have changed every key: an account change, or a notification without a list of changed keys.
+    /// the `selector` with the store's change notification, and only for notifications that concern its registered
+    /// literal key. Each matching registration receives the full notification, including keys the registration did not
+    /// ask for. `target` is notified when the
+    /// notification lists `key`, and when it might have changed every key: an account change, or a missing or unusable
+    /// list of changed keys. A usable empty list matches no key.
+    ///
+    /// If `Self` is ``InMemoryPersistentKeyValueStore`` then `target` is called synchronously on the writing thread
+    /// through `observeValue(forKeyPath:of:change:context:)` with the identifier that the write or removal received as
+    /// the key path, `nil` for `change`, and the registered context, even when removing an absent key.
     ///
     /// Neither the object receiving this message, nor observer, are retained. An object that calls this method must
-    /// also eventually call ``deregister(_:for:context:)`` to unregister the observer.
+    /// also eventually call ``deregister(_:for:context:)`` to unregister the observer. A callback delivered during
+    /// registration can deregister itself. Keep a custom key's ``PersistentKeyProtocol/id`` unchanged from
+    /// registration through deregistration, because a changed `id` can remove a path that was never registered, which
+    /// raises an exception. Remove each key-value observation registration once, using the same store, observer, key,
+    /// and context.
     ///
     /// - Parameter observer: The observer to register.
     /// - Parameter key: The key to observe.

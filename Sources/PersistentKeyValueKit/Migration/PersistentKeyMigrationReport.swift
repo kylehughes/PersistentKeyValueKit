@@ -173,15 +173,30 @@ extension PersistentKeyMigrationReport {
         /// (``PersistentKeyValueConversionError/encodingFailed``). An integer's width is not part of the value these
         /// stores keep, so an encoded `Int32` does not fail. As after an ordinary write, the writing process reads it
         /// back as written, while other processes and later launches can read a 64-bit integer. It also includes a
-        /// value that is not an optional `nil` but that the destination key's representation encodes as `nil` for a
-        /// `UserDefaults` or `NSUbiquitousKeyValueStore` destination, because writing it would remove the destination
-        /// entry; the source value stays in place.
+        /// value that is not `nil` at an actual `Optional` layer but whose top-level encoding for the destination key is
+        /// `nil`, because writing it would remove the destination entry; the item writes neither entry and the source
+        /// value stays in place.
+        ///
+        /// For an `NSUbiquitousKeyValueStore` destination it also includes a value whose binary property list exceeds
+        /// 1 MiB (``PersistentKeyValueConversionError/invalidStorageValue``). That store also limits its total size to
+        /// 1 MB and its key count to 1,024, including a completion marker recorded there.
+        ///
+        /// Preparation checks that the encoded object decodes with the destination key's representation and that
+        /// property-list serialization preserves it, comparing integers by value across widths, so a decoder of
+        /// persisted values must accept a widened integer. It discards the decoded value without comparing it with the
+        /// original, so a representation that loses information, such as one that stores a date as an ISO 8601 string
+        /// with whole seconds, migrates the lossy value. `NaN` values of the same width compare equal regardless of
+        /// payload or sign, so a migration can report success for a copy whose `NaN` payload differs.
         case prepare
 
         /// Writing to or verifying the destination store failed. A move had not started removing the source value.
         ///
         /// Under a policy that keeps the existing destination value, this includes finding that the value changed, in
-        /// which case the migration leaves the source value in place.
+        /// which case the migration leaves the source value in place. A destination that appeared, disappeared, or
+        /// differs from its snapshot when checked fails with ``PersistentKeyMigrationError/destinationChanged``, and a
+        /// committed value that fails verification with ``PersistentKeyMigrationError/writeVerificationFailed``. The
+        /// check and the native write are separate calls, so an uncoordinated Foundation writer can change the
+        /// destination between them and have its value overwritten without detection.
         case write
 
         /// Removing the value from the source store or verifying its removal failed during a move, or the destination
@@ -287,6 +302,10 @@ extension PersistentKeyMigrationReport {
         case keyDisabled
 
         /// The value was written to the destination key and removed from the source key.
+        ///
+        /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
+        /// value is `nil` at an actual `Optional` layer, and the destination key encodes it as `nil`, the destination
+        /// entry is removed instead of written, so both entries are absent afterward.
         case moved
 
         /// No persisted value existed for the source key in the source store.

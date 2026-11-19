@@ -22,10 +22,22 @@ extension Dictionary: KeyValuePersistible where Key == String, Value: KeyValuePe
     /// conversion through ``decode(storageObject:format:)``, which migration uses, fails if any entry fails to decode
     /// (unless a custom value representation's container hook omits nested entries).
     ///
-    /// Foundation keeps keys that are canonically equivalent but spelled differently, such as composed and decomposed
-    /// "café", as separate entries, while a Swift dictionary holds at most one of them. An ordinary read of a stored
-    /// dictionary with such keys keeps at most one of the entries, which one is unspecified, and omits it if its value
-    /// cannot decode. Checked conversion fails instead.
+    /// Foundation keeps keys that Swift treats as equal as separate entries, such as canonically equivalent spellings
+    /// like composed and decomposed "café", or keys that differ only in unpaired UTF-16 surrogates, which Swift
+    /// repairs. A Swift dictionary holds at most one of them. An ordinary read of a stored dictionary with such keys
+    /// keeps at most one of the entries, which one is unspecified, and omits it if its value cannot decode. Checked
+    /// conversion fails instead.
+    ///
+    /// An ordinary read leaves undecodable and colliding entries in storage, but the native setters replace the whole
+    /// dictionary in the writable defaults domain or iCloud store. Writing the decoded dictionary back therefore
+    /// deletes the omitted entries there, even when you edited only a different entry, and on iCloud that deletion can
+    /// propagate to other devices. An older client that cannot decode an entry written by a newer one erases it by
+    /// saving an edit. If an added suite supplied the dictionary, the write hides that suite's dictionary, which
+    /// keeps its entries. If a higher-priority domain such as a launch argument supplies the dictionary, saving an
+    /// edit still replaces the writable-domain dictionary, including entries the getter never returned, while the
+    /// override keeps supplying the visible value. An optional or proxy representation preserves its wrapped reader's
+    /// filtering, as does a built-in collection that nests it, so a checked migration can succeed with fewer entries
+    /// when an external reader filters.
     @inlinable
     public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()
@@ -49,8 +61,9 @@ where
 {
     /// Decodes a dictionary from a stored `[String: Any]` dictionary.
     ///
-    /// Throws if any entry fails to decode, or if the stored dictionary has keys that are canonically equivalent but
-    /// spelled differently, which a Swift dictionary cannot hold separately. This checked conversion is stricter than
+    /// Throws if any entry fails to decode, or if the stored dictionary has keys that Swift treats as equal, such as
+    /// canonically equivalent spellings or keys that differ only in unpaired UTF-16 surrogates, which a Swift dictionary
+    /// cannot hold separately. This checked conversion is stricter than
     /// ordinary reads, which omit entries that fail to decode, so a migration reports the failure instead of dropping
     /// data. Built-in value representations decode each entry with their own checked conversion and rethrow the first
     /// error. Other value representations decode each entry with their
@@ -156,9 +169,9 @@ where
 
     /// Decodes the dictionary at `userDefaultsKey`, returning `nil` if it is absent or is not a dictionary.
     ///
-    /// Entries that fail to decode, and all but one of any entries with canonically equivalent keys, are omitted from
-    /// the result but stay in storage. Writing the result back replaces the whole dictionary in the writable domain and
-    /// deletes the omitted entries there. If an added suite supplied the dictionary that was read, the write can hide
+    /// Entries that fail to decode, and all but one of any entries with keys that Swift treats as equal, are omitted
+    /// from the result but stay in storage. Writing the result back replaces the whole dictionary in the writable domain
+    /// and deletes the omitted entries there. If an added suite supplied the dictionary that was read, the write can hide
     /// that suite's dictionary, which keeps its entries.
     @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
@@ -188,8 +201,8 @@ where
 
     /// Decodes the dictionary at `ubiquitousStoreKey`, returning `nil` if it is absent or is not a dictionary.
     ///
-    /// Entries that fail to decode, and all but one of any entries with canonically equivalent keys, are omitted from
-    /// the result but stay in storage. Writing the result back replaces the whole stored dictionary and deletes them,
+    /// Entries that fail to decode, and all but one of any entries with keys that Swift treats as equal, are omitted
+    /// from the result but stay in storage. Writing the result back replaces the whole stored dictionary and deletes them,
     /// and that deletion can propagate to the user's other devices.
     @available(watchOS 9.0, *)
     @inlinable

@@ -16,13 +16,16 @@ extension Array: KeyValuePersistible where Element: KeyValuePersistible {
     ///
     /// Writes are all or nothing: if any element fails to encode, the store or container is left unchanged, so a
     /// failed write never partially overwrites a stored array. Elements that encode to `nil`, such as `nil` optionals,
-    /// are omitted. An element representation defined outside this package reports a failure by leaving the array
-    /// empty, so a write fails if that representation encodes every element of a nonempty array to `nil`. Reads are
-    /// also all or nothing: if any element fails to decode, the read returns `nil` and a key falls back to its default
-    /// value, because an element's position can carry meaning. The stored array is unchanged by the read, but saving an
-    /// edit to that default array replaces the array in the writable defaults domain or iCloud store, including the
-    /// elements that could decode. If an added suite supplied the original array, the replacement hides it and the
-    /// suite keeps every element.
+    /// are omitted at every nesting level. An element representation defined outside this package reports a failure by
+    /// leaving the array empty, so a write fails if that representation encodes every element of a nonempty array to
+    /// `nil`. Reads are also all or nothing: if any element fails to decode, the read returns `nil` and a key falls
+    /// back to its default value, because an element's position can carry meaning. The stored array is unchanged by
+    /// the read, but saving an edit to that default array replaces the array in the writable defaults domain or iCloud
+    /// store, including the elements that could decode. If an added suite supplied the original array, the replacement
+    /// hides it and the suite keeps every element. If a higher-priority domain such as a launch argument supplies the
+    /// array, saving an edit still replaces the writable-domain array while the override keeps supplying the visible
+    /// value. An external array reader can filter elements during ordinary and checked reads, including through an
+    /// optional, proxy, or nested collection that reaches it.
     @inlinable
     public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()

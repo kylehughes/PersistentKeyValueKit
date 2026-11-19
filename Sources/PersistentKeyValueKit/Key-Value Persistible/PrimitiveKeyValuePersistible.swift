@@ -38,6 +38,16 @@ import Foundation
 /// values that they accept, except dictionary keys. ``PrimitivePersistentKeyValueRepresentation`` forwards its
 /// container methods to this type's, so it writes the objects that those methods write without copying them. Behavior
 /// is unspecified if a conforming type mutates an object after handing it over.
+///
+/// Built-in `Bool`, numeric, and `URL` primitives also coerce the string that a launch argument supplies in
+/// `UserDefaults.argumentDomain`: a `Bool` accepts `1`, `true`, or `yes` and `0`, `false`, or `no` in any case, a
+/// numeric type parses the trimmed string, and a `URL` argument requires a scheme. Coercion applies only when the
+/// visible value is that argument string for the literal key, so a managed preference that overrides the key, or a
+/// launch argument for another Unicode spelling of the identifier, does not coerce. Optional and proxy representations
+/// inherit it. A custom primitive's default `UserDefaults` read does not coerce launch arguments.
+///
+/// In a target whose default isolation is `MainActor`, a conforming type's conversion members must be usable from
+/// nonisolated code, so declare the conformance's extension and type `nonisolated`.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Decodes a value from a stored object for the given storage format.
     ///
@@ -64,7 +74,7 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Array reads decode a stored array with this method, so it must accept the arrays that ``set(_:to:)`` writes.
     /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for types
     /// defined outside this package, so an implementation that omits elements it cannot decode omits them from
-    /// migrated values too.
+    /// migrated values too, including when an optional, proxy, or nested collection representation reaches it.
     ///
     /// - Parameter propertyListArray: The array to decode values from.
     /// - Returns: The decoded values, or `nil` if any element cannot be decoded as `Self`.
@@ -74,8 +84,9 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     ///
     /// Array writes, registration, and migration call this method with an empty `propertyListArray`, and an
     /// implementation may only assign the encoded array to it or append the encoded elements to it. The result is the
-    /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
-    /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
+    /// stored form of `values` and need not contain each element's own encoding. Build the encoded array separately
+    /// and assign or append it only after every value encodes, because the package stores a nonempty result as written.
+    /// If any value fails to encode, leave `propertyListArray` empty. Callers rely on this to keep the stored collection when one of its elements
     /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
     /// `nil`. Do not mutate the objects written to `propertyListArray` after this method returns.
     ///
@@ -90,7 +101,8 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Dictionary reads decode a stored entry with this method, so it must accept the objects that
     /// ``set(_:to:in:)-1ccdn`` writes. Ordinary dictionary reads omit an entry for which this method returns `nil`.
     /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for types
-    /// defined outside this package and fails instead.
+    /// defined outside this package and fails instead, though it accepts a value from which this method has already
+    /// omitted nested entries.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.

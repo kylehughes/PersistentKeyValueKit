@@ -39,7 +39,12 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// The unique identifier for the key.
     ///
     /// This is the string key used in the underlying stores, and the store-specific requirements must keep the value
-    /// under it.
+    /// under it. Resolve a dynamic identifier when constructing the key, and keep it stable for the lifetime of a
+    /// migration or an observation.
+    ///
+    /// `NSUbiquitousKeyValueStore` limits a key identifier, including any generated prefix or suffix, to 128 UTF-16 code
+    /// units, and Foundation can raise an exception when a write exceeds that limit. Migration reports
+    /// ``PersistentKeyMigrationError/keyIdentifierTooLong(_:)`` during setup.
     ///
     /// `UserDefaults` and `NSUbiquitousKeyValueStore` compare identifiers literally, so canonically equivalent
     /// spellings, such as composed and decomposed "café", are different keys. `ID` is `String`, which treats those

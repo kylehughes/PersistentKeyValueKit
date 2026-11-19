@@ -26,6 +26,11 @@ import Foundation
 /// )
 /// ```
 ///
+/// A source and a destination are the same key when the store treats their identifiers as one key. `UserDefaults` and
+/// `NSUbiquitousKeyValueStore` compare literal UTF-16 code units, so a composed-to-decomposed rename of the same text
+/// is a different key there, while ``InMemoryPersistentKeyValueStore`` uses Swift string equality and treats it as the
+/// same key.
+///
 /// Mapping to a different key identifier also lets a migration rename or reshape keys within one store, provided no
 /// item's destination is another item's source. An item that maps a key to its own identifier within one store throws
 /// ``PersistentKeyMigrationError/sameStore``.
@@ -72,8 +77,9 @@ public struct PersistentKeyMigrationItem: Sendable {
 
     /// Migrates `source` to `destination`, converting each value with `transform`.
     ///
-    /// `transform` runs synchronously during the migration, after the source value is decoded and before anything is
-    /// written. If it throws, the item fails at ``PersistentKeyMigrationReport/FailureStage/transform`` with the
+    /// `transform` runs synchronously during the migration, in input order, after the source value is decoded and
+    /// before anything is written. A later failure at ``PersistentKeyMigrationReport/FailureStage/prepare`` or
+    /// ``PersistentKeyMigrationReport/FailureStage/write`` can still prevent the write. If it throws, the item fails at ``PersistentKeyMigrationReport/FailureStage/transform`` with the
     /// thrown error, and the migration writes to neither store for this item, so a move keeps the source. An
     /// ``InMemoryPersistentKeyValueStore`` source passes `transform` the stored value itself rather than a decoded
     /// copy, so mutating a reference that `transform` receives, such as an `NSMutableArray`, changes the stored source

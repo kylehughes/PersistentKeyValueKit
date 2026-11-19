@@ -116,12 +116,19 @@ extension UserDefaults {
     ///
     /// Identifiers are compared literally, as `UserDefaults` compares them, so identifiers that are canonically
     /// equivalent but spelled differently register separately. When two keys have the same identifier, the later one
-    /// wins.
+    /// wins. A default that encodes to `nil` is removed only from the dictionary being filled, while a default already
+    /// submitted in a separate `UserDefaults.register(_:)` call in the same process remains registered.
     ///
-    /// Every `UserDefaults` instance in the process shares the registration domain, so registering an identifier in
-    /// another suite can replace its fallback everywhere in that process. Typed reads decode a visible registered
-    /// object, so the result can differ from the key's `defaultValue` when encoding loses information, such as an array
-    /// encoding that omits `nil` elements.
+    /// The registration domain is volatile, so register on every launch in each app or extension process, before raw
+    /// `UserDefaults` readers need the fallbacks. Every `UserDefaults` instance in the process shares it, so
+    /// registering an identifier in another suite can replace its fallback everywhere in that process. Typed reads
+    /// decode a visible registered object, so the result can differ from the key's `defaultValue` when encoding loses
+    /// information, such as an array encoding that omits `nil` elements, and registration can change the value that an
+    /// unset key returns.
+    ///
+    /// A `URL` default registers as its checked `.userDefaults` encoding: a representable file URL as a path and any
+    /// other URL as archive data. Earlier versions registered `absoluteString`, so raw `string(forKey:)` on a registered
+    /// non-file URL default now returns `nil`; use `url(forKey:)` for raw access.
     ///
     /// - Parameter keys: The keys to register.
     public func register(_ keys: [any PersistentKeyProtocol]) {

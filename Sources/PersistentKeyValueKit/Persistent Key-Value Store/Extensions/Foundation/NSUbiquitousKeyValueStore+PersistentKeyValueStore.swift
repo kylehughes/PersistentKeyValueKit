@@ -13,9 +13,16 @@ import Foundation
 extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     /// The notification that is posted when the value of a key changes internally.
     ///
-    /// `PersistentKeyValueKit` posts this notification for local writes and removals, with the writing store as the
-    /// notification's object, so only observation registered with that same instance is notified. Use
-    /// `NSUbiquitousKeyValueStore.default` for every read, write, and observation, as Apple requires.
+    /// Foundation posts `didChangeExternallyNotification` for changes that arrive from iCloud and for events such as
+    /// quota violations, not for local writes. `PersistentKeyValueKit` therefore posts this notification for local
+    /// writes and removals, with the writing store as the notification's object, so only observation registered with
+    /// that same instance is notified. Use `NSUbiquitousKeyValueStore.default` for every read, write, and observation,
+    /// as Apple requires.
+    ///
+    /// The store-level `set(_:to:)` and `remove(_:)` post it after each call, even when the key ignores the operation
+    /// and leaves storage unchanged, such as a ``PersistentDebugKey`` in a Release build. A key's own `set(to:in:)` and
+    /// `remove(from:)` post nothing, so use the store methods for local writes that observers must see. Migrations post
+    /// it for the keys they write or remove.
     public static let didChangeInternallyNotification = NSNotification.Name(
         "NSUbiquitousKeyValueStore.DidChangeInternally"
     )

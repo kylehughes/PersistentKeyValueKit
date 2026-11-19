@@ -129,6 +129,15 @@ Every Swift block in `README.md` and `docs/release-notes/` must appear verbatim 
 
 Maintain 100% line and region coverage across all production code. Coverage is not limited to new or changed code, and it is not a substitute for behavioral assertions.
 
+## Documentation
+
+Put each fact in the tier whose reader needs it, and do not repeat it across tiers.
+
+- `///` doc comments in `Sources/` (DocC) are the authoritative home for contracts and edge cases, on the symbol each one governs.
+- `README.md` serves an app developer adopting the package: common use, plus the rules a reader following it would hit. Point to the API documentation for everything else.
+- `docs/release-notes/` serve someone upgrading from the previous major version: what's new (short), breaking changes with upgrade steps, and behavior changes from that version. Edge cases of new features go in doc comments.
+- `docs/decisions/` serve maintainers: why the design is what it is, with evidence.
+
 ## Contributing
 
 Recent commits use short imperative subjects: `Fix UserDefaults launch argument parsing`, `Improve hot path performance`. Match that style and never credit tools or agents.

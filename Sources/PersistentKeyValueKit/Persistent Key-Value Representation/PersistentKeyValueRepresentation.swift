@@ -20,6 +20,11 @@ import Foundation
 /// container methods of ``OptionalPersistentKeyValueRepresentation``, ``ProxyPersistentKeyValueRepresentation``, and
 /// ``PrimitivePersistentKeyValueRepresentation`` do, writes the objects that method writes without copying them.
 /// Behavior is unspecified if a representation mutates an object after handing it over.
+///
+/// Conversion can run more than once for the same value, and ordinary `get` and `set` stay non-throwing. In a target
+/// whose default isolation is `MainActor`, the conversion witnesses must be usable from nonisolated code, where a key
+/// constructs its representation and migration calls it. Declaring the conformance's type and extension `nonisolated`
+/// does that, and individually `nonisolated` witnesses can preserve the rest of the type's isolation.
 public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     // MARK: Associated Types
     
@@ -30,6 +35,11 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     ///
     /// Callers such as migration write validation may invoke conversion more than once for the same value; do not
     /// rely on a specific invocation count.
+    ///
+    /// Accept every object that this representation's setter or ``encode(_:format:)`` writes, in the immutable
+    /// Foundation form that a store returns, because migration validates an encoded object by decoding an immutable
+    /// copy of it, and `UserDefaults` and `NSUbiquitousKeyValueStore` can return a widened integer to another process
+    /// or a later launch. A decoder that requires `NSMutableArray` rejects its own encoder's output during migration.
     ///
     /// - Parameter storageObject: The stored object read from the backing store or property-list container.
     /// - Parameter format: The storage format of `storageObject`.
@@ -45,9 +55,13 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// the returned object, or any object it contains, after returning it.
     ///
     /// Migration to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes the destination entry only
-    /// when the value is an optional `nil`. If this method returns `nil` for any other value, the item fails at
+    /// when this method returns `nil` for the key's top-level value and that value is `nil` at an actual `Optional`
+    /// layer. If it returns `nil` for any other top-level value, the item fails at
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with
-    /// ``PersistentKeyValueConversionError/encodingFailed`` and neither store changes.
+    /// ``PersistentKeyValueConversionError/encodingFailed``, writes neither entry, and the other items in the batch
+    /// proceed independently. This does not cover a `nil` element inside a collection, such as a custom element
+    /// encoder that returns `nil` for one array element, which the collection write omits, so a move can succeed with
+    /// fewer elements.
     ///
     /// - Parameter value: The value to encode.
     /// - Parameter format: The target storage format.
@@ -61,7 +75,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Array reads decode a stored array with this method, so it must accept the arrays that ``set(_:to:)`` writes.
     /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for
     /// representations defined outside this package, so an implementation that omits elements it cannot decode omits
-    /// them from migrated values too.
+    /// them from migrated values too, including when an optional, proxy, or nested collection representation reaches
+    /// it. Checked migration can therefore succeed with fewer elements, and remove the source of a move, when this
+    /// method filters unreadable elements.
     ///
     /// - Parameter propertyListArray: The array to decode values from.
     /// - Returns: The decoded values, or `nil` if any element cannot be decoded as ``Value``.
@@ -90,7 +106,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Dictionary reads decode a stored entry with this method, so it must accept the objects that
     /// ``set(_:to:in:)-91w4n`` writes. Ordinary dictionary reads omit an entry for which this method returns `nil`.
     /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for
-    /// representations defined outside this package and fails instead.
+    /// representations defined outside this package and fails instead: checked dictionary decoding throws when this
+    /// method returns `nil`, but accepts a value from which it has already omitted nested entries.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.
@@ -165,7 +182,8 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
 ///
 /// A property list contains only strings, numbers, dates, data, arrays, and dictionaries with string keys, which are
 /// the objects that `UserDefaults` and `NSUbiquitousKeyValueStore` store. Binary property-list serialization also
-/// accepts the UIDs in a keyed archive's property list, but these writes reject them; store such an archive as `Data`.
+/// accepts the UIDs in a keyed archive's property list, but these writes reject them (store such an archive as
+/// `Data`), along with `NSNull`, `URL` objects, non-string dictionary keys, and containers that contain themselves.
 /// As a defense, writes keep immutable copies of the mutable containers and leaf values in the object that `encode`
 /// returns, but not of every mutable object, such as a dictionary key. A representation must still not mutate that
 /// object, or any object it contains, after `encode` returns.
@@ -858,6 +876,9 @@ public enum PersistentKeyValueStorageFormat: Sendable {
 }
 
 /// Errors thrown by built-in representations when converting between a Swift value and a stored object.
+///
+/// `URL` archive encoding and decoding can throw Foundation errors instead, and
+/// ``CodablePersistentKeyValueRepresentation`` rethrows the errors of its `Encoder` and `Decoder`.
 public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
     /// The stored object has an unexpected runtime type, is not a valid property list, or exceeds the target store's
     /// size limit.

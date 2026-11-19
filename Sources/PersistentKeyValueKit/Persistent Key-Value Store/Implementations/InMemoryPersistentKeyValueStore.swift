@@ -19,7 +19,19 @@ import Foundation
 /// in-memory source or destination. When migrating a stored `nil` from an in-memory store to `UserDefaults` or
 /// `NSUbiquitousKeyValueStore` with ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
 /// ``PersistentKeyMoveConflictPolicy/overwriteDestination``, the destination key is removed if its representation
-/// encodes `nil` as removal, as the built-in optional representation does.
+/// encodes that `nil` as `nil`, as the built-in optional representation does; a custom optional representation that
+/// encodes `nil` as an object writes that object. A migration into the store applies the
+/// ordinary setter's shallow compaction to a qualifying array or dictionary of optionals, including one wrapped in an
+/// `Optional`. An explicit `nil` entry counts as an existing destination value.
+///
+/// The store treats identifiers as Swift strings, so canonically equivalent spellings, and identifiers that differ only
+/// in unpaired UTF-16 surrogates, which Swift repairs, name one entry. Foundation stores keep them distinct. Migration
+/// duplicate, overlap, and same-store checks use the same rule.
+///
+/// A manual observer registered with ``register(observer:for:with:and:)`` is called synchronously on the writing thread
+/// through `observeValue(forKeyPath:of:change:context:)` by every write or removal, with the identifier that the
+/// operation received as the key path, `nil` for `change`, and the registered context. One call to
+/// ``deregister(_:for:context:)`` removes every matching registration.
 ///
 /// Because the store keeps the Swift value itself rather than an encoded copy, a class-typed value is shared, not
 /// copied: every read returns the same instance that was written, and mutating it changes the stored value without

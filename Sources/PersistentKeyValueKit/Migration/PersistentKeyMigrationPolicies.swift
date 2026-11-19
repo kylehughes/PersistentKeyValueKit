@@ -4,6 +4,10 @@ import Foundation
 ///
 /// An entry in an ``InMemoryPersistentKeyValueStore`` that holds an explicit `nil` counts as a persisted value. Call
 /// `remove(_:)` on the destination key to make it absent before migrating into it.
+///
+/// Conflict checks against an `NSUbiquitousKeyValueStore` destination read this device's local cache, so they neither
+/// wait for the initial sync nor see cloud values that have not reached the device. To preserve existing cloud
+/// preferences, wait for the current account's initial data before seeding.
 public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
     /// Preserves the existing destination value after verifying that the destination snapshot has not changed, and
     /// leaves the source value unchanged, reporting ``PersistentKeyMigrationReport/Status/keptDestination``.
@@ -19,15 +23,23 @@ public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
 /// An entry in an ``InMemoryPersistentKeyValueStore`` that holds an explicit `nil` counts as a persisted value, so
 /// ``keepDestinationAndRemoveSource`` discards a persisted source. Call `remove(_:)` on the destination key to make it
 /// absent before migrating into it.
+///
+/// Conflict checks against an `NSUbiquitousKeyValueStore` destination read this device's local cache, so they neither
+/// wait for the initial sync nor see cloud values that have not reached the device. To preserve existing cloud
+/// preferences, wait for the current account's initial data before seeding.
 public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
     /// Preserves both the existing destination value and the source value after verifying that the destination snapshot
     /// has not changed, reporting ``PersistentKeyMigrationReport/Status/keptDestination``.
     ///
-    /// The source value remains in the source store after the migration completes.
+    /// The source value remains in the source store after the migration completes. Use
+    /// ``keepDestinationAndRemoveSource`` or ``overwriteDestination`` to remove conflicting source values.
     case keepBoth
 
     /// Preserves the existing destination value and removes the source value after verifying that neither snapshot has
     /// changed, reporting ``PersistentKeyMigrationReport/Status/discardedSource``.
+    ///
+    /// Neither value is decoded, so this policy can discard an unreadable source, or the only readable value when the
+    /// key cannot decode the destination.
     case keepDestinationAndRemoveSource
 
     /// Replaces the destination value with the source value and then removes the source value, reporting
@@ -63,10 +75,27 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// spellings differ, such as precomposed and decomposed forms of the same accented character. Identifiers are
 /// otherwise distinct, including identifiers that differ only by case.
 ///
+/// Tracking checks the persistent domain of the recording store, not the effective value that a typed read returns, so
+/// a registered default of `true` makes ``PersistentKeyProtocol/isMigrationCompleted(id:)`` read `true` while the
+/// migration still runs. Use ``PersistentKeyMigrationReport/completion`` to learn whether the marker skipped a batch.
+/// A retry reads the stored marker again, so a marker that was written but failed verification can still be honored.
+///
+/// A batch whose items all resolve without failure records the marker even when it transferred nothing, as when every
+/// source is ``PersistentKeyMigrationReport/Status/sourceAbsent``. Run a seeding migration in the target that owns the
+/// legacy data: a target with nothing to move still records a shared marker, so the owning target's later call returns
+/// ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` and skips its migration, even though
+/// ``PersistentKeyMigrationReport/throwIfIncomplete()`` succeeds.
+///
+/// When migrating from `NSUbiquitousKeyValueStore` with both keys enabled, a source missing from the local cache before
+/// the initial sync reports ``PersistentKeyMigrationReport/Status/sourceAbsent`` on that run. If the batch records
+/// completion, later calls with that marker skip every item, including keys that have since synced, so use
+/// ``untracked`` until the initial sync finishes, or record completion yourself.
+///
 /// This type is not `Sendable` because ``once(id:recordedIn:)`` holds the recording store. Create the tracking value
 /// where the migration runs. A nonisolated `@Sendable` closure cannot capture a prebuilt value, so construct the
-/// tracking inside the closure and keep its recording store: ``once(id:)`` records in the destination store instead,
-/// so a marker already recorded elsewhere under the same identifier no longer skips the batch.
+/// tracking inside the closure and preserve its recording store. Omitting `recordedIn:` selects the destination store;
+/// if the destination's marker is already `true`, the call returns
+/// ``PersistentKeyMigrationReport/Completion/alreadyRecorded``.
 public struct PersistentKeyMigrationTracking {
     /// The prefix of every completion marker key identifier, which source and destination keys cannot use.
     static let completionMarkerPrefix = "PersistentKeyValueKit_MigrationCompleted_"

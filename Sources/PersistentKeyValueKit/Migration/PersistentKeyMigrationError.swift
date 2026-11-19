@@ -61,6 +61,8 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
 
     /// Another in-process migration is already operating on one of the requested keys or the completion marker in the
     /// same store.
+    ///
+    /// Only migrations in this process are detected. Ordinary writers and other processes need separate coordination.
     case overlappingMigration
 
     /// The source value changed between the initial snapshot and source removal during a move.
@@ -70,6 +72,11 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// or source cleanup, including when an observer left a value there while a write replaced it (a change undone
     /// before the check goes undetected), or no longer matched the migrated value after the source was removed during
     /// a move.
+    ///
+    /// When Foundation considers the old and new objects equal but migration verification distinguishes them, such as
+    /// `1` and `true`, `UserDefaults` temporarily removes the entry and checks that it remains absent before writing.
+    /// Observers can receive the fallback value during that removal and then the final value, even when the old and
+    /// new typed values are equal.
     case destinationChanged
 
     /// The destination store did not retain the expected value after writing.
@@ -79,6 +86,8 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     case removalVerificationFailed
 
     /// The existing completion marker in the recording store could not be decoded as a `Bool`.
+    ///
+    /// An error that reading the marker throws propagates unchanged. Both are thrown before any item runs.
     case invalidCompletionRecord
 
     /// The library detected a violation of its own migration bookkeeping, such as a store with an empty identity or a

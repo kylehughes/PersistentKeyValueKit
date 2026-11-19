@@ -359,10 +359,14 @@ extension PersistentKeyValueStore {
     /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither copied nor treated as destination conflicts.
     ///
-    /// A `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes its entry when the value to write is an
-    /// optional `nil`, which the built-in optional representation encodes as `nil`. An item whose value is not `nil`
-    /// but whose destination encoding is `nil` fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
-    /// ``PersistentKeyValueConversionError/encodingFailed`` and writes to neither store.
+    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
+    /// destination entry is removed only when the destination key's top-level encoding is `nil` and the value written
+    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes
+    /// such a value as `nil`. A value that is not `nil` at an `Optional` layer but whose top-level encoding is `nil`
+    /// fails the item at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+    /// ``PersistentKeyValueConversionError/encodingFailed`` and writes neither entry, while the other items in the
+    /// batch proceed independently. A custom optional representation that encodes `nil` as an object, such as a marker
+    /// string, writes that object, so a `nil` value does not always remove the entry.
     ///
     /// `destination` can be this store when every item maps its source key to a different key identifier.
     ///
@@ -372,7 +376,8 @@ extension PersistentKeyValueStore {
     /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
     /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
     ///
-    /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
+    /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue,
+    /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``.
     /// Completed writes are not rolled back if a later item fails. An empty batch is valid; with completion tracking,
     /// it records the marker.
     ///
@@ -383,6 +388,9 @@ extension PersistentKeyValueStore {
     /// cause, but code that writes to a migrating store as a side effect of reading, encoding, or deallocating a value,
     /// such as a getter, `deinit`, allocator callback, or observer, is an uncoordinated writer. Coordinate such writers
     /// before migrating, as with other writers; otherwise, behavior is unspecified.
+    ///
+    /// Local completion does not guarantee disk durability or iCloud delivery. A copy into `NSUbiquitousKeyValueStore`
+    /// posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for each key it writes.
     ///
     /// - Parameter items: The items to copy, processed in order.
     /// - Parameter destination: The destination store.
@@ -483,10 +491,14 @@ extension PersistentKeyValueStore {
     /// decoded. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither moved nor treated as destination conflicts.
     ///
-    /// A `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes its entry when the value to write is an
-    /// optional `nil`, which the built-in optional representation encodes as `nil`. An item whose value is not `nil`
-    /// but whose destination encoding is `nil` fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
-    /// ``PersistentKeyValueConversionError/encodingFailed``, so the move removes neither value.
+    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
+    /// destination entry is removed only when the destination key's top-level encoding is `nil` and the value written
+    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes
+    /// such a value as `nil`. A value that is not `nil` at an `Optional` layer but whose top-level encoding is `nil`
+    /// fails the item at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+    /// ``PersistentKeyValueConversionError/encodingFailed`` and writes neither entry, while the other items in the
+    /// batch proceed independently. A custom optional representation that encodes `nil` as an object, such as a marker
+    /// string, writes that object, so a `nil` value does not always remove the entry. A failed move item removes neither value.
     ///
     /// `destination` can be this store when every item maps its source key to a different key identifier, which
     /// renames keys within the store.
@@ -497,7 +509,8 @@ extension PersistentKeyValueStore {
     /// empty migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by
     /// a store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
     ///
-    /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue.
+    /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue,
+    /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``.
     /// On a failure before the destination write, including a transform failure, the migration writes to neither
     /// store. Migrations do not roll back completed items, and a move that fails during
     /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` does not roll back its destination write (though another
@@ -516,6 +529,11 @@ extension PersistentKeyValueStore {
     /// otherwise, behavior is unspecified. On `UserDefaults` and `NSUbiquitousKeyValueStore`, the check of the source
     /// and its removal are separate calls, so a write between them is removed even when the move reports
     /// ``PersistentKeyMigrationReport/Status/moved``.
+    ///
+    /// Local completion does not guarantee disk durability or iCloud delivery, and removing a key from
+    /// `NSUbiquitousKeyValueStore` deletes it across the user's devices. A move posts
+    /// `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for each `NSUbiquitousKeyValueStore` key
+    /// it writes or removes.
     ///
     /// - Parameter items: The items to move, processed in order.
     /// - Parameter destination: The destination store.

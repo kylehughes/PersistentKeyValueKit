@@ -144,7 +144,10 @@ extension PersistentKey: Equatable where Value: Equatable {
     ///
     /// Identifiers are compared by their UTF-16 code units, as Foundation stores compare keys, so canonically
     /// equivalent spellings, such as composed and decomposed "café", are different keys even though they are equal as
-    /// Swift strings. ``InMemoryPersistentKeyValueStore`` stores such spellings in one entry.
+    /// Swift strings. Identifiers that differ only in unpaired UTF-16 surrogates, such as a truncated emoji from
+    /// `NSString.substring(to:)`, are also different keys. ``InMemoryPersistentKeyValueStore`` stores such spellings in
+    /// one entry, because it keys a Swift dictionary and Swift repairs unpaired surrogates, so a test that needs them
+    /// distinct needs a Foundation store.
     @inlinable
     public static func == (lhs: PersistentKey<Value>, rhs: PersistentKey<Value>) -> Bool {
         lhs.defaultValue == rhs.defaultValue && LiteralKeyID.match(lhs.id, rhs.id)

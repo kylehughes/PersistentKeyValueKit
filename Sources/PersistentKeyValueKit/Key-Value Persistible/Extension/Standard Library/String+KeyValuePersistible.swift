@@ -33,7 +33,8 @@ extension String: PrimitiveKeyValuePersistible {
     /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore`` formats, a stored number also decodes as its
     /// `stringValue`, as `UserDefaults.string(forKey:)`, `NSUbiquitousKeyValueStore.string(forKey:)`, and an ordinary
     /// read return it. A Boolean decodes as `"1"` or `"0"`. In the ``PersistentKeyValueStorageFormat/propertyList``
-    /// format, only a stored string decodes.
+    /// format, only a stored string decodes. `Optional<String>`, `String`-backed `RawRepresentable`,
+    /// `LosslessStringConvertible`, and proxy keys over `String` inherit this behavior.
     public static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> String {
         if format != .propertyList, let number = storageObject as? NSNumber {
             return number.stringValue

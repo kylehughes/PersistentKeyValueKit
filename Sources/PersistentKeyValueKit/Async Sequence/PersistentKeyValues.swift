@@ -162,7 +162,8 @@ extension PersistentKeyValues {
         ///
         /// Iteration ends when the calling task is cancelled, whether cancellation happens before the call or while it
         /// waits. A call made after cancellation returns `nil` without returning the pending initial value or any
-        /// buffered change, deregisters from the store, and releases those values, and every later call returns `nil`.
+        /// buffered change, deregisters from the store, and releases those values, and every later call returns `nil`. A
+        /// pending initial value can still be returned if cancellation races its delivery.
         public mutating func next() async -> Key.Value? {
             guard !Task.isCancelled else {
                 return finish()
