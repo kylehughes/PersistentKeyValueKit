@@ -58,13 +58,63 @@ internal enum LiteralKeyID {
     /// Returns whether two key identifiers name the same Foundation store key.
     @usableFromInline
     internal static func match(_ lhs: String, _ rhs: String) -> Bool {
-        // Without `.compareNonliteral`, Core Foundation compares UTF-16 code units, including unpaired surrogates,
-        // without copying them.
-        guard lhs.isContiguousUTF8, rhs.isContiguousUTF8 else {
+        switch (lhs.isContiguousUTF8, rhs.isContiguousUTF8) {
+        case (true, true):
+            // Contiguous UTF-8 is valid Unicode, so its bytes are equal exactly when its UTF-16 code units are.
+            return lhs.utf8.elementsEqual(rhs.utf8)
+        case (true, false):
+            return match(native: lhs, foundation: rhs)
+        case (false, true):
+            return match(native: rhs, foundation: lhs)
+        case (false, false):
+            // Without `.compareNonliteral`, Core Foundation compares UTF-16 code units, including unpaired
+            // surrogates, without copying them.
             return CFStringCompare(lhs as CFString, rhs as CFString, []) == .compareEqualTo
         }
+    }
 
-        // Contiguous UTF-8 is valid Unicode, so its bytes are equal exactly when its UTF-16 code units are.
-        return lhs.utf8.elementsEqual(rhs.utf8)
+    // MARK: Private Static Interface
+
+    /// The number of code units read from a Foundation string at a time when it has no contiguous UTF-16 buffer.
+    private static let chunkLength = 64
+
+    /// Returns whether the contiguous UTF-8 string `native` and the string `foundation` bridged from an `NSString` have
+    /// the same UTF-16 code units.
+    ///
+    /// Core Foundation compares a Swift-native string through its bridged object, which is slow for long identifiers
+    /// that share a prefix, so this compares the native string's UTF-16 view with the Foundation string's code units
+    /// directly, without copying them.
+    private static func match(native: String, foundation: String) -> Bool {
+        let string = foundation as NSString
+        let length = string.length
+
+        // Core Foundation exposes its character buffer only when the string stores UTF-16.
+        if let characters = CFStringGetCharactersPtr(string) {
+            return withExtendedLifetime(string) {
+                native.utf16.elementsEqual(UnsafeBufferPointer(start: characters, count: length))
+            }
+        }
+
+        // Any other string, such as an 8-bit Core Foundation string or an `NSString` subclass, copies its code units.
+        return withUnsafeTemporaryAllocation(of: UInt16.self, capacity: chunkLength) { chunk in
+            var nativeCodeUnits = native.utf16.makeIterator()
+            var location = 0
+
+            while location < length {
+                let count = min(chunk.count, length - location)
+
+                string.getCharacters(chunk.baseAddress!, range: NSRange(location: location, length: count))
+
+                for index in 0 ..< count {
+                    guard nativeCodeUnits.next() == chunk[index] else {
+                        return false
+                    }
+                }
+
+                location += count
+            }
+
+            return nativeCodeUnits.next() == nil
+        }
     }
 }
