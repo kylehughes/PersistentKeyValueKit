@@ -268,25 +268,44 @@ principles:
   `BuiltInScalarConversion`) convert their containers through strict, linear
   checked paths on any thread without relying on ambient task-local state that
   can be lost across threads or leak into ordinary store reads inside a codec:
-  checked array decoding finishes both storage decoding and proxy conversion for
-  each element (`checkedValues(decoding:converting:)`) before reading the next
-  so it rethrows the first element's error in input order, whereas checked
-  encoding converts proxy layers first (`values.map(checkedProxy(for:))`) and
-  can therefore report a later element's outer proxy error before an earlier
-  element's inner encoding error (such as `EncodingError`). Representations
-  defined outside the package (including custom
-  `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible`
+  when every representation in the conversion chain is built in and converts
+  only built-in primitive types, checked array decoding finishes both storage
+  decoding and proxy conversion for each element (`checkedValues(decoding:converting:)`)
+  before reading the next so it rethrows the first element's error in input
+  order, whereas checked encoding converts proxy layers first
+  (`values.map(checkedProxy(for:))`) and can therefore report a later element's
+  outer proxy error before an earlier element's inner encoding error (such as
+  `EncodingError`). Representations defined outside the package (including
+  custom `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible`
   conformances and consumer types conforming to
-  `ProxyPersistentKeyValueRepresentationProtocol`) have their `get(from:)`,
-  `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)` container methods called as
-  written, whether overridden or inherited from the protocol default: a custom
-  hook that drops undecodable elements drops them in migration too, and a
-  consumer type conforming to `ProxyPersistentKeyValueRepresentationProtocol`
-  over a `[String: Value]` proxy with default container methods delegates to
-  `[String: Value]`'s container methods and reads nested dictionaries
-  leniently. Container write hooks receive an empty array (or a dictionary
-  without `dictionaryKey`) and may either assign or append (preserving 1.x
-  representations that append to `propertyListArray`). Because an external
+  `ProxyPersistentKeyValueRepresentationProtocol`), as well as
+  `PrimitivePersistentKeyValueRepresentation` for a `PrimitiveKeyValuePersistible`
+  type defined outside it, have their `get(from:)`, `set(_:to:)`,
+  `get(_:from:)`, and `set(_:to:in:)` container methods called as written,
+  whether overridden or inherited from the protocol default: an external array
+  hook reads the whole array through `get(from:)` first (so even when wrapped
+  in a built-in proxy representation, its `nil` return throws
+  `PersistentKeyValueConversionError.invalidStorageValue` before any outer
+  proxy converts an earlier element), a custom hook that drops undecodable
+  elements drops them in migration too, and a consumer type conforming to
+  `ProxyPersistentKeyValueRepresentationProtocol` over a `[String: Value]` proxy
+  with default container methods delegates to `[String: Value]`'s container
+  methods and reads nested dictionaries leniently. Container write hooks receive
+  an empty array (or a dictionary without `dictionaryKey`): array hooks may
+  only assign to or append to that empty array (preserving 1.x representations
+  that append to `propertyListArray`), and dictionary hooks write only the
+  entry for `dictionaryKey` without reading, modifying, adding, or removing
+  other entries. On every collection write path (arrays, dictionaries, nested
+  collections, and `Optional` or proxy paths, in both ordinary writes and
+  checked `[T].encode` and `[String: T].encode` across all three formats),
+  custom container hook output is validated against the store property-list
+  allow-list (`storableSnapshot`), accepted mutable containers and mutable
+  string/data leaves are copied recursively (dictionary keys are not copied,
+  while default write paths pass plain Swift `String`, `Int`, `Double`, `Bool`,
+  `Data`, and `Date` values as-is), and external dictionary hooks undergo a
+  final completed-dictionary validation pass (`isStorableDictionary`) so
+  altering an earlier entry during a later call cannot leave non-storable
+  objects or uncopied mutables. Because an external
   representation's container methods report failure only by returning `nil`,
   leaving the array empty for non-empty input, or leaving `dictionaryKey`
   absent, and re-running conversion to reconstruct an error or check whether
@@ -332,15 +351,23 @@ principles:
   `UserDefaults` and `NSUbiquitousKeyValueStore` store and look up `NSString`
   keys by literal UTF-16 code units, whereas Swift `String` equality merges
   canonically equivalent spellings (such as NFC and NFD spellings of `"café"`).
-  The package uses literal UTF-16 key identity across Foundation stores:
-  `PersistentKey` and `PersistentDebugKey` `Equatable` and `Hashable`
-  conformances compare and hash `id.utf16` so NFC and NFD spellings remain
-  distinct set members (whereas SwiftUI callers should pass
-  `ForEach(keys, id: \.id.utf8CString)` rather than relying on `Identifiable`,
-  whose `id: String` merges them, or `\.self`, because synthesized key equality
-  compares identifiers as strings and `PersistentKey` and `PersistentDebugKey`
-  equality also compares default values so changing only a default recreates the
-  row),
+  The package uses literal UTF-16 key identity (`LiteralKeyID`) across Foundation
+  stores: `PersistentKey` and `PersistentDebugKey` `Equatable` and `Hashable`
+  conformances compare and hash identifiers by their original UTF-16 code
+  units (reading original code units via `NSString` for bridged strings because
+  Swift's `String.utf16` reports `U+FFFD` for unpaired surrogates such as one
+  left by `NSString.substring(to:)` truncating an emoji, comparing native
+  strings by UTF-8 bytes, bridged strings with literal `CFStringCompare`, and
+  mixed pairs directly against the Foundation string's characters without
+  copying), so both canonically equivalent spellings and identifiers differing
+  only in unpaired surrogates remain distinct set members (whereas SwiftUI
+  callers should pass `ForEach(keys, id: \.id.utf8CString)` rather than relying
+  on `Identifiable`, whose `id: String` merges canonically equivalent spellings,
+  noting that UTF-8 still cannot represent unpaired UTF-16 surrogates so
+  identifiers differing only in unpaired surrogates still share a row, or
+  `\.self`, because synthesized key equality compares identifiers as strings
+  and `PersistentKey` and `PersistentDebugKey` equality also compares default
+  values so changing only a default recreates the row),
   `UserDefaultsMigrationBackend` sends
   `persistentDomain(forName:)` through Objective-C to keep the unbridged
   `NSDictionary` and looks up keys as `NSString`,
@@ -383,19 +410,25 @@ principles:
   versus `Double`), and `NaN` and floating-point bit patterns (`0.0` versus
   `-0.0`) for both floating-point numbers and `Date` time intervals
   (`timeIntervalSinceReferenceDate`, so an unchanged `NaN` date verifies)
-  recursively across arrays and dictionaries. Checked encoding through
-  `encodeStorageRepresentation` (used by
+  recursively across arrays and dictionaries, and compares other same-type Core
+  Foundation property-list leaves (such as the UIDs in a keyed archive's
+  property list, which `InMemoryPersistentKeyValueStore` can hold) by their
+  serialized binary property-list data (`otherLeavesEqual`) so in-memory
+  migration of keyed archives verifies and detects changed UIDs. Checked
+  encoding through `encodeStorageRepresentation` (used by
   `ProxyPersistentKeyValueRepresentationProtocol.encode(_:format:)`,
   `CodablePersistentKeyValueRepresentation.encode(_:format:)`, and migration
-  write preparation) validates and copies the encoded object with the throwing
-  `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (which checks
-  `PropertyListSerialization.propertyList(_:isValidFor: .binary)` before
-  recursively building an immutable Foundation-bridged deep copy, throwing
-  `PersistentKeyValueConversionError.encodingFailed` when the encoded object is
-  not a property list so invalid or self-referential containers fail at
-  `.prepare` without recursing) before validating that copy with
-  `decode(storageObject:format:)` and returning it, so a decoder that consumes
-  or mutates writable input during validation cannot alter what is returned or
+  write preparation) first validates the encoded object with
+  `isStorablePropertyList(_:)` (a single-walk allow-list accepting strings,
+  numbers including Booleans and `NSDecimalNumber`, dates, data, acyclic arrays,
+  and string-keyed dictionaries, rejecting keyed-archive UIDs, `NSNull`, `URL`s,
+  non-string keys, and self-containing containers itself without relying on
+  `PropertyListSerialization.propertyList(_:isValidFor: .binary)`) before
+  taking a throwing `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)`
+  (throwing `PersistentKeyValueConversionError.encodingFailed` if the object is
+  not a storable property list) and validating that immutable Foundation-bridged
+  deep copy with `decode(storageObject:format:)`, so a decoder that consumes or
+  mutates writable input during validation cannot alter what is returned or
   written. When preparing a write to `UserDefaults` or
   `NSUbiquitousKeyValueStore`, `PropertyListMigrationStorage.storableCopy(of:)`
   captures `exactCopy(object)`, verifies that
@@ -448,24 +481,42 @@ principles:
   the lock and then rechecks under the lock that the stored entry still has the
   snapshot's revision (which is never reused); other
   reference types (including references inside Swift values) cannot be copied,
-  so snapshots verify them by revision only.
-- **Post-cleanup destination recheck on `move`**: Removing a move's source key
-  notifies synchronous observers, which can modify or delete the destination
-  key before `move` returns. Both `.overwriteDestination` and
+  so snapshots verify them by revision only. Those immutable snapshots (along
+  with ordinary write snapshots) are a defense rather than a guarantee of the
+  handover contract.
+- **Verification releases and post-cleanup checks on `move`**: Migrations release
+  replaced destination snapshots, prepared writes, replaced completion marker
+  snapshots, and copied or removed source snapshots at their last use before
+  verifying the result, so deinitializers run before verification rather than
+  masking side effects. Under `.keepDestination` (copy) and `.keepBoth` (move),
+  the migration releases the source snapshot and rechecks the kept destination
+  at `.write`, failing with `PersistentKeyMigrationError.destinationChanged` (and
+  suppressing completion recording) if the destination changed or vanished. On
+  `copy`, the source snapshot is released before rechecking the committed
+  destination write (`.writeVerificationFailed`). Removing a move's source key
+  notifies synchronous observers and releases the source snapshot, which can
+  modify either store before `move` returns. Both `.overwriteDestination` and
   `.keepDestinationAndRemoveSource` recheck the destination snapshot after
-  removing the source and fail the item at `.cleanup` with
-  `PersistentKeyMigrationError.destinationChanged` (suppressing completion
-  recording) if the destination changed. Under `.keepDestinationAndRemoveSource`,
-  verifying that the preserved destination value has not changed before removing
-  the source runs at stage `.write` (reporting `.failed(.write)` with
-  `.destinationChanged` without removing the source), because a typed read of
-  the source key cannot distinguish a remaining stored value equal to
-  `defaultValue` from a removed entry. Consequently, `.failed(.cleanup)` with
-  `.destinationChanged` always means the move removed the source and the
-  destination then no longer matched its expected snapshot, whereas
-  `.failed(.cleanup)` with `.sourceChanged` means the source no longer matched
-  its initial snapshot before removal so the move did not remove it (other
-  writers or observers may have modified or removed either store's entry).
+  removing the source (failing at `.cleanup` with `.destinationChanged` and
+  suppressing completion recording if it changed), and then recheck that the
+  source key is still absent (failing at `.cleanup` with
+  `PersistentKeyMigrationError.removalVerificationFailed` if the source still
+  holds a value, such as when restored by a deinitializer or by the destination
+  comparison). Under `.keepDestinationAndRemoveSource`, verifying that the
+  preserved destination value has not changed before removing the source runs at
+  stage `.write` (reporting `.failed(.write)` with `.destinationChanged` without
+  removing the source), because a typed read of the source key cannot
+  distinguish a remaining stored value equal to `defaultValue` from a removed
+  entry. Consequently, `.failed(.cleanup)` with `.destinationChanged` always
+  means the move removed the source and the destination then no longer matched
+  its expected snapshot, `.failed(.cleanup)` with `.removalVerificationFailed`
+  means the source key still held a value after the removal attempt (without
+  rolling back any destination write), and `.failed(.cleanup)` with
+  `.sourceChanged` means the source no longer matched its initial snapshot
+  before removal so the move did not remove it. On completion recording,
+  releasing a replaced marker snapshot before verifying the new marker reports
+  `completion == .failed` with `.writeVerificationFailed` if a deinitializer
+  changed or removed the marker.
 - **Rejection of same-store in-place rewrites**: Same-store in-place rewrites
   (mapping a key to its own identifier with `.key(_:to:transform:)`) were
   designed and implemented during development, then removed before the 2.0.0
@@ -491,7 +542,10 @@ principles:
   `valueForKey:` and `ValueForKey:`), `UserDefaults` keys in that set are
   observed through one `UserDefaultsKeyChangeMonitor` associated with each
   `UserDefaults` instance, while all other keys use key-value observation and
-  also see other processes' changes. The monitor installs its
+  also see other processes' changes (except Foundation posts no KVO notification
+  for writes it considers equal to the stored value, such as `Int64` over an
+  equal `Int32` or `-0.0` over `0.0`, so subscribers can keep the previous
+  numerically equal value until the key next changes). The monitor installs its
   `UserDefaults.didChangeNotification` observer before the first read, reads and
   stores each registration's own initial comparison value outside the lock
   before registration returns (joining an in-progress same-thread first read for
@@ -549,6 +603,73 @@ principles:
   with reasons `CA92.1` and `1C8F.1`. Reason `C56D.1` is not declared because
   Apple disallows it for SDKs "created primarily to wrap required reason
   API(s)".
+- **Representation handover contract and defensive copies**: An object returned
+  from `encode(_:format:)` or `encode(format:)`, returned from a proxy `to`
+  conversion, or written through any `set` hook is handed over to the caller
+  and must not be mutated afterward (including mutable string or data buffers,
+  mutable dictionary keys, or containers); behavior is unspecified otherwise.
+  Array hooks may only assign to or append to the empty array passed in, and
+  dictionary hooks write only the entry for `dictionaryKey`. Mutating an encoded
+  object or earlier dictionary entry during collection conversion could corrupt
+  a write or bypass validation, and copying every mutable object on every
+  forwarding or key-table path (such as dictionary keys or the forwarding
+  container methods of `OptionalPersistentKeyValueRepresentation`,
+  `ProxyPersistentKeyValueRepresentation`, and
+  `PrimitivePersistentKeyValueRepresentation`) cannot prevent every post-return
+  mutation, so the package's immutable snapshots and post-completion dictionary
+  validation are defenses rather than guarantees.
+- **Reentrant-writer rule**: Verification guards against changes it can
+  observe (including changes caused by releasing prepared writes, replaced
+  values, and removed values before verification), while code that writes to a
+  migrating store as a side effect of reading, encoding, or deallocating a
+  value (getters, `deinit`, allocator callbacks, or observers) is an
+  uncoordinated writer; coordinate such writers before migrating as with other
+  writers, or behavior is unspecified. Side effects inside arbitrary getters,
+  codecs, deinitializers, and Core Foundation allocators form an unbounded
+  class of reentrant writes that verification cannot exhaustively intercept.
+- **Key-identifier contract (`PersistentKeyProtocol.id`) and lock hygiene**: A
+  key identifier backed by a Foundation string must not access a store when its
+  characters are read, because Foundation may hold its own locks while reading
+  a key. Inside the package, `InMemoryPersistentKeyValueStore` ensures
+  contiguous UTF-8 storage (`makeContiguousUTF8()` when `!isContiguousUTF8`),
+  and `StoreKeyObservationRegistry` and `UserDefaultsKeyChangeMonitor` read
+  literal UTF-16 code units (`LiteralKeyID.codeUnits(of:)`) before acquiring
+  locks, and removed entries, key groups, observations, and observers are
+  released after unlocking so a lazily bridged `NSString` character accessor or
+  `deinit` cannot deadlock package locks.
+- **Foundation-equal KVO limitation**: `UserDefaults` keys outside the
+  key-path-incompatible set continue to use key-value observation even though
+  Foundation posts no KVO notification when a write compares equal under
+  Foundation equality to the stored value (such as `Int64` over an equal
+  `Int32` or `-0.0` over `0.0`). Keeping KVO preserves cross-process observation
+  (such as app extensions sharing an app group), which
+  `UserDefaults.didChangeNotification` does not deliver because Foundation posts
+  it only for in-process defaults writes.
+- **In-memory and integer-width rules**: `UserDefaults` and
+  `NSUbiquitousKeyValueStore` migration verification compares integers by value
+  regardless of width and accepts any integer width during `.prepare`, whereas
+  `InMemoryPersistentKeyValueStore` snapshots and `UserDefaultsKeyChangeMonitor`
+  compare integer widths recursively (`distinguishingIntegerWidths: true`).
+  `UserDefaults` stores integers in property lists by value without preserving
+  bit width across processes or launches (returning an `Int32` as written in
+  the writing process and a 64-bit integer elsewhere), whereas in-memory objects
+  and in-process notification reads remain unserialized `CFNumber` objects
+  whose width a representation can observe via `objCType`.
+  `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
+  shared references, compacting `nil` only from Swift arrays and `String`-keyed
+  dictionaries of optionals, merging canonically equivalent keys, and verifying
+  Foundation property-list snapshots by exact copy plus revision while
+  verifying other references by revision only).
+- **NFC reserved prefix for completion markers**: Migration setup rejects any
+  source or destination key identifier whose NFC-normalized UTF-16 code units
+  begin with `PersistentKeyValueKit_MigrationCompleted_`
+  (`PersistentKeyMigrationError.reservedKey`), including identifiers with a
+  combining mark after the underscore or canonically equivalent spellings such
+  as `KELVIN SIGN` (`U+212A`) for `K`. Swift's `hasPrefix` compares characters,
+  so a combining mark attached to the trailing `_` would hide the prefix, and
+  comparing the NFC form's UTF-16 code units also rejects canonically equivalent
+  spellings that `InMemoryPersistentKeyValueStore` treats as the same
+  dictionary key as a completion marker.
 
 ## Consequences
 
@@ -576,12 +697,16 @@ The regression tests preserve these guarantees:
 - [`MigrationKeyMappingTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationKeyMappingTests.swift),
   [`MigrationSameKeyTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationSameKeyTests.swift),
   [`MigrationNativeFidelityTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationNativeFidelityTests.swift),
+  [`MigrationObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationObservationTests.swift),
   [`MigrationReportTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationReportTests.swift),
   and [`MigrationSetupValidationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Migration/MigrationSetupValidationTests.swift)
   cover same-store and cross-store key mapping, same-key rejection, transforms,
-  literal key and property-list type fidelity, post-cleanup rechecks, overlap
-  and length validation, report invariants, and completion tracking.
+  literal key and property-list type fidelity (including archive UIDs),
+  last-use release and post-cleanup rechecks, reentrant-writer scenarios,
+  overlap, normalized reserved-prefix, and length validation, report
+  invariants, and completion tracking.
 - [`PersistentKeyValueRepresentationDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Representation/PersistentKeyValueRepresentationDefaultsTests.swift),
+  [`StorablePropertyListTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Representation/StorablePropertyListTests.swift),
   [`PrimitiveKeyValuePersistibleDefaultsTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/PrimitiveKeyValuePersistibleDefaultsTests.swift),
   [`CheckedContainerConversionTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CheckedContainerConversionTests.swift),
   [`CustomContainerHookTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CustomContainerHookTests.swift),
@@ -589,16 +714,23 @@ The regression tests preserve these guarantees:
   [`URLUserDefaultsEncodingTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/Extensions/Foundation/URLUserDefaultsEncodingTests.swift),
   and [`CanonicallyEquivalentKeyTests`](../../Tests/PersistentKeyValueKitTests/Tests/Key-Value%20Persistible/CanonicallyEquivalentKeyTests.swift)
   cover default store and container access built on `decode` and `encode`,
+  store property-list allow-list validation and mutable leaf/container snapshots,
   checked container conversion across built-in and custom hooks, single-pass
   ordinary collection writes and first-failure dictionary termination, lossy
   file URL rejection, 1.x appending overrides, and literal versus canonical key
   identity across key equality/hashing, registration, launch arguments, and
   dictionaries.
-- [`UserDefaultsKeyChangeObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/UserDefaults/UserDefaultsKeyChangeObservationTests.swift)
+- [`LiteralKeyIdentityTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key/LiteralKeyIdentityTests.swift),
+  [`UnpairedSurrogateKeyTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key/UnpairedSurrogateKeyTests.swift),
+  [`InMemoryPersistentKeyValueStoreAccessorTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/InMemoryPersistentKeyValueStore/InMemoryPersistentKeyValueStoreAccessorTests.swift),
+  [`PersistentKeyValuePublisherTests`](../../Tests/PersistentKeyValueKitTests/Tests/Combine/PersistentKeyValuePublisherTests.swift),
+  [`UserDefaultsKeyChangeObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/UserDefaults/UserDefaultsKeyChangeObservationTests.swift),
   and [`NSUbiquitousKeyValueStoreObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/NSUbiquitousKeyValueStore/NSUbiquitousKeyValueStoreObservationTests.swift)
-  cover the per-instance `UserDefaults` notification monitor for
-  key-path-incompatible keys, deduplicated reads, registration deregistration
-  races, and literal key matching in observation.
+  cover literal UTF-16 and unpaired-surrogate key identity without copying,
+  lock-hygiene identifier conversion and post-unlock release, Combine
+  `receive(subscription:)` serialization, the per-instance `UserDefaults`
+  notification monitor for key-path-incompatible keys, deduplicated reads,
+  registration deregistration races, and literal key matching in observation.
 - [`PublicAPIClientTests`](../../Tests/PersistentKeyValueKitPublicAPITests/PublicAPIClientTests.swift)
   checks consumer composition and the `id` storage-location contract without
   `@testable import`; compile-fail fixtures keep the endpoint opaque and enforce
