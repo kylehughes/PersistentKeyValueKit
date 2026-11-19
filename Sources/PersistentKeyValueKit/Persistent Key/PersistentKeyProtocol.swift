@@ -53,9 +53,10 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// `ForEach(keys, id: \.id.utf8CString)`. UTF-8 cannot represent an unpaired UTF-16 surrogate, such as one left by
     /// truncating an emoji with `NSString.substring(to:)`, so identifiers that differ only in such surrogates still
     /// share an ID, and `ForEach` does not guarantee distinct rows for repeated IDs. If identifiers can contain unpaired
-    /// surrogates, derive row IDs from their original UTF-16 code units. Key equality is not a substitute: synthesized equality compares identifiers as strings, and
-    /// ``PersistentKey`` and ``PersistentDebugKey`` equality also compares default values, so with `\.self`, changing
-    /// only a key's default value recreates its row.
+    /// surrogates, derive row IDs from their original UTF-16 code units. Key equality is not a substitute: a custom key
+    /// with synthesized equality compares a stored `String` identifier using Swift string equality, and
+    /// ``PersistentKey`` and ``PersistentDebugKey`` compare identifiers literally but include the default value, so
+    /// with `\.self`, changing only a key's default value recreates its row.
     ///
     /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``. If it is backed
     ///   by a Foundation string, reading its characters must not access a store; Foundation may hold its own locks
@@ -156,11 +157,12 @@ extension PersistentKeyProtocol {
 
     /// Registers the default value for the key in the given registration dictionary for `UserDefaults`.
     ///
-    /// This is intended for use by `UserDefaults.register(_:)` to register the default values for the keys. Fills the
-    /// registration dictionary using checked ``PersistentKeyValueStorageFormat/userDefaults`` encoding. A custom
-    /// ordinary setter can use a different format. When the registered object is visible, the ordinary getter
-    /// determines the typed value. Leaves `propertyListDictionary` unchanged when encoding the default value fails, and
-    /// removes the entry when it encodes to `nil`.
+    /// Use this method to fill a Swift registration dictionary. `UserDefaults.register(_:)` does not call it: it builds
+    /// a Foundation dictionary directly and uses the key's checked ``PersistentKeyValueStorageFormat/userDefaults``
+    /// encoding. This method fills the dictionary using the same checked encoding. A custom ordinary setter can use a
+    /// different format. When the registered object is visible, the ordinary getter determines the typed value. Leaves
+    /// `propertyListDictionary` unchanged when encoding the default value fails, and removes the entry when it encodes
+    /// to `nil`.
     ///
     /// A Swift dictionary treats identifiers that are canonically equivalent but spelled differently, such as composed
     /// and decomposed "café", as one key. `UserDefaults.register(_:)` keeps such identifiers separate, as
@@ -262,9 +264,9 @@ extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
     /// Identifiers that are equal as Swift strings, including precomposed and decomposed spellings of the same accented
     /// character, return the same key. Identifiers that differ in any other way, including case, return different keys.
     ///
-    /// The key's identifier has the same length for every `id`, so identifiers of any length can be recorded in any
-    /// store, including `NSUbiquitousKeyValueStore`. It contains no `.`, so `UserDefaults` key-value observation can
-    /// observe it.
+    /// The generated key has a fixed length of 84 UTF-16 code units, so completion tracking accepts nonempty
+    /// identifiers of any length in any store, including `NSUbiquitousKeyValueStore`. It contains no `.`, so
+    /// `UserDefaults` key-value observation can observe it.
     ///
     /// - Parameter id: The migration identifier passed to ``PersistentKeyMigrationTracking/once(id:)`` or
     ///   ``PersistentKeyMigrationTracking/once(id:recordedIn:)``.

@@ -21,9 +21,12 @@ import Foundation
 /// ``PersistentKeyValueRepresentation/encode(_:format:)``, and the store- and container-specific `get` and `set`
 /// methods that delegate to `Proxy.persistentKeyValueRepresentation`.
 /// Proxy representations defined by this package convert property-list containers through `Proxy`'s checked conversion
-/// during migration and `UserDefaults.register(_:)`, whereas types defined outside this package use their
-/// `get(from:)`, `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)` implementations as written (so a custom type whose
-/// `Proxy` is a dictionary inherits `Dictionary`'s lenient entry decoding unless it overrides those methods).
+/// during migration and `UserDefaults.register(_:)`. For a type defined outside this package, the default standalone
+/// checked decoder calls `Proxy.persistentKeyValueRepresentation.decode`, but when the type is a collection member,
+/// checked collection conversion calls its `get(from:)`, `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)`
+/// implementations as written, and the default container readers can omit unreadable nested entries. A custom type
+/// whose `Proxy` is a dictionary with an unreadable entry therefore fails to migrate as a top-level value, while inside
+/// an array it migrates without that entry, and a move removes its source.
 public protocol ProxyPersistentKeyValueRepresentationProtocol<Value, Proxy>: PersistentKeyValueRepresentation {
     // MARK: Associated Types
     

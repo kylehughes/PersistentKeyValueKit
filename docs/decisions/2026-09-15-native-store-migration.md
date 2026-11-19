@@ -250,8 +250,11 @@ principles:
   contains no failed outcomes for `.recorded` or `.failed`, and
   `PersistentKeyMigrationIncompleteError(report:)` requires `!report.isComplete`.
   The preconditions do not validate the original batch, so a fixture can hold
-  two outcomes for one source key, which the engine produces only if a key's `id`
-  changes after setup, or mix `.copied` and `.moved`, which it never produces.
+  two outcomes for one source key or mix `.copied` and `.moved`. The engine
+  never mixes those statuses, and it produces at most one outcome per source
+  identifier when identifiers remain stable throughout setup and execution:
+  setup reads each source `id` during duplicate detection, and execution reads
+  it again for the outcome.
   `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16
   code units and returns the first match.
 - **Same-store key mapping and `overlappingKeys`**: Migrating within a single
@@ -410,9 +413,11 @@ principles:
   on `Identifiable`, whose `id: String` merges canonically equivalent spellings,
   noting that UTF-8 still cannot represent unpaired UTF-16 surrogates so
   identifiers differing only in unpaired surrogates share an ID and `ForEach`
-  does not guarantee distinct rows for them, or `\.self`, because synthesized key equality compares identifiers as strings
-  and `PersistentKey` and `PersistentDebugKey` equality also compares default
-  values so changing only a default recreates the row),
+  does not guarantee distinct rows for them, or `\.self`, because a custom key
+  with synthesized equality compares a stored `String` identifier using Swift
+  string equality, and `PersistentKey` and `PersistentDebugKey` compare
+  identifiers literally and include the default value, so changing that default
+  changes the row's identity under `\.self`),
   `UserDefaultsMigrationBackend` sends
   `persistentDomain(forName:)` through Objective-C to keep the unbridged
   `NSDictionary` and looks up keys as `NSString`,
@@ -637,8 +642,9 @@ principles:
   retry from reading its own destination, and a successful move removes the
   source key, so a retry usually finds nothing to convert. This is not a
   guarantee: `.keepBoth` can leave the source in place, a batch whose items are
-  all skipped or kept still records completion, and a rerun that finds the source
-  and selects a write runs `transform` again.
+  all skipped or kept still attempts to record completion (if it records a
+  shared marker, the owning target's later call skips the batch), and a rerun
+  that finds the source and selects a write runs `transform` again.
 - **Notification-monitored `UserDefaults` keys and observation scope**: Because
   key-value observation parses an identifier by code units as a key path (it
   raises an exception for the empty key and keys containing NUL, treats `.` as

@@ -16,11 +16,13 @@ extension Dictionary: KeyValuePersistible where Key == String, Value: KeyValuePe
     ///
     /// Writes are all or nothing: if any value fails to encode, the store or container is left unchanged, so a failed
     /// write never partially overwrites a stored dictionary. Values that encode to `nil`, such as `nil` optionals, are
-    /// omitted. A value representation defined outside this package reports a failure by leaving the entry absent, so
-    /// a value that it encodes to `nil` fails the write. Ordinary reads
-    /// keep every entry that decodes and omit entries that fail to decode, because entries are independent. Checked
-    /// conversion through ``decode(storageObject:format:)``, which migration uses, fails if any entry fails to decode
-    /// (unless a custom value representation's container hook omits nested entries).
+    /// omitted. A value representation defined outside this package writes each entry with its
+    /// ``PersistentKeyValueRepresentation/set(_:to:in:)-91w4n``, which fails when it leaves the requested entry absent,
+    /// as the default writer does when the value's `encode` returns `nil`. A custom writer can supply a valid entry
+    /// independently of the value's scalar `encode`. Ordinary reads keep every entry that decodes and omit entries that
+    /// fail to decode, because entries are independent. Checked conversion through ``decode(storageObject:format:)``,
+    /// which migration uses, fails if any entry fails to decode (unless a custom value representation's container hook
+    /// omits nested entries).
     ///
     /// Foundation keeps keys that Swift treats as equal as separate entries, such as canonically equivalent spellings
     /// like composed and decomposed "café", or keys that differ only in unpaired UTF-16 surrogates, which Swift
@@ -153,8 +155,9 @@ where
 
     /// Sets the encoded dictionary at `dictionaryKey`, omitting entries whose value encodes to `nil`.
     ///
-    /// Leaves `propertyListDictionary` unchanged if any entry fails to encode, including an entry whose value a
-    /// representation defined outside this package encodes to `nil`.
+    /// Leaves `propertyListDictionary` unchanged if any entry fails to encode, including an entry that the
+    /// ``PersistentKeyValueRepresentation/set(_:to:in:)-91w4n`` of a value representation defined outside this package
+    /// leaves absent, as the default implementation does for a value that encodes to `nil`.
     @inlinable
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
         guard let encodedDictionary = Value.persistentKeyValueRepresentation.propertyListDictionary(encoding: value)
@@ -184,8 +187,9 @@ where
 
     /// Writes the encoded dictionary, omitting entries whose value encodes to `nil`.
     ///
-    /// Leaves `userDefaults` unchanged if any entry fails to encode, including an entry whose value a representation
-    /// defined outside this package encodes to `nil`.
+    /// Leaves `userDefaults` unchanged if any entry fails to encode, including an entry that the
+    /// ``PersistentKeyValueRepresentation/set(_:to:in:)-91w4n`` of a value representation defined outside this package
+    /// leaves absent, as the default implementation does for a value that encodes to `nil`.
     @inlinable
     public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
         let representation = Value.persistentKeyValueRepresentation
@@ -216,8 +220,9 @@ where
 
     /// Writes the encoded dictionary, omitting entries whose value encodes to `nil`.
     ///
-    /// Leaves `ubiquitousStore` unchanged if any entry fails to encode, including an entry whose value a
-    /// representation defined outside this package encodes to `nil`.
+    /// Leaves `ubiquitousStore` unchanged if any entry fails to encode, including an entry that the
+    /// ``PersistentKeyValueRepresentation/set(_:to:in:)-91w4n`` of a value representation defined outside this package
+    /// leaves absent, as the default implementation does for a value that encodes to `nil`.
     @available(watchOS 9.0, *)
     @inlinable
     public static func set(

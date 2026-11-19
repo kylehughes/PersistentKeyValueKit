@@ -84,9 +84,9 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 ///
 /// A batch whose items all resolve without failure attempts to record the marker even when it transferred nothing, as
 /// when every source is ``PersistentKeyMigrationReport/Status/sourceAbsent``. Run a seeding migration in the target
-/// that owns the legacy data: a target with nothing to move still records a shared marker, so the owning target's later
-/// call returns ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` and skips its migration, even though
-/// ``PersistentKeyMigrationReport/throwIfIncomplete()`` succeeds.
+/// that owns the legacy data. A target with nothing to move still attempts to record completion. If it records the
+/// shared marker, the owning target's later call returns ``PersistentKeyMigrationReport/Completion/alreadyRecorded``
+/// and skips its migration, even though ``PersistentKeyMigrationReport/throwIfIncomplete()`` succeeds.
 ///
 /// When migrating from `NSUbiquitousKeyValueStore` with both keys enabled, a source missing from the local cache before
 /// the initial sync reports ``PersistentKeyMigrationReport/Status/sourceAbsent`` on that run. If the batch records
@@ -133,8 +133,9 @@ public struct PersistentKeyMigrationTracking {
 
     /// Checks and records completion for `id` in `store`.
     ///
-    /// The migration reads `store`'s ``PersistentKeyValueStore/migrationEndpoint`` once, before any key is read or
-    /// modified. Identifiers that are equal as Swift strings share one completion marker. An empty `id` causes the
+    /// Setup reads `store`'s ``PersistentKeyValueStore/migrationEndpoint`` once for its recording role, before any key
+    /// is read or modified. It reads the source and destination endpoints separately, even when those roles use the
+    /// same instance. Identifiers that are equal as Swift strings share one completion marker. An empty `id` causes the
     /// migration to throw ``PersistentKeyMigrationError/invalidMigrationIdentifier`` before any key is read or
     /// modified.
     ///

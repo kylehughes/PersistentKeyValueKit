@@ -36,10 +36,13 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Callers such as migration write validation may invoke conversion more than once for the same value; do not
     /// rely on a specific invocation count.
     ///
-    /// Accept every object that this representation's setter or ``encode(_:format:)`` writes, in the immutable
-    /// Foundation form that a store returns, because migration validates an encoded object by decoding an immutable
-    /// copy of it, and `UserDefaults` and `NSUbiquitousKeyValueStore` can return a widened integer to another process
-    /// or a later launch. A decoder that requires `NSMutableArray` rejects its own encoder's output during migration.
+    /// Accept every object that ``encode(_:format:)`` returns for `format`, and every object that this representation's
+    /// `UserDefaults` or `NSUbiquitousKeyValueStore` setter writes for that format, in the immutable Foundation form
+    /// that a store returns, because migration validates an encoded object by decoding an immutable copy of it, and
+    /// `UserDefaults` and `NSUbiquitousKeyValueStore` can return a widened integer to another process or a later
+    /// launch. A decoder that requires `NSMutableArray` rejects its own encoder's output during migration. A custom
+    /// container format that ``set(_:to:)`` or ``set(_:to:in:)-91w4n`` writes is read by the matching container
+    /// reader, ``get(from:)`` or ``get(_:from:)-teh7``, so this method need not accept it.
     ///
     /// - Parameter storageObject: The stored object read from the backing store or property-list container.
     /// - Parameter format: The storage format of `storageObject`.
@@ -874,10 +877,10 @@ public enum PersistentKeyValueStorageFormat: Sendable {
     /// A property-list container such as an array or dictionary.
     case propertyList
 
-    /// An `NSUbiquitousKeyValueStore` domain.
+    /// The storage format for a value stored directly in `NSUbiquitousKeyValueStore`.
     case ubiquitousKeyValueStore
 
-    /// A `UserDefaults` persistent domain.
+    /// The storage format for a value stored or registered directly in `UserDefaults`.
     case userDefaults
 }
 
@@ -886,8 +889,8 @@ public enum PersistentKeyValueStorageFormat: Sendable {
 /// `URL` archive encoding and decoding can throw Foundation errors instead, and
 /// ``CodablePersistentKeyValueRepresentation`` rethrows the errors of its `Encoder` and `Decoder`.
 public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
-    /// The stored object has an unexpected runtime type, is not a valid property list, or exceeds the target store's
-    /// size limit.
+    /// The stored object is invalid for this conversion because of its type, contents, property-list structure, or
+    /// size.
     case invalidStorageValue
 
     /// The stored or proxied value could not be converted into the target Swift type.

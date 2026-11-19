@@ -396,7 +396,7 @@ func makeAppGroupDefaults() throws -> UserDefaults? {
 }
 ```
 
-Call this helper only from the target that owns the legacy defaults. A target with nothing to move still records the shared marker, causing the owning target's later call to return `.alreadyRecorded` and skip migration. Other targets can open the suite directly. If another target runs an independent migration that records completion in the shared suite, give that migration its own marker `id`.
+Call this helper only from the target that owns the legacy defaults. A target with nothing to move still attempts to record the shared marker. If it succeeds, the owning target's later call returns `.alreadyRecorded` and skips migration. Other targets can open the suite directly. If another target runs an independent migration that records completion in the shared suite, give that migration its own marker `id`.
 
 Pass `PersistentKeyMigrationItem` values when keys change name or value type. Within one store, source identifiers and destination identifiers must each be unique and the two sets must be disjoint, so changing how a key is stored requires moving it to a new key:
 

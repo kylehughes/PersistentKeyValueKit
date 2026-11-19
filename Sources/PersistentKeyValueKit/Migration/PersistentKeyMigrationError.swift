@@ -40,7 +40,10 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// A migration within one store uses the given key identifier as one item's destination and another item's source.
     ///
     /// Rejecting such batches keeps results independent of item order. Chained renames (`A` to `B` and `B` to `C`)
-    /// and swaps (`A` to `B` and `B` to `A`) are rejected; perform them as separate migrations.
+    /// and swaps (`A` to `B` and `B` to `A`) are rejected. For a chained rename, run separate migrations that free each
+    /// destination first: `B` to `C`, then `A` to `B`. To swap two populated keys, move `A` to an unused temporary key,
+    /// `B` to `A`, and then the temporary key to `B`, confirming each expected move before starting the next. If the
+    /// sequence is interrupted, inspect all three entries before retrying.
     case overlappingKeys(String)
 
     /// A source or destination key in the batch uses the given identifier, which is reserved for migration completion

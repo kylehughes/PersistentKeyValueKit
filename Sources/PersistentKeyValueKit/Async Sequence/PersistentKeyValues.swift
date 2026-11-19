@@ -35,14 +35,16 @@ import Foundation
 /// }
 /// ```
 ///
-/// Each element is the value read from the store after the store reports a change, so the sequence describes the
-/// key's current state rather than recording every write. Elements are emitted in the order they are read, and no
-/// element is older than one emitted before it. Changes that occur close together, such as a change made by another
-/// observer while it handles an earlier change, can be observed as one value, and consecutive elements can be equal.
+/// An iterator that emits an initial value reads it during creation. Each later element is the value read from the
+/// store after the store reports a change, so the sequence describes the key's current state rather than recording
+/// every write. Elements are emitted in the order they are read, and no element is older than one emitted before it.
+/// Changes that occur close together, such as a change made by another observer while it handles an earlier change, can
+/// be observed as one value, and consecutive elements can be equal.
 ///
-/// - Important: The sequence continues producing values until the iterating `Task` is cancelled or the iterator is
-///   released. After cancellation, ``Iterator/next()`` returns `nil` without returning pending values, and the
-///   iterator deregisters from the store. Always iterate within a cancellable context.
+/// - Important: An iterator observes the store until ``Iterator/next()`` observes cancellation of the iterating
+///   `Task` or the iterator is released. If the task is cancelled between calls, a retained iterator can continue
+///   reading and buffering changes until then. After cancellation, ``Iterator/next()`` returns `nil` without returning
+///   pending values, and the iterator deregisters from the store. Always iterate within a cancellable context.
 /// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the
 ///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` to keep every
 ///   emitted value; several store change reports can still produce one read and one emitted value. A change reported
