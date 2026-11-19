@@ -501,9 +501,9 @@ extension PersistentKeyValueRepresentation {
     /// Returns the values stored in `propertyListArray`, throwing if it cannot be decoded.
     ///
     /// A built-in representation decodes each element with its own checked conversion, so a nested dictionary fails
-    /// instead of omitting an entry, and rethrows the first error in input order. Any other representation is decoded
-    /// with ``get(from:)`` exactly as it implements it, and a `nil` result throws
-    /// ``PersistentKeyValueConversionError/invalidStorageValue``.
+    /// instead of omitting an entry, and rethrows the first error in input order when every representation in its
+    /// conversion chain is built in. Any other representation is decoded with ``get(from:)`` exactly as it implements
+    /// it, and a `nil` result throws ``PersistentKeyValueConversionError/invalidStorageValue``.
     internal func checkedValues(decoding propertyListArray: [Any]) throws -> [Value] {
         if let builtIn = self as? any BuiltInContainerConversion {
             return try builtInValues(decoding: propertyListArray, with: builtIn)
@@ -515,11 +515,12 @@ extension PersistentKeyValueRepresentation {
     /// Returns the values stored in `propertyListArray`, each converted with `convert`, throwing if any element cannot
     /// be decoded or converted.
     ///
-    /// A built-in representation, including a built-in scalar such as `Int`, finishes decoding and converting each
-    /// element before it reads the next, so the first error in input order is rethrown even when it comes from
-    /// `convert`, such as a proxy representation's conversion of its decoded proxy. Any other representation is
-    /// decoded with ``get(from:)`` exactly as it implements it, so a `nil` result throws
-    /// ``PersistentKeyValueConversionError/invalidStorageValue`` before any value is converted.
+    /// When every representation in the conversion chain is built in, including a built-in scalar such as `Int`, each
+    /// element is decoded and converted before the next is read, so the first error in input order is rethrown even
+    /// when it comes from `convert`, such as a proxy representation's conversion of its decoded proxy. Any other
+    /// representation, including one that a built-in proxy representation wraps, is decoded with ``get(from:)``
+    /// exactly as it implements it, so a `nil` result throws ``PersistentKeyValueConversionError/invalidStorageValue``
+    /// before any value is converted.
     internal func checkedValues<Element>(
         decoding propertyListArray: [Any],
         converting convert: (Value) throws -> Element
@@ -727,12 +728,14 @@ extension PersistentKeyValueRepresentation {
 /// Built-in container methods are ordinary reads and writes: for example, a nested dictionary read omits entries that
 /// fail to decode. Checked conversion, which migration and registration use, must instead fail. A built-in
 /// representation therefore converts its elements through checked conversion directly, recursing into the checked
-/// conversion of its base or proxy representation. Checked decoding converts an array one element at a time so that it
-/// reports the first error in input order. Checked encoding makes no such promise: a proxy representation converts
-/// every value to its proxy before encoding any, so a later value's failed conversion can be reported instead of an
-/// earlier value's encoding error. A representation defined outside this package does not conform, so checked
-/// conversion calls its container methods exactly as it implements them, including the protocol's default
-/// implementations.
+/// conversion of its base or proxy representation. Checked decoding converts an array one element at a time, so a
+/// conversion chain of these representations reports the first error in input order. A chain that reaches a
+/// representation defined outside this package does not: that representation reads the whole array first, so its
+/// error is reported before an outer proxy representation converts an earlier element. Checked encoding makes no
+/// input-order promise: a proxy representation converts every value to its proxy before encoding any, so a later
+/// value's failed conversion can be reported instead of an earlier value's encoding error. A representation defined
+/// outside this package does not conform, so checked conversion calls its container methods exactly as it implements
+/// them, including the protocol's default implementations.
 internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
     /// Returns the property-list array that stores `values`, throwing the first error.
     func builtInPropertyListArray(encoding values: [Value]) throws -> [Any]
@@ -740,10 +743,10 @@ internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
     /// Returns the property-list dictionary that stores `values`, throwing the first error.
     func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any]
 
-    /// Returns the values stored in `propertyListArray`, each converted with `convert`, throwing the first error in
-    /// input order.
+    /// Returns the values stored in `propertyListArray`, each converted with `convert`, throwing the first error.
     ///
-    /// Each element is decoded and passed to `convert` before the next element is read.
+    /// Each element is decoded and passed to `convert` before the next element is read, unless the conversion chain
+    /// reaches a representation defined outside this package, which reads the whole array first.
     func builtInValues<Element>(
         decoding propertyListArray: [Any],
         converting convert: (Value) throws -> Element
@@ -862,7 +865,7 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 /// `Double`, `Bool`, `Data`, or `Date` value, which validation need not bridge, and otherwise the snapshot that
 /// ``storablePropertyList(_:)`` returns, so a store, or a later validation of a collection that holds it, does not
 /// bridge it again. Either way, a later conversion that changes a mutable object that `object` is or holds does not
-/// change what is stored, except a mutable dictionary key, which the snapshot keeps as it is.
+/// change what is stored, except a mutable dictionary key, which the snapshot may share.
 internal func storableEncoding(_ object: Any?) -> Any?? {
     guard let object else {
         return .some(nil)
@@ -990,7 +993,7 @@ internal func isStorableDictionary(_ objects: inout [String: Any]) -> Bool {
 /// rejecting such an object, so a write must not pass one to a store.
 ///
 /// The snapshot is the Foundation object that `object` bridges to, with every mutable string, data object, array, or
-/// dictionary in it replaced by an immutable copy, except dictionary keys, which it keeps as they are. A
+/// dictionary in it replaced by an immutable copy, except dictionary keys, which may be shared. A
 /// representation can keep a mutable object it returned and change it while a later value of the same collection is
 /// converted, such as by adding an archive UID to a dictionary that has already been validated or by reusing one data
 /// buffer for every value, so writes store the snapshot instead.

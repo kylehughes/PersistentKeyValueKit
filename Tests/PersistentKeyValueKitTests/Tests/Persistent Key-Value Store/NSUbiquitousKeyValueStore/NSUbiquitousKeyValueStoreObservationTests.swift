@@ -101,6 +101,31 @@ extension NSUbiquitousKeyValueStoreObservationTests {
         storage.deregister(decomposedObserver, for: decomposedKey, context: nil)
     }
 
+    func test_register_distinguishesKeysThatDifferOnlyInUnpairedSurrogates() {
+        let keys = unpairedSurrogateKeyIDs("key:\(#function).").map {
+            PersistentKey($0, defaultValue: 0)
+        }
+        let observers = keys.map { _ in
+            RecordingKeyObserver()
+        }
+
+        for (key, observer) in zip(keys, observers) {
+            storage.register(observer: observer, for: key, with: nil, and: #selector(RecordingKeyObserver.didReceive(_:)))
+        }
+
+        storage.deregister(observers[1], for: keys[0], context: nil)
+
+        for (index, key) in keys.enumerated() {
+            Self.postExternalChange(to: [key.id], from: storage)
+
+            XCTAssertEqual(observers.map(\.notifications.count), keys.indices.map { $0 <= index ? 1 : 0 }, "\(index)")
+        }
+
+        for (key, observer) in zip(keys, observers) {
+            storage.deregister(observer, for: key, context: nil)
+        }
+    }
+
     func test_publisher_ignoresChangeToCanonicallyEquivalentKey() {
         let composedKey = PersistentKey("caf\u{E9}:\(#function)", defaultValue: 0)
         let decomposedKey = PersistentKey("cafe\u{301}:\(#function)", defaultValue: 0)

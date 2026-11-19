@@ -147,7 +147,7 @@ extension PersistentKey: Equatable where Value: Equatable {
     /// Swift strings. ``InMemoryPersistentKeyValueStore`` stores such spellings in one entry.
     @inlinable
     public static func == (lhs: PersistentKey<Value>, rhs: PersistentKey<Value>) -> Bool {
-        lhs.defaultValue == rhs.defaultValue && lhs.id.utf16.elementsEqual(rhs.id.utf16)
+        lhs.defaultValue == rhs.defaultValue && LiteralKeyID.match(lhs.id, rhs.id)
     }
 }
 
@@ -161,8 +161,6 @@ extension PersistentKey: Hashable where Value: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(defaultValue)
 
-        for codeUnit in id.utf16 {
-            hasher.combine(codeUnit)
-        }
+        LiteralKeyID.hash(id, into: &hasher)
     }
 }

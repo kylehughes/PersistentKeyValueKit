@@ -102,7 +102,7 @@ public struct PersistentKeyMigrationReport: Sendable {
         let id = key.id
 
         return outcomes.first {
-            $0.sourceKeyID.utf16.elementsEqual(id.utf16)
+            LiteralKeyID.match($0.sourceKeyID, id)
         }
     }
 

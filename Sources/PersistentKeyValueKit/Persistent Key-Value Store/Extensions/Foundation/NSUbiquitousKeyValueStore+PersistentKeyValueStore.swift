@@ -98,7 +98,7 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
         }
 
         return changedKeyIDs.contains {
-            StoreKeyObservationRegistry.keyIDsMatch($0, keyID)
+            LiteralKeyID.match($0, keyID)
         }
     }
 
@@ -164,7 +164,7 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
         self.store = store
 
         isInvalidated = false
-        literalKeyID = StoreKeyObservationRegistry.literalKeyID(keyID)
+        literalKeyID = LiteralKeyID.codeUnits(of: keyID)
         lock = NSLock()
 
         super.init()

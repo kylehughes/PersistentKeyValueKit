@@ -145,7 +145,7 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     /// and publishing changes during a view update is not allowed.
     internal func update(key newKey: Key, store newStore: any PersistentKeyValueStore) {
         let previousKey = key
-        let keyIDChanged = !StoreKeyObservationRegistry.keyIDsMatch(newKey.id, previousKey.id)
+        let keyIDChanged = !LiteralKeyID.match(newKey.id, previousKey.id)
 
         // Release the previous key only after the update finishes, so a deinitializer it runs cannot re-enter this
         // object while its properties are being written.

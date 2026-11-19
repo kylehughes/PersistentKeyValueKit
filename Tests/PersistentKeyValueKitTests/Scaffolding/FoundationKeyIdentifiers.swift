@@ -70,6 +70,24 @@ final class AccessObservingString: NSString, @unchecked Sendable {
     }
 }
 
+// MARK: - Unpaired Surrogate Identifiers
+
+/// Returns three identifiers that Foundation stores keep as different keys, although Swift reports the same UTF-16
+/// code units for them: `prefix` followed by the unpaired high surrogate U+D83E, by the unpaired high surrogate U+D83D,
+/// and by U+FFFD.
+///
+/// The first two are bridged from the `NSString`s that truncating "🦊" and "🚀" with `NSString.substring(to:)`
+/// produces, and Swift's `utf16` view reports U+FFFD for their unpaired surrogates. The third is a native Swift string.
+func unpairedSurrogateKeyIDs(_ prefix: String) -> [String] {
+    let truncatedIDs = ["\u{1F98A}", "\u{1F680}"].map { emoji in
+        let string = (prefix + emoji) as NSString
+
+        return string.substring(to: string.length - 1)
+    }
+
+    return truncatedIDs + [prefix + "\u{FFFD}"]
+}
+
 // MARK: - Release-Observing Identifiers
 
 /// Returns `contents` bridged from an immutable `NSString` that calls `onRelease` when it is deallocated.

@@ -92,7 +92,7 @@ struct PersistentKeyMigrationKeyIdentity: Hashable {
 
     /// An identity that equals another exactly when the identifiers have the same UTF-16 code units.
     static func literal(_ keyID: String) -> Self {
-        Self(value: Array(keyID.utf16))
+        Self(value: LiteralKeyID.codeUnits(of: keyID))
     }
 }
 

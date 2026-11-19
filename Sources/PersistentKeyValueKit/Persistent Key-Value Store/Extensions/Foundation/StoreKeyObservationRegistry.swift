@@ -16,7 +16,8 @@ internal protocol StoreKeyObservation: AnyObject {
     /// The identifier of the observed key.
     var keyID: String { get }
 
-    /// The UTF-16 code units of ``keyID``, read once when the observation is created.
+    /// The UTF-16 code units of ``keyID``, read once with ``LiteralKeyID/codeUnits(of:)`` when the observation is
+    /// created.
     ///
     /// The registry compares these with its lock held, so the observation must not read them from ``keyID`` on demand.
     var literalKeyID: [UInt16] { get }
@@ -80,23 +81,6 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
         return registry
     }
 
-    /// Returns whether two key identifiers name the same Foundation store key.
-    ///
-    /// Foundation compares keys by their UTF-16 code units, while Swift `String` equality treats canonically
-    /// equivalent spellings, such as precomposed and decomposed accents, as equal.
-    internal static func keyIDsMatch(_ lhs: String, _ rhs: String) -> Bool {
-        lhs.utf16.elementsEqual(rhs.utf16)
-    }
-
-    /// Returns the UTF-16 code units of `keyID`, which name the same Foundation store key exactly when they are equal.
-    ///
-    /// Reading the code units of an identifier bridged from an `NSString` calls the object's methods, which can run
-    /// arbitrary code, such as a subclass's character accessor that accesses a store. Code that compares identifiers
-    /// with a lock held therefore reads them first, without the lock, and compares the results.
-    internal static func literalKeyID(_ keyID: String) -> [UInt16] {
-        Array(keyID.utf16)
-    }
-
     // MARK: Internal Instance Interface
 
     /// Registers `observation`, then activates it.
@@ -125,7 +109,7 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     }
 
     internal func remove(_ observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
-        let literalKeyID = Self.literalKeyID(keyID)
+        let literalKeyID = LiteralKeyID.codeUnits(of: keyID)
 
         let (removed, liveObservers) = withLock {
             removeObservations { registeredObserver, observation in

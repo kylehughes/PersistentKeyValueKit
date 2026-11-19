@@ -58,7 +58,7 @@ internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObserva
 
         isInvalidated = false
         lastObject = nil
-        literalKeyID = StoreKeyObservationRegistry.literalKeyID(keyID)
+        literalKeyID = LiteralKeyID.codeUnits(of: keyID)
         unsettledJoin = nil
 
         super.init()
