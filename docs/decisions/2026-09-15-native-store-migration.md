@@ -313,7 +313,7 @@ principles:
   checked `[T].encode` and `[String: T].encode` across all three formats),
   custom container hook output is validated against the store property-list
   allow-list (`storableSnapshot`), accepted mutable containers and mutable
-  string/data leaves are copied recursively (dictionary keys are not copied,
+  string/data leaves are copied recursively (dictionary keys may be shared with the representation, so leave them unmodified after handover,
   while default write paths pass plain Swift `String`, `Int`, `Double`, `Bool`,
   `Data`, and `Date` values as-is), and external dictionary hooks undergo a
   final completed-dictionary validation pass (`isStorableDictionary`) so
@@ -492,7 +492,10 @@ principles:
   non-existent directory's trailing slash or drops a file URL host),
   `URL.encode(format: .userDefaults)` verifies that decoding the tilde-abbreviated
   path reproduces `url.absoluteString` and throws
-  `PersistentKeyValueConversionError.encodingFailed` when it does not. Checking
+  `PersistentKeyValueConversionError.encodingFailed` when it does not. The
+  check runs at encoding, and each later read rebuilds the URL from the stored
+  path, so a directory deleted after the write can read back without its
+  trailing slash. Checking
   the round-trip in `URL.encode(format:)` rather than on the outer migrated
   value ensures that migration to `UserDefaults` fails the item at `.prepare`,
   before it writes its destination or removes its source (earlier items keep
@@ -532,7 +535,10 @@ principles:
   at `.write`, failing with `PersistentKeyMigrationError.destinationChanged` (and
   suppressing completion recording) if the destination changed or vanished. Any
   write also fails at `.write` with `.destinationChanged` if a destination that
-  was absent at its snapshot has appeared by the time of the commit. A
+  was absent at its snapshot is present at the prewrite check. The check and the
+  native setter are separate calls, so an uncoordinated Foundation writer can
+  insert or change a value between them, and a migration write that replaces it
+  verifies and reports success. A
   committed destination write that fails verification, such as one overwritten
   after the commit, reports `.writeVerificationFailed` at `.write`, and on
   `copy` the source snapshot is released before the committed write is rechecked
@@ -648,7 +654,10 @@ principles:
   and drops only undecodable ones so a single unknown entry (such as an enum
   case written by a newer app version) does not blank the whole dictionary. A
   dictionary element inside such an array keeps its readable
-  entries, and an external array reader can filter elements. Checked conversion
+  entries, and an external array reader can filter elements. An `Optional` or
+  proxy representation delegates to its wrapped reader, so it preserves that
+  reader's filtering, and a checked migration can succeed with fewer elements
+  even though the outer representation is built in. Checked conversion
   (`decode(storageObject:format:)`, used by migration) is strict for both
   `Array` and `Dictionary` across built-in representations, failing at `.decode`
   and preserving the source entry instead of silently dropping dictionary
@@ -718,10 +727,13 @@ principles:
   integers returned by `object(forKey:)`, which may already have widened during
   persistence. `NSUbiquitousKeyValueStore` notification observers filter by
   changed key without comparing widths, except that account changes and
-  notifications without a key list refresh every observed key. Manual
-  deregistration removes only the registration matching the store, observer,
-  key, and context, whereas 1.x removed every registration the observer held on
-  that store.
+  notifications without a usable key list refresh every observed key. A manual
+  observer's selector receives only notifications for its registered literal
+  key, whereas 1.x delivered every change notification from the store to it.
+  Manual deregistration removes every registration on the store with the same
+  observer, key, and context (a duplicate registration is not deduplicated, so
+  one call removes both), whereas 1.x removed every registration the observer
+  held on that store.
   `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
   shared references, compacting `nil` only from top-level Swift arrays and `String`-keyed
   dictionaries of optionals, merging canonically equivalent keys, and verifying

@@ -41,7 +41,7 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// is written, retrying runs the batch again under its conflict policy. Remove
 /// ``PersistentKeyProtocol/isMigrationCompleted(id:)`` from the recording store to reset tracking, or choose a new
 /// `id` when changing the migration's keys or behavior. A marker recorded in `NSUbiquitousKeyValueStore` syncs to the
-/// user's other devices like any other value.
+/// user's other devices like any other value, so two devices can both run the migration before the marker syncs.
 ///
 /// Migration identifiers that are equal as Swift strings identify the same migration, even when their Unicode
 /// spellings differ, such as precomposed and decomposed forms of the same accented character. Identifiers are

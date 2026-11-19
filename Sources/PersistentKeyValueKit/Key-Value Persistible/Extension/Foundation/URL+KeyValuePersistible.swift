@@ -95,7 +95,8 @@ extension URL: PrimitiveKeyValuePersistible {
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` before any store is modified, and
     /// `UserDefaults.register(_:)` skips such a default value. Ordinary `UserDefaults` writes of such a URL keep
     /// Foundation's behavior and store the path. Only `absoluteString` is compared, so a relative file URL's original
-    /// reference and `baseURL` can be lost.
+    /// reference and `baseURL` can be lost. The comparison runs at encoding time, and each later read rebuilds the URL
+    /// from the stored path, so deleting a directory can change its trailing slash and how relative URLs resolve.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         switch format {
         case .propertyList, .ubiquitousKeyValueStore:

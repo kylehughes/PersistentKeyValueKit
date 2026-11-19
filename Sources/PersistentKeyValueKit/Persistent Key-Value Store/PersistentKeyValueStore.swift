@@ -61,8 +61,10 @@ public protocol PersistentKeyValueStore {
     
     /// Removes an observer for the given key.
     ///
-    /// Only the registration matching `observer`, `key`, and `context` is removed; the observer's registrations for
-    /// other keys or contexts remain active. `UserDefaults` and `NSUbiquitousKeyValueStore` match key identifiers
+    /// Only registrations matching `observer`, `key`, and `context` are removed; the observer's registrations for
+    /// other keys or contexts remain active. A store that keeps its own registrations, such as
+    /// `NSUbiquitousKeyValueStore`, removes every matching registration in one call, whereas a `UserDefaults` key
+    /// observed through key-value observation removes one per call. `UserDefaults` and `NSUbiquitousKeyValueStore` match key identifiers
     /// literally, as Foundation compares keys, so canonically equivalent spellings are different keys.
     ///
     /// - Parameter observer: The object to remove as an observer.
