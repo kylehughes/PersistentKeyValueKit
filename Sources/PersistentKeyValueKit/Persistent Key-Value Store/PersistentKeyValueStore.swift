@@ -89,9 +89,9 @@ public protocol PersistentKeyValueStore {
     /// with `@`, contains a period (`.`) code unit (even inside a combined character) or NUL, or is `valueForKey:` or
     /// `ValueForKey:` is observed through `UserDefaults.didChangeNotification` instead. After
     /// each such notification, the key is read from this instance, and `target` is notified when the property-list
-    /// value read differs from the previous read (or once on the next reconciliation pass if the registration joined
-    /// while a reconciliation was in progress and any change was reported since it joined, even when the value read
-    /// equals its comparison value). Changes are sampled rather than queued, so rapid writes between reads can
+    /// value read differs from the previous read (or once on the next reconciliation pass if the registration's first
+    /// read finished while a reconciliation was in progress and any change was reported after that read began, even
+    /// when the value read equals its comparison value). Several notifications can share one read of the key. Changes are sampled rather than queued, so rapid writes between reads can
     /// coalesce and a change that is undone before it is sampled can produce no notification. Foundation posts that
     /// notification only for changes made in the current process, and not for `addSuite(named:)` or
     /// `removeSuite(named:)`, so changes to such a key made by another process, or caused only by a suite-list change,

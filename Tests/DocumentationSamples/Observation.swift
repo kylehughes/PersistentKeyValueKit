@@ -11,11 +11,12 @@ extension PersistentKeyProtocol where Self == PersistentKey<String> {
     }
 }
 
+@MainActor
 final class Label {
     var text: String?
 }
 
-nonisolated(unsafe) let usernameLabel = Label()
+let usernameLabel = Label()
 
 func handleChange(username: String) {
 }
@@ -25,6 +26,7 @@ func recordChange(username: String) {
 
 // MARK: - Samples
 
+@MainActor
 func observeValues() async {
     for await username in UserDefaults.standard.values(for: .username) {
         usernameLabel.text = username
@@ -48,6 +50,7 @@ func observeBufferedChanges() async {
     }
 }
 
+@MainActor
 func publishValues() {
     let cancellable = UserDefaults.standard.publisher(for: .username)
         .receive(on: DispatchQueue.main)

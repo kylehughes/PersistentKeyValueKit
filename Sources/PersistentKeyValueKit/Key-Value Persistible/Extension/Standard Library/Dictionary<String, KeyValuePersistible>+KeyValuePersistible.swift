@@ -24,7 +24,8 @@ extension Dictionary: KeyValuePersistible where Key == String, Value: KeyValuePe
     ///
     /// Foundation keeps keys that are canonically equivalent but spelled differently, such as composed and decomposed
     /// "café", as separate entries, while a Swift dictionary holds at most one of them. An ordinary read of a stored
-    /// dictionary with such keys keeps one of the entries; which one is unspecified. Checked conversion fails instead.
+    /// dictionary with such keys keeps at most one of the entries, which one is unspecified, and omits it if its value
+    /// cannot decode. Checked conversion fails instead.
     @inlinable
     public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()

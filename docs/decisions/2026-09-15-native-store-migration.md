@@ -210,8 +210,11 @@ principles:
   `@discardableResult`. Because per-item failures and failures to record the
   completion marker are reported rather than thrown, the unused-result warning
   nudges callers to inspect the report or call `try report.throwIfIncomplete()`.
-  An existing marker that cannot decode as a `Bool` is different: it throws
-  `invalidCompletionRecord` after the marker is read and before any item runs.
+  Reading the marker is different: an error from reading it propagates
+  unchanged, and an existing marker that cannot decode as a `Bool` throws
+  `invalidCompletionRecord`, both before any item runs. A retry reads the stored
+  marker again, so a marker written before its verification failed can still be
+  honored.
 - **Report and outcome shape (and fixture invariants)**:
   `PersistentKeyMigrationReport.Completion` and
   `PersistentKeyMigrationReport.Status` (including `.failed(FailureStage)`)
@@ -220,13 +223,16 @@ principles:
   precedent of `URLSessionTask.state` and `URLSessionTask.error`. Public
   initializers on `PersistentKeyMigrationReport`, `Outcome`, and
   `PersistentKeyMigrationIncompleteError` are kept so callers can construct test
-  fixtures, with preconditions that enforce every cross-field invariant the
-  engine can produce: `error` and `completionError` are non-`nil` if and only if
+  fixtures, with preconditions that enforce these relationships between status,
+  errors, and completion: `error` and `completionError` are non-`nil` if and only if
   the status is `.failed`, `outcomes` is empty for `.alreadyRecorded`,
   `outcomes` contains at least one failed outcome for `.notRecorded`, `outcomes`
   contains no failed outcomes for `.recorded` or `.failed`, and
   `PersistentKeyMigrationIncompleteError(report:)` requires `!report.isComplete`.
-  `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16 code units.
+  The preconditions do not validate the original batch, so a fixture can hold
+  two outcomes for one source key or mix `.copied` and `.moved`, which the engine
+  never produces. `report.outcome(for:)` matches `sourceKeyID` by literal UTF-16
+  code units and returns the first match.
 - **Same-store key mapping and `overlappingKeys`**: Migrating within a single
   store is allowed when every item maps its source key to a different
   destination key in that store, enabling key renames and value transforms
@@ -262,8 +268,8 @@ principles:
   `set(_:to:in:)`. Converting each value once keeps both failed and all-omitted
   writes linear even for recursive proxy-over-optional types while keeping
   writes all-or-nothing. For `Array` and `Dictionary` checked
-  conversion (`Array.decode`/`encode` and `Dictionary.decode`/`encode`, used by
-  migration and `UserDefaults.register(_:)`), representations defined by the
+  conversion (`Array.decode`/`encode` and `Dictionary.decode`/`encode`; migration
+  uses both, and `UserDefaults.register(_:)` uses encoding), representations defined by the
   package (`PrimitivePersistentKeyValueRepresentation` for `Array` and
   `Dictionary`, `OptionalPersistentKeyValueRepresentation`,
   `ProxyPersistentKeyValueRepresentation`,
@@ -292,8 +298,9 @@ principles:
   hook reads the whole array through `get(from:)` first (so even when wrapped
   in a built-in proxy representation, its `nil` return throws
   `PersistentKeyValueConversionError.invalidStorageValue` before any outer
-  proxy converts an earlier element), a custom hook that drops undecodable
-  elements drops them in migration too, and a consumer type conforming to
+  proxy converts an earlier element), a custom array hook that returns a
+  filtered array drops the omitted elements in migration too, whereas a
+  dictionary entry reader that returns `nil` throws `.invalidStorageValue`, and a consumer type conforming to
   `ProxyPersistentKeyValueRepresentationProtocol` over a `[String: Value]` proxy
   with default container methods delegates to `[String: Value]`'s container
   methods and reads nested dictionaries leniently. Container write hooks receive
@@ -324,7 +331,9 @@ principles:
   out by a container write hook counts as a failure: writing a dictionary in
   which a value's `encode` returns `nil` fails and leaves the store unchanged
   under the default hooks, as does a non-empty array whose every element
-  encodes to `nil` (a custom hook can report success for such a value, and
+  encodes to `nil` (the default array hook otherwise omits individual elements
+  that encode to `nil`, so `[2, omitted]` is written as `[2]`; a custom hook can
+  report success for such a value, and
   checked reads then use the hooks as implemented; package
   `OptionalPersistentKeyValueRepresentation` and package proxies over omitting
   representations conform to `BuiltInValueOmission`).
@@ -392,12 +401,16 @@ principles:
   exceptions follow from Swift `String` storage: `InMemoryPersistentKeyValueStore`
   backs its storage with a Swift dictionary and therefore treats canonically
   equivalent key identifiers as one key in both storage and migration
-  validation; and bridging a stored Foundation dictionary to `[String: Value]`
+  validation, and, because converting a bridged identifier to contiguous Swift
+  UTF-8 repairs unpaired UTF-16 surrogates, also merges identifiers that differ
+  only in such surrogates (a test that needs them distinct needs a Foundation
+  store); and bridging a stored Foundation dictionary to `[String: Value]`
   collapses canonically equivalent `NSString` keys into one Swift key, so
   checked conversion (`Dictionary.decode`) rejects `NSDictionary` instances
   whose entry count shrinks on bridging (failing at `.decode` and keeping the
-  source entry during migration), whereas ordinary `Dictionary` reads keep one
-  entry (which one is unspecified).
+  source entry during migration), whereas an ordinary `Dictionary` read keeps
+  at most one colliding entry (which one is unspecified) and omits it when its
+  value cannot decode, even if another colliding entry could.
 - **Type-aware recursive snapshot verification, mutable in-memory references, and file URLs**:
   Core Foundation treats boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)`
   as equal under `==` and `CFEqual`, even though format-aware representations
@@ -414,8 +427,7 @@ principles:
   `UserDefaults` and `NSUbiquitousKeyValueStore` migration verification,
   comparing integers by value with `isEqual(to:)` regardless of width because
   `UserDefaults` does not preserve integer width across processes or launches,
-  returning an `Int32` as written in the writing process and as `Int64`
-  elsewhere; when `distinguishingIntegerWidths` is `true`, comparing integer
+  so a later process or launch can read a widened integer; when `distinguishingIntegerWidths` is `true`, comparing integer
   byte sizes with `CFNumberGetByteSize` as well), `CFNumberGetByteSize` (`Float`
   versus `Double`), and `NaN` and floating-point bit patterns (`0.0` versus
   `-0.0`) for both floating-point numbers and `Date` time intervals
@@ -439,7 +451,9 @@ principles:
   not a storable property list) and validating that immutable Foundation-bridged
   deep copy with `decode(storageObject:format:)`, so a decoder that consumes or
   mutates writable input during validation cannot alter what is returned or
-  written. When preparing a write to `UserDefaults` or
+  written. The decoded value is discarded without being compared to the input,
+  so a representation that loses precision (such as an ISO 8601 date string
+  that stores whole seconds) migrates the lossy value. When preparing a write to `UserDefaults` or
   `NSUbiquitousKeyValueStore`, `PropertyListMigrationStorage.storableCopy(of:)`
   captures `exactCopy(object)`, verifies that
   `PropertyListMigrationStorage.equal(copy, try freeze(copy))` holds against a
@@ -449,7 +463,11 @@ principles:
   mutation when binary property-list serialization would change the value or
   stored type (including any `NSDecimalNumber`, even when exact, because binary
   property lists store decimals as `Double`, while allowing integers of any width
-  such as `Int32`). `UserDefaultsMigrationBackend`
+  such as `Int32`). A `nil` encoding prepares a removal of the destination entry,
+  so an `.overwriteDestination` move whose destination representation encodes the
+  value as `nil` (as the built-in optional representation does for `nil`) removes
+  the destination entry, then the source, and still reports `.moved`.
+  `UserDefaultsMigrationBackend`
   removes an existing key before writing when the replacement object is
   `CFEqual` to the snapshot but has a different property-list type so
   `UserDefaults` does not ignore the write, rechecking that the key is still
@@ -489,7 +507,10 @@ principles:
   (treating integer width as significant recursively because in-memory objects
   remain unserialized) outside
   the lock and then rechecks under the lock that the stored entry still has the
-  snapshot's revision (which is never reused); other
+  snapshot's revision (which is never reused). A `copy` releases its source
+  snapshot without rechecking it, so an edit to a source Foundation collection
+  made during the transform is not detected, whereas a `move` rechecks the source
+  before removing it. Other
   reference types (including references inside Swift values) cannot be copied,
   so snapshots verify them by revision only. Those immutable snapshots (along
   with ordinary write snapshots) are a defense rather than a guarantee of the
@@ -501,9 +522,11 @@ principles:
   masking side effects. Under `.keepDestination` (copy) and `.keepBoth` (move),
   the migration releases the source snapshot and rechecks the kept destination
   at `.write`, failing with `PersistentKeyMigrationError.destinationChanged` (and
-  suppressing completion recording) if the destination changed or vanished. On
-  `copy`, the source snapshot is released before rechecking the committed
-  destination write (`.writeVerificationFailed`). Removing a move's source key
+  suppressing completion recording) if the destination changed or vanished. A
+  committed destination write that fails verification, such as one overwritten
+  after the commit, reports `.writeVerificationFailed` at `.write`, and on
+  `copy` the source snapshot is released before the committed write is rechecked
+  for the same result. Removing a move's source key
   notifies synchronous observers and releases the source snapshot, which can
   modify either store before `move` returns. Both `.overwriteDestination` and
   `.keepDestinationAndRemoveSource` recheck the destination snapshot after
@@ -540,9 +563,12 @@ principles:
   one representation accepts, or an `NSMutableArray` read back as an immutable
   `NSArray`), and each replay guard closed one variant while review found the
   next (including double conversion and an abort on an identity rewrite with a
-  consuming decoder). Moving a value to a new key identifier with `move` is
-  retry-safe because a successful move removes the source key, so a retry finds
-  nothing to convert.
+  consuming decoder). Moving a value to a new key identifier with `move` keeps a
+  retry from reading its own destination, and a successful move removes the
+  source key, so a retry usually finds nothing to convert. This is not a
+  guarantee: `.keepBoth` can leave the source in place, a batch whose items are
+  all skipped or kept still records completion, and a rerun that finds the source
+  and selects a write runs `transform` again.
 - **Notification-monitored `UserDefaults` keys and observation scope**: Because
   key-value observation parses an identifier by code units as a key path (it
   raises an exception for the empty key and keys containing NUL, treats `.` as
@@ -564,7 +590,8 @@ principles:
   getter again, and reconciling again if a change arrived during the first
   read; a nested registration of the same key returns before the outer read
   supplies the shared value), and serializes reconciliation with a
-  single-drainer loop. Each
+  single-drainer loop in which notifications that arrive during a pass set one
+  pending flag, so several notifications can share one read of each key. Each
   reconciliation pass snapshots the observed keys and the registrations present
   when the pass begins, reads each literal UTF-16 key identifier once, compares
   the read against each registration's comparison value (reusing the previous
@@ -574,11 +601,12 @@ principles:
   `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths: true)`,
   which compares integer widths recursively because `UserDefaults` returns
   in-process writes with their written `CFNumber` width),
-  notifies any registration that joined while that reconciliation was in
-  progress if any change was reported since it joined (after its first read
-  began), even when the value read equals its comparison value (so it may get
-  one extra, possibly repeated, emission rather than missing a concurrent write
-  that overlapped its initial read), and invokes callbacks outside its lock,
+  notifies any registration whose first read finished while that
+  reconciliation was in progress if any change was reported after that first
+  read began (the change count is captured before the read), even when the value
+  read equals its comparison value (so it may get one extra, possibly repeated,
+  emission rather than missing a concurrent write that overlapped its initial
+  read), and invokes callbacks outside its lock,
   checking weak observer liveness outside it as well (whereas
   `StoreKeyObservationRegistry` and `InMemoryPersistentKeyValueStore` read weak
   observers under their locks and release the retained observers after
@@ -666,8 +694,8 @@ principles:
   `InMemoryPersistentKeyValueStore` snapshots and `UserDefaultsKeyChangeMonitor`
   compare integer widths recursively (`distinguishingIntegerWidths: true`).
   `UserDefaults` stores integers in property lists by value without preserving
-  bit width across processes or launches (returning an `Int32` as written in
-  the writing process and a 64-bit integer elsewhere), whereas in-memory objects
+  bit width across processes or launches, so a later process or launch can read
+  a widened integer (the writing process reads back what it wrote), whereas in-memory objects
   and in-process notification reads remain unserialized `CFNumber` objects
   whose width a representation can observe via `objCType`.
   `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
@@ -698,6 +726,9 @@ principles:
 - The metadata lasts only for the lifetime of that object in that process. It
   is not persisted and is not maintained in a global registry. Reconstructing a
   plain `UserDefaults` instance later does not recreate the migration capability.
+- Conflict detection against an iCloud destination reads this device's local
+  cache, so migration neither waits for initial sync nor sees cloud values that
+  have not reached the device.
 - Migration remains non-transactional across stores. It can report a partial
   move, does not provide rollback, and cannot promise disk durability or cloud
   delivery.
@@ -741,7 +772,8 @@ The regression tests preserve these guarantees:
   [`PersistentKeyValuePublisherTests`](../../Tests/PersistentKeyValueKitTests/Tests/Combine/PersistentKeyValuePublisherTests.swift),
   [`UserDefaultsKeyChangeObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/UserDefaults/UserDefaultsKeyChangeObservationTests.swift),
   and [`NSUbiquitousKeyValueStoreObservationTests`](../../Tests/PersistentKeyValueKitTests/Tests/Persistent%20Key-Value%20Store/NSUbiquitousKeyValueStore/NSUbiquitousKeyValueStoreObservationTests.swift)
-  cover literal UTF-16 and unpaired-surrogate key identity without copying,
+  cover literal UTF-16 and unpaired-surrogate key identity for native and
+  Foundation-backed identifiers,
   lock-hygiene identifier conversion and post-unlock release, Combine
   `receive(subscription:)` serialization, the per-instance `UserDefaults`
   notification monitor for key-path-incompatible keys, deduplicated reads,

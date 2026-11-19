@@ -88,4 +88,6 @@ func seedUbiquitousStore() throws {
     if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.error {
         handleMigrationError(error, at: outcome.status)
     }
+
+    try report.throwIfIncomplete()
 }
