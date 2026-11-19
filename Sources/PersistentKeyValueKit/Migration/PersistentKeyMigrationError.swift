@@ -45,6 +45,7 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     ///
     /// An identifier is reserved when its UTF-16 code units in Unicode Normalization Form C begin with the prefix, so
     /// the prefix followed by a combining mark, or spelled with a canonically equivalent character, is also reserved.
+    /// A same-store mapping of a reserved identifier to itself fails first with ``sameStore``.
     case reservedKey(String)
 
     /// The given key identifier exceeds the key length limit of the store that would hold it.

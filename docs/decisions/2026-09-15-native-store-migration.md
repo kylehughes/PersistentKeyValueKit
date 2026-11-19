@@ -266,9 +266,13 @@ principles:
 - **Representation defaults, container hooks in checked conversion, and the append-or-assign contract**:
   Providing default implementations of the eight store- and container-specific
   `get` and `set` methods on `PersistentKeyValueRepresentation` and
-  `PrimitiveKeyValuePersistible` reduces custom conformances to two methods
-  (`decode(storageObject:format:)` and `encode(_:format:)` /
-  `encode(format:)`), while built-in representations and primitive types keep
+  `PrimitiveKeyValuePersistible` reduces the conversion a custom conformance
+  implements to two methods (`decode(storageObject:format:)` and
+  `encode(_:format:)` / `encode(format:)`). A new primitive also supplies
+  `static var persistentKeyValueRepresentation`, usually returning
+  `PrimitivePersistentKeyValueRepresentation()`, because
+  `PrimitiveKeyValuePersistible` inherits that requirement from
+  `KeyValuePersistible`. Built-in representations and primitive types keep
   their specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
   launch-argument string coercion and direct property-list container casting
   remain intact. Ordinary collection writes (`propertyListArray(encoding:)`,
@@ -431,7 +435,9 @@ principles:
   conflict policy selects a write, leaving the source entry in place during
   migration), whereas an ordinary `Dictionary` read keeps
   at most one colliding entry (which one is unspecified) and omits it when its
-  value cannot decode, even if another colliding entry could.
+  value cannot decode, even if another colliding entry could. Writing that
+  dictionary back replaces the stored one and deletes the other colliding entry
+  even when both values decode.
 - **Type-aware recursive snapshot verification, mutable in-memory references, and file URLs**:
   Core Foundation treats boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)`
   as equal under `==` and `CFEqual`, even though a representation can
@@ -751,7 +757,10 @@ principles:
 - **Key-identifier contract (`PersistentKeyProtocol.id`) and lock hygiene**: A
   key identifier backed by a Foundation string must not access a store when its
   characters are read, because Foundation may hold its own locks while reading
-  a key. Inside the package, `InMemoryPersistentKeyValueStore` ensures
+  a key. Observation reads `id` at registration and again at deregistration, so
+  it must return the same identifier throughout; a changed identifier can remove
+  a Key-Value Observing path that was never registered, which raises an
+  exception. Inside the package, `InMemoryPersistentKeyValueStore` ensures
   contiguous UTF-8 storage (`makeContiguousUTF8()` when `!isContiguousUTF8`),
   and `StoreKeyObservationRegistry` and `UserDefaultsKeyChangeMonitor` read
   literal UTF-16 code units (`LiteralKeyID.codeUnits(of:)`) before acquiring
@@ -812,7 +821,9 @@ principles:
   so a combining mark attached to the trailing `_` would hide the prefix, and
   comparing the NFC form's UTF-16 code units also rejects canonically equivalent
   spellings that `InMemoryPersistentKeyValueStore` treats as the same
-  dictionary key as a completion marker.
+  dictionary key as a completion marker. Setup rejects a same-store mapping of
+  a key to itself before it checks the prefix, so a reserved identifier mapped
+  to itself within one store throws `sameStore`.
 
 ## Consequences
 

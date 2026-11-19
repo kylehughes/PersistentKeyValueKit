@@ -45,7 +45,9 @@ import Foundation
 ///   iterator deregisters from the store. Always iterate within a cancellable context.
 /// - Important: By default, pending changes are buffered with `.bufferingNewest(1)` so slow consumers receive the
 ///   latest observed value without accumulating an unbounded backlog. Pass `.unbounded` to keep every
-///   emitted value; several store change reports can still produce one read and one emitted value.
+///   emitted value; several store change reports can still produce one read and one emitted value. A change reported
+///   after an iterator registers and before its first ``Iterator/next()`` follows the same policy, so a zero-capacity
+///   policy drops changes while no caller is waiting.
 /// - Note: For `UserDefaults` keys whose identifiers are empty, begin with `@`, contain a period (`.`) code unit
 ///   (even inside a combined character) or NUL, or are `valueForKey:` or `ValueForKey:`, only changes made in the
 ///   current process request a read of the key. Changes made by another process, such as an app extension that shares

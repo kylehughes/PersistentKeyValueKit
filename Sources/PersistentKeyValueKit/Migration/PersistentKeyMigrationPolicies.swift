@@ -64,8 +64,9 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// otherwise distinct, including identifiers that differ only by case.
 ///
 /// This type is not `Sendable` because ``once(id:recordedIn:)`` holds the recording store. Create the tracking value
-/// where the migration runs. A prebuilt value cannot be captured by an `@Sendable` closure; capture the identifier
-/// and call ``once(id:)`` inside the closure instead.
+/// where the migration runs. A nonisolated `@Sendable` closure cannot capture a prebuilt value, so construct the
+/// tracking inside the closure and keep its recording store: ``once(id:)`` records in the destination store instead,
+/// so a marker already recorded elsewhere under the same identifier no longer skips the batch.
 public struct PersistentKeyMigrationTracking {
     /// The prefix of every completion marker key identifier, which source and destination keys cannot use.
     static let completionMarkerPrefix = "PersistentKeyValueKit_MigrationCompleted_"
