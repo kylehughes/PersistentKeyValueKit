@@ -34,8 +34,10 @@ import Foundation
 ///
 /// An object that ``encode(format:)`` returns or a `set` method writes is handed over to the caller: do not mutate it
 /// afterward, including a mutable string or data buffer, a mutable dictionary key, or a container. As a defense, the
-/// package copies the mutable containers and leaf values that it accepts, but it does not copy every mutable object,
-/// such as a dictionary key, and behavior is unspecified if a conforming type mutates an object after handing it over.
+/// default `set` methods and the conversion of `Array` and `Dictionary` values copy the mutable containers and leaf
+/// values that they accept, except dictionary keys. ``PrimitivePersistentKeyValueRepresentation`` forwards its
+/// container methods to this type's, so it writes the objects that those methods write without copying them. Behavior
+/// is unspecified if a conforming type mutates an object after handing it over.
 public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// Decodes a value from a stored object for the given storage format.
     ///

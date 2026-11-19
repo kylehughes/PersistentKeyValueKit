@@ -15,8 +15,11 @@ import Foundation
 ///
 /// An object that ``encode(_:format:)`` returns or a `set` method writes is handed over to the caller: do not mutate it
 /// afterward, including a mutable string or data buffer, a mutable dictionary key, or a container. As a defense, the
-/// package copies the mutable containers and leaf values that it accepts, but it does not copy every mutable object,
-/// such as a dictionary key, and behavior is unspecified if a representation mutates an object after handing it over.
+/// default `set` methods and the conversion of `Array` and `Dictionary` values copy the mutable containers and leaf
+/// values that they accept, except dictionary keys. A `set` method that forwards to another `set` method, as the
+/// container methods of ``OptionalPersistentKeyValueRepresentation``, ``ProxyPersistentKeyValueRepresentation``, and
+/// ``PrimitivePersistentKeyValueRepresentation`` do, writes the objects that method writes without copying them.
+/// Behavior is unspecified if a representation mutates an object after handing it over.
 public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     // MARK: Associated Types
     
@@ -724,9 +727,12 @@ extension PersistentKeyValueRepresentation {
 /// Built-in container methods are ordinary reads and writes: for example, a nested dictionary read omits entries that
 /// fail to decode. Checked conversion, which migration and registration use, must instead fail. A built-in
 /// representation therefore converts its elements through checked conversion directly, recursing into the checked
-/// conversion of its base or proxy representation, and converts an array one element at a time so that it reports the
-/// first error in input order. A representation defined outside this package does not conform, so checked conversion
-/// calls its container methods exactly as it implements them, including the protocol's default implementations.
+/// conversion of its base or proxy representation. Checked decoding converts an array one element at a time so that it
+/// reports the first error in input order. Checked encoding makes no such promise: a proxy representation converts
+/// every value to its proxy before encoding any, so a later value's failed conversion can be reported instead of an
+/// earlier value's encoding error. A representation defined outside this package does not conform, so checked
+/// conversion calls its container methods exactly as it implements them, including the protocol's default
+/// implementations.
 internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
     /// Returns the property-list array that stores `values`, throwing the first error.
     func builtInPropertyListArray(encoding values: [Value]) throws -> [Any]
@@ -856,7 +862,7 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 /// `Double`, `Bool`, `Data`, or `Date` value, which validation need not bridge, and otherwise the snapshot that
 /// ``storablePropertyList(_:)`` returns, so a store, or a later validation of a collection that holds it, does not
 /// bridge it again. Either way, a later conversion that changes a mutable object that `object` is or holds does not
-/// change what is stored.
+/// change what is stored, except a mutable dictionary key, which the snapshot keeps as it is.
 internal func storableEncoding(_ object: Any?) -> Any?? {
     guard let object else {
         return .some(nil)

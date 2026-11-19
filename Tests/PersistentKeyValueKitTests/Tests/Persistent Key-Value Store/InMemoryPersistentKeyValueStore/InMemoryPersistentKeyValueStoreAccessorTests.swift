@@ -92,6 +92,63 @@ final class InMemoryPersistentKeyValueStoreAccessorTests: XCTestCase {
 
     // MARK: Reentrancy Tests
 
+    func test_copy_keyIdentifierCharactersReadStoreAndMigrate_doesNotDeadlock() {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let name = "key:\(#function).pr\u{E9}f\u{E9}rence"
+        let identifier = AccessObservingString.make(name)
+        let key = PersistentKey(identifier as String, defaultValue: 0)
+        let unrelatedKey = PersistentKey("unrelated:\(#function)", defaultValue: 0)
+        let recorder = StoreReadRecorder()
+
+        source.set(PersistentKey(name, defaultValue: 0), to: 7)
+        source.set(unrelatedKey, to: 1)
+        identifier.onAccess = {
+            _ = source.object(forKey: "unrelated")
+            _ = try? source.copy(unrelatedKey, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+            recorder.recordRead()
+        }
+
+        guard assertCompletes({
+            let report = try? source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+            XCTAssertEqual(report?.outcomes.map(\.status), [.copied])
+        }) else {
+            return
+        }
+
+        identifier.onAccess = nil
+
+        XCTAssertTrue(recorder.didReadStore)
+        XCTAssertEqual(destination.get(PersistentKey(name, defaultValue: 0)), 7)
+    }
+
+    func test_deregister_releasedKeyIdentifierReadsStore_doesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let name = "key:\(#function).preference"
+        let recorder = StoreReadRecorder()
+        nonisolated(unsafe) let observer = AccessorObservationRecorder()
+
+        autoreleasepool {
+            let keyID = releaseObservingKeyID(name) {
+                _ = store.object(forKey: "unrelated")
+                recorder.recordRead()
+            }
+
+            register(observer, for: PersistentKey(keyID, defaultValue: 0), in: store)
+        }
+
+        guard assertCompletes({
+            store.deregister(observer, for: PersistentKey(name, defaultValue: 0), context: nil)
+        }) else {
+            return
+        }
+
+        store.set(1, forKey: name)
+
+        XCTAssertTrue(recorder.didReadStore)
+        XCTAssertTrue(observer.keyPaths.isEmpty)
+    }
+
     func test_get_keyIdentifierReadsStore_doesNotDeadlock() {
         let store = InMemoryPersistentKeyValueStore()
         let key = StoreReadingKey(store: store, suffix: #function)
@@ -104,10 +161,135 @@ final class InMemoryPersistentKeyValueStoreAccessorTests: XCTestCase {
         }
     }
 
+    func test_keyIdentifierCharactersReadStore_doesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let name = "key:\(#function).pr\u{E9}f\u{E9}rence"
+        let identifier = AccessObservingString.make(name)
+        let key = PersistentKey(identifier as String, defaultValue: 0)
+        let recorder = StoreReadRecorder()
+        nonisolated(unsafe) let observer = AccessorObservationRecorder()
+
+        store.set(PersistentKey(name, defaultValue: 0), to: 7)
+        identifier.onAccess = {
+            _ = store.object(forKey: "unrelated")
+            recorder.recordRead()
+        }
+
+        guard assertCompletes({
+            XCTAssertEqual(store.get(key), 7)
+            store.register(
+                observer: observer,
+                for: key,
+                with: nil,
+                and: #selector(NSObject.observeValue(forKeyPath:of:change:context:))
+            )
+            store.set(key, to: 9)
+            store.deregister(observer, for: key, context: nil)
+            store.remove(key)
+        }) else {
+            return
+        }
+
+        identifier.onAccess = nil
+
+        XCTAssertTrue(recorder.didReadStore)
+        XCTAssertEqual(observer.keyPaths, [name])
+        XCTAssertNil(store.object(forKey: name))
+    }
+
+    func test_move_releasedSourceKeyIdentifierReadsStore_doesNotDeadlock() {
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let name = "key:\(#function).preference"
+        let recorder = StoreReadRecorder()
+
+        autoreleasepool {
+            let keyID = releaseObservingKeyID(name) {
+                _ = source.object(forKey: "unrelated")
+                recorder.recordRead()
+            }
+
+            source.set(PersistentKey(keyID, defaultValue: 0), to: 7)
+        }
+
+        guard assertCompletes({
+            let key = PersistentKey(name, defaultValue: 0)
+            let report = try? source.move(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+            XCTAssertEqual(report?.outcomes.map(\.status), [.moved])
+        }) else {
+            return
+        }
+
+        XCTAssertTrue(recorder.didReadStore)
+        XCTAssertNil(source.object(forKey: name))
+        XCTAssertEqual(destination.object(forKey: name) as? Int, 7)
+    }
+
+    func test_register_prunedKeyIdentifierReadsStore_doesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let name = "key:\(#function).preference"
+        let recorder = StoreReadRecorder()
+        nonisolated(unsafe) let observer = AccessorObservationRecorder()
+
+        autoreleasepool {
+            let keyID = releaseObservingKeyID(name) {
+                _ = store.object(forKey: "unrelated")
+                recorder.recordRead()
+            }
+
+            register(AccessorObservationRecorder(), for: PersistentKey(keyID, defaultValue: 0), in: store)
+        }
+
+        // The first observer has been deallocated, so registering prunes its registration and releases the identifier.
+        guard assertCompletes({
+            store.register(
+                observer: observer,
+                for: PersistentKey(name, defaultValue: 0),
+                with: nil,
+                and: #selector(NSObject.observeValue(forKeyPath:of:change:context:))
+            )
+        }) else {
+            return
+        }
+
+        store.set(1, forKey: name)
+
+        XCTAssertTrue(recorder.didReadStore)
+        XCTAssertEqual(observer.keyPaths, [name])
+    }
+
+    func test_removeObject_releasedKeyIdentifierReadsStore_doesNotDeadlock() {
+        // The store keeps an ASCII identifier backed by its `NSString` and copies a non-ASCII one.
+        for name in ["key:\(#function).preference", "key:\(#function).pr\u{E9}f\u{E9}rence"] {
+            let store = InMemoryPersistentKeyValueStore()
+            let recorder = StoreReadRecorder()
+
+            autoreleasepool {
+                let keyID = releaseObservingKeyID(name) {
+                    _ = store.object(forKey: "unrelated")
+                    recorder.recordRead()
+                }
+
+                store.set(PersistentKey(keyID, defaultValue: 0), to: 7)
+            }
+
+            guard assertCompletes({
+                let key = PersistentKey(name, defaultValue: 0)
+                XCTAssertEqual(store.get(key), 7)
+                store.remove(key)
+            }) else {
+                return
+            }
+
+            XCTAssertTrue(recorder.didReadStore, name)
+            XCTAssertNil(store.object(forKey: name), name)
+        }
+    }
+
     func test_removeObject_releasedValueReadsStore_doesNotDeadlock() {
         let store = InMemoryPersistentKeyValueStore()
         let keyID = "key:\(#function)"
-        let recorder = DeinitRecorder()
+        let recorder = StoreReadRecorder()
 
         store.set(StoreReadingObject(store: store, recorder: recorder), forKey: keyID)
 
@@ -121,7 +303,7 @@ final class InMemoryPersistentKeyValueStoreAccessorTests: XCTestCase {
     func test_set_replacedValueReadsStore_doesNotDeadlock() {
         let store = InMemoryPersistentKeyValueStore()
         let keyID = "key:\(#function)"
-        let recorder = DeinitRecorder()
+        let recorder = StoreReadRecorder()
 
         store.set(StoreReadingObject(store: store, recorder: recorder), forKey: keyID)
 
@@ -210,14 +392,16 @@ final class InMemoryPersistentKeyValueStoreAccessorTests: XCTestCase {
 // MARK: - Private Helpers
 
 private extension InMemoryPersistentKeyValueStoreAccessorTests {
-    /// Runs `body` on another thread and fails, instead of hanging, if it does not finish.
+    /// Runs `body` on another thread and fails, instead of hanging, if it does not finish, returning whether it
+    /// finished.
     ///
-    /// A deadlocked store stays locked, so callers must not access it after this returns.
+    /// A deadlocked store stays locked, so callers must not access it after this returns `false`.
+    @discardableResult
     func assertCompletes(
         file: StaticString = #filePath,
         line: UInt = #line,
         _ body: @escaping @Sendable () -> Void
-    ) {
+    ) -> Bool {
         let finished = DispatchSemaphore(value: 0)
 
         Thread.detachNewThread {
@@ -225,7 +409,10 @@ private extension InMemoryPersistentKeyValueStoreAccessorTests {
             finished.signal()
         }
 
-        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success, "The store deadlocked.", file: file, line: line)
+        let result = finished.wait(timeout: .now() + 5)
+        XCTAssertEqual(result, .success, "The store deadlocked.", file: file, line: line)
+
+        return result == .success
     }
 
     func register<Key>(
@@ -261,8 +448,8 @@ private final class AccessorObservationRecorder: NSObject {
     }
 }
 
-/// Records, from another thread, that a released value read its store.
-private final class DeinitRecorder: @unchecked Sendable {
+/// Records, from another thread, that a callback read its store.
+private final class StoreReadRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var _didReadStore = false
 
@@ -333,10 +520,10 @@ private struct StoreReadingKey: PersistentKeyProtocol {
 
 /// A value whose `deinit` reads the store that held it.
 private final class StoreReadingObject: Sendable {
-    let recorder: DeinitRecorder
+    let recorder: StoreReadRecorder
     let store: InMemoryPersistentKeyValueStore
 
-    init(store: InMemoryPersistentKeyValueStore, recorder: DeinitRecorder) {
+    init(store: InMemoryPersistentKeyValueStore, recorder: StoreReadRecorder) {
         self.recorder = recorder
         self.store = store
     }

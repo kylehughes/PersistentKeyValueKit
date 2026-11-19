@@ -118,6 +118,56 @@ extension NSUbiquitousKeyValueStoreObservationTests {
     }
 }
 
+// MARK: - Lock Reentrancy Tests
+
+@available(watchOS 9.0, *)
+extension NSUbiquitousKeyValueStoreObservationTests {
+    // MARK: Tests
+
+    func test_deregister_keyIdentifierCharactersRegisterAnotherKey_doesNotDeadlock() {
+        nonisolated(unsafe) let storage = storage
+        let name = "key:\(#function).pr\u{E9}f\u{E9}rence"
+        let identifier = AccessObservingString.make(name)
+        let key = PersistentKey(identifier as String, defaultValue: 0)
+        let otherKey = PersistentKey("other:\(#function)", defaultValue: 0)
+        let observer = RecordingKeyObserver()
+        let otherObserver = RecordingKeyObserver()
+        let accessed = LockedFlag(false)
+        let deregistered = DispatchSemaphore(value: 0)
+
+        storage.register(
+            observer: observer,
+            for: PersistentKey(name, defaultValue: 0),
+            with: nil,
+            and: #selector(RecordingKeyObserver.didReceive(_:))
+        )
+        identifier.onAccess = {
+            storage.register(
+                observer: otherObserver,
+                for: otherKey,
+                with: nil,
+                and: #selector(RecordingKeyObserver.didReceive(_:))
+            )
+            storage.deregister(otherObserver, for: otherKey, context: nil)
+            accessed.value = true
+        }
+
+        // Deregister on another thread, so a deadlock fails the wait instead of blocking the test process.
+        Thread.detachNewThread {
+            storage.deregister(observer, for: key, context: nil)
+            deregistered.signal()
+        }
+
+        XCTAssertEqual(deregistered.wait(timeout: .now() + 5), .success, "The registry deadlocked.")
+
+        identifier.onAccess = nil
+        Self.postExternalChange(to: [name], from: storage)
+
+        XCTAssertTrue(accessed.value)
+        XCTAssertTrue(observer.notifications.isEmpty)
+    }
+}
+
 // MARK: - Test Utilities
 
 @available(watchOS 9.0, *)

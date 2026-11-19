@@ -16,6 +16,11 @@ internal protocol StoreKeyObservation: AnyObject {
     /// The identifier of the observed key.
     var keyID: String { get }
 
+    /// The UTF-16 code units of ``keyID``, read once when the observation is created.
+    ///
+    /// The registry compares these with its lock held, so the observation must not read them from ``keyID`` on demand.
+    var literalKeyID: [UInt16] { get }
+
     /// The registered observer, or `nil` after it has been deallocated.
     var observer: NSObject? { get }
 
@@ -39,8 +44,10 @@ internal protocol StoreKeyObservation: AnyObject {
 /// spellings are different keys. Registrations whose observer has been deallocated are released on the next
 /// registration or deregistration.
 ///
-/// Activation, invalidation, and the release of any observer reference run after the lock is unlocked, because each
-/// can deregister from this registry again.
+/// Activation, invalidation, and the release of any observer or observation reference run after the lock is unlocked,
+/// because each can deregister from this registry again. Key identifiers are compared by code units read before the
+/// lock is taken, because reading an identifier bridged from an `NSString` calls the object's methods, which can do the
+/// same.
 internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     private let lock: NSLock
     private var observations: [any StoreKeyObservation]
@@ -81,6 +88,15 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
         lhs.utf16.elementsEqual(rhs.utf16)
     }
 
+    /// Returns the UTF-16 code units of `keyID`, which name the same Foundation store key exactly when they are equal.
+    ///
+    /// Reading the code units of an identifier bridged from an `NSString` calls the object's methods, which can run
+    /// arbitrary code, such as a subclass's character accessor that accesses a store. Code that compares identifiers
+    /// with a lock held therefore reads them first, without the lock, and compares the results.
+    internal static func literalKeyID(_ keyID: String) -> [UInt16] {
+        Array(keyID.utf16)
+    }
+
     // MARK: Internal Instance Interface
 
     /// Registers `observation`, then activates it.
@@ -109,10 +125,12 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     }
 
     internal func remove(_ observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
+        let literalKeyID = Self.literalKeyID(keyID)
+
         let (removed, liveObservers) = withLock {
             removeObservations { registeredObserver, observation in
                 registeredObserver === observer
-                    && Self.keyIDsMatch(observation.keyID, keyID)
+                    && observation.literalKeyID == literalKeyID
                     && observation.context == context
             }
         }
@@ -141,7 +159,8 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     /// observer, returning them and every live observer read. Must be called with the lock held.
     ///
     /// Reading a weak observer retains it, and that reference becomes the last one if the observer is released on
-    /// another thread. An observer's `deinit` can deregister, so the caller releases the returned observers only after
+    /// another thread. A removed observation can hold the last reference to an identifier bridged from an `NSString`.
+    /// Releasing either can run a `deinit` that deregisters, so the caller releases the returned references only after
     /// the lock is unlocked.
     private func removeObservations(
         where isRemoved: (NSObject, any StoreKeyObservation) -> Bool

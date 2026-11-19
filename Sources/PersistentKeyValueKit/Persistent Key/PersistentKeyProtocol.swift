@@ -49,7 +49,9 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// identifiers as strings, and ``PersistentKey`` and ``PersistentDebugKey`` equality also compares default values,
     /// so with `\.self`, changing only a key's default value recreates its row.
     ///
-    /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
+    /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``. If it is backed
+    ///   by a Foundation string, reading its characters must not access a store; Foundation may hold its own locks
+    ///   while it reads a key.
     var id: ID { get }
 
     /// Whether this key participates in migration operations.

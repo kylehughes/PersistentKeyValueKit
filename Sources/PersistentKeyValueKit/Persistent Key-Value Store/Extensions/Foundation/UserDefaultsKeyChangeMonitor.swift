@@ -23,6 +23,7 @@ import ObjectiveC
 internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObservation, @unchecked Sendable {
     let context: UnsafeMutableRawPointer?
     let keyID: String
+    let literalKeyID: [UInt16]
     private(set) weak var observer: NSObject?
 
     /// Whether the observation has been invalidated. Protected by the monitor's lock.
@@ -57,6 +58,7 @@ internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObserva
 
         isInvalidated = false
         lastObject = nil
+        literalKeyID = StoreKeyObservationRegistry.literalKeyID(keyID)
         unsettledJoin = nil
 
         super.init()
@@ -106,8 +108,9 @@ internal final class UserDefaultsKeyChangeObservation: NSObject, StoreKeyObserva
 /// comparison's result depends only on the two objects.
 ///
 /// The lock is never held while running code that can access the store or its observations. Reads, comparisons, and
-/// observer callbacks run after it is unlocked, and no reference whose release can deinitialize an observer is released
-/// while it is held.
+/// observer callbacks run after it is unlocked, and no reference whose release can deinitialize an observer or a key
+/// identifier bridged from an `NSString` is released while it is held. Key identifiers are matched by the code units
+/// each registration read when it was created, because reading an `NSString`'s code units calls its methods.
 ///
 /// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Access to
 ///   mutable state is protected by `lock`, except each registration's comparison value and unsettled join, which are
@@ -197,7 +200,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
             }
 
             // An overridden getter that registers its own key would otherwise read, and register, without end.
-            if let pendingRead = pendingReads.first(where: { $0.isReading(observation.keyID, on: thread) }) {
+            if let pendingRead = pendingReads.first(where: { $0.isReading(observation.literalKeyID, on: thread) }) {
                 pendingRead.observations.append(observation)
 
                 return nil
@@ -239,13 +242,15 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
             }
 
             let index = observedKeys.firstIndex {
-                StoreKeyObservationRegistry.keyIDsMatch($0.keyID, read.keyID)
+                $0.literalKeyID == read.literalKeyID
             }
 
             if let index {
                 observedKeys[index].observations.append(contentsOf: observations)
             } else {
-                observedKeys.append(ObservedKey(keyID: read.keyID, observations: observations))
+                observedKeys.append(
+                    ObservedKey(keyID: read.keyID, literalKeyID: read.literalKeyID, observations: observations)
+                )
             }
 
             guard changeCount == read.changeCountBeforeRead else {
@@ -265,11 +270,11 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     /// Stops delivering changes to `observation`.
     internal func remove(_ observation: UserDefaultsKeyChangeObservation) {
-        withLock {
+        let removedKey: ObservedKey? = withLock {
             observation.isInvalidated = true
 
             guard let index = observedKeys.firstIndex(where: { $0.observations.contains { $0 === observation } }) else {
-                return
+                return nil
             }
 
             // The caller holds `observation`, so removing it does not release it or its comparison value.
@@ -277,10 +282,16 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
                 $0 === observation
             }
 
-            if observedKeys[index].observations.isEmpty {
-                observedKeys.remove(at: index)
+            guard observedKeys[index].observations.isEmpty else {
+                return nil
             }
+
+            return observedKeys.remove(at: index)
         }
+
+        // The key's identifier can be the last reference to an earlier registration's `NSString`, whose release can
+        // run a `deinit` that registers or deregisters, so release it after unlocking.
+        withExtendedLifetime(removedKey) {}
     }
 
     // MARK: Private Static Interface
@@ -448,8 +459,11 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
 extension UserDefaultsKeyChangeMonitor {
     /// The registrations for one key, which share each read of the key.
+    ///
+    /// `keyID` is the identifier of the registration that first joined the key, and can outlive that registration.
     private struct ObservedKey {
         let keyID: String
+        let literalKeyID: [UInt16]
         var observations: [UserDefaultsKeyChangeObservation]
     }
 }
@@ -463,6 +477,7 @@ extension UserDefaultsKeyChangeMonitor {
     private final class PendingRead {
         let changeCountBeforeRead: Int
         let keyID: String
+        let literalKeyID: [UInt16]
         var observations: [UserDefaultsKeyChangeObservation]
 
         private let thread: pthread_t
@@ -472,14 +487,15 @@ extension UserDefaultsKeyChangeMonitor {
             self.thread = thread
 
             keyID = observation.keyID
+            literalKeyID = observation.literalKeyID
             observations = [observation]
         }
 
-        /// Returns whether this is a read of `keyID` on `thread`.
+        /// Returns whether this is a read, on `thread`, of the key whose identifier has the code units `literalKeyID`.
         ///
         /// The reading thread is running until the read is removed, so its identifier cannot be reused meanwhile.
-        func isReading(_ keyID: String, on thread: pthread_t) -> Bool {
-            pthread_equal(self.thread, thread) != 0 && StoreKeyObservationRegistry.keyIDsMatch(self.keyID, keyID)
+        func isReading(_ literalKeyID: [UInt16], on thread: pthread_t) -> Bool {
+            pthread_equal(self.thread, thread) != 0 && self.literalKeyID == literalKeyID
         }
     }
 }

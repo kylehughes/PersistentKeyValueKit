@@ -29,8 +29,9 @@ import Foundation
 /// references only when they are replaced, so do not mutate them while a migration runs.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s
-///   thread-safety requirement. The lock is not held while key identifiers are evaluated, observers are notified, or
-///   replaced values are released, so that code can access the store again.
+///   thread-safety requirement. The lock is not held while key identifiers are evaluated, an identifier bridged from an
+///   `NSString` is copied, observers are notified, or replaced or removed values and identifiers are released, so that
+///   code can access the store again.
 public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// The stable identity of this in-memory store for migration operations.
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
@@ -71,8 +72,10 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// - Parameter key: The identifier of the entry.
     /// - Returns: The stored value, or `nil` if the store has no entry for the key.
     public func object(forKey key: String) -> Any? {
-        withLock {
-            storage[key]?.object
+        Self.withStorageKey(for: key) { storageKey in
+            withLock {
+                storage[storageKey]?.object
+            }
         }
     }
 
@@ -84,14 +87,17 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     ///
     /// - Parameter key: The identifier of the entry.
     public func removeObject(forKey key: String) {
-        let (removedValue, observations) = withLock {
-            (storage.removeValue(forKey: key), registeredObservations(for: key))
+        let (removedEntry, observations) = Self.withStorageKey(for: key) { storageKey in
+            withLock {
+                (removeEntry(forKey: storageKey), registeredObservations(for: storageKey))
+            }
         }
 
         notify(observations, keyPath: key)
 
-        // Releasing the last reference can run a `deinit` that reads this store, so release it after unlocking.
-        withExtendedLifetime(removedValue) {}
+        // Releasing the last reference to the value or its identifier can run a `deinit` that reads this store, so
+        // release them after unlocking.
+        withExtendedLifetime(removedEntry) {}
     }
 
     /// Stores the given value for the given key and notifies observers of the key.
@@ -111,13 +117,15 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     public func set<Value>(_ value: Value, forKey key: String) {
         let storedValue = Self.normalizedValue(value)
 
-        let (replacedValue, observations) = withLock {
-            nextRevision &+= 1
+        let (replacedValue, observations) = Self.withStorageKey(for: key) { storageKey in
+            withLock {
+                nextRevision &+= 1
 
-            return (
-                storage.updateValue(StoredValue(object: storedValue, revision: nextRevision), forKey: key),
-                registeredObservations(for: key)
-            )
+                return (
+                    storage.updateValue(StoredValue(object: storedValue, revision: nextRevision), forKey: storageKey),
+                    registeredObservations(for: storageKey)
+                )
+            }
         }
 
         notify(observations, keyPath: key)
@@ -144,7 +152,47 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
         return compactedValue
     }
 
+    /// Returns `keyID` with contiguous UTF-8 storage, copying it only when it has none. The result equals `keyID`, so
+    /// it names the same entry.
+    ///
+    /// The lock is held while identifiers are hashed and compared. Swift reads contiguous UTF-8 directly, but reads an
+    /// identifier bridged lazily from an `NSString` through the object's methods, which can run arbitrary code, such as
+    /// a subclass's character accessor that reads this store. A native Swift string is returned without copying. So is
+    /// a bridged string whose contents Foundation already stores as contiguous UTF-8, which keeps its object, so the
+    /// store releases identifiers only after unlocking.
+    private static func storageKey(for keyID: String) -> String {
+        var storageKey = keyID
+        storageKey.makeContiguousUTF8()
+
+        return storageKey
+    }
+
+    /// Calls `body` with the ``storageKey(for:)`` of `keyID`, passing `keyID` itself when it already has contiguous
+    /// UTF-8 storage.
+    ///
+    /// Ordinary reads and writes use this, because returning even an uncopied identifier from ``storageKey(for:)``
+    /// retains it, which measurably slows the fastest store operations.
+    @inline(__always)
+    private static func withStorageKey<Result>(for keyID: String, _ body: (String) -> Result) -> Result {
+        guard !keyID.isContiguousUTF8 else {
+            return body(keyID)
+        }
+
+        return body(storageKey(for: keyID))
+    }
+
     // MARK: Private Instance Interface
+
+    /// Removes and returns the entry for `storageKey`, or returns `nil` if the store has no entry for it. Must be
+    /// called with the lock held.
+    ///
+    /// The entry's stored identifier can hold the last reference to a bridged `NSString`, so the caller releases the
+    /// entry after unlocking.
+    private func removeEntry(forKey storageKey: String) -> (key: String, value: StoredValue)? {
+        storage.index(forKey: storageKey).map {
+            storage.remove(at: $0)
+        }
+    }
 
     /// Returns the registrations for `keyID`. Must be called with the lock held.
     ///
@@ -157,27 +205,36 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     }
 
     /// Removes the registrations whose observer has been deallocated or that `isRemoved` selects for their live
-    /// observer, marking the selected registrations inactive, and returns every live observer read. Must be called
-    /// with the lock held.
+    /// observer, marking the selected registrations inactive, and returns every live observer read and every removed
+    /// registration. Must be called with the lock held.
     ///
     /// Reading a weak observer retains it, and that reference becomes the last one if the observer is released on
-    /// another thread. An observer's `deinit` can deregister, so the caller releases the returned observers only after
+    /// another thread. A removed registration can hold the last reference to a bridged `NSString` identifier. Releasing
+    /// either can run a `deinit` that accesses this store, so the caller releases the returned references only after
     /// the lock is unlocked.
-    private func removeObservations(where isRemoved: (NSObject, Observation) -> Bool) -> [NSObject] {
-        var liveObservers: [NSObject] = []
+    private func removeObservations(where isRemoved: (NSObject, Observation) -> Bool) -> [AnyObject] {
+        var references: [AnyObject] = []
 
         observations.removeAll { observation in
             guard let observer = observation.observer else {
+                references.append(observation)
+
                 return true
             }
 
-            liveObservers.append(observer)
+            references.append(observer)
             observation.isActive = !isRemoved(observer, observation)
 
-            return !observation.isActive
+            guard !observation.isActive else {
+                return false
+            }
+
+            references.append(observation)
+
+            return true
         }
 
-        return liveObservers
+        return references
     }
 
     /// Notifies each registration in `observations` that is still active when its turn comes.
@@ -237,21 +294,23 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             throw PersistentKeyMigrationError.destinationChanged
         }
 
+        let storageKey = Self.storageKey(for: write.keyID)
+
         let result: (UInt64, [Observation], StoredValue?) = try withLock {
-            if let snapshot, storage[write.keyID]?.revision != snapshot.revision {
+            if let snapshot, storage[storageKey]?.revision != snapshot.revision {
                 throw PersistentKeyMigrationError.destinationChanged
             }
 
-            if snapshot == nil, storage[write.keyID] != nil {
+            if snapshot == nil, storage[storageKey] != nil {
                 throw PersistentKeyMigrationError.destinationChanged
             }
 
             nextRevision &+= 1
             let replacedValue = storage.updateValue(
                 StoredValue(object: write.object, revision: nextRevision),
-                forKey: write.keyID
+                forKey: storageKey
             )
-            return (nextRevision, registeredObservations(for: write.keyID), replacedValue)
+            return (nextRevision, registeredObservations(for: storageKey), replacedValue)
         }
 
         let committed = MigrationSnapshot(committing: write, revision: result.0)
@@ -268,14 +327,19 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     }
 
     /// Storage is keyed by Swift `String`, so canonically equivalent identifiers name one entry.
+    ///
+    /// The migration registry hashes and compares identities with its lock held, so an identity holds its identifier
+    /// as storage does.
     func migrationKeyIdentity(_ keyID: String) -> PersistentKeyMigrationKeyIdentity {
-        .canonical(keyID)
+        .canonical(Self.storageKey(for: keyID))
     }
 
     /// Captures the persisted value and revision for a key, or `nil` when the key is absent.
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
+        let storageKey = Self.storageKey(for: keyID)
+
         let storedValue = withLock {
-            storage[keyID]
+            storage[storageKey]
         }
 
         return storedValue.map {
@@ -297,8 +361,10 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             return false
         }
 
+        let storageKey = Self.storageKey(for: keyID)
+
         return withLock {
-            storage[keyID]?.revision == snapshot.revision
+            storage[storageKey]?.revision == snapshot.revision
         }
     }
 
@@ -335,17 +401,19 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
             throw PersistentKeyMigrationError.sourceChanged
         }
 
-        let (removedValue, observations) = try withLock {
-            () -> (StoredValue?, [Observation]) in
-            guard storage[keyID]?.revision == snapshot.revision else {
+        let storageKey = Self.storageKey(for: keyID)
+
+        let (removedEntry, observations) = try withLock {
+            () -> ((key: String, value: StoredValue)?, [Observation]) in
+            guard storage[storageKey]?.revision == snapshot.revision else {
                 throw PersistentKeyMigrationError.sourceChanged
             }
 
-            return (storage.removeValue(forKey: keyID), registeredObservations(for: keyID))
+            return (removeEntry(forKey: storageKey), registeredObservations(for: storageKey))
         }
 
         notify(observations, keyPath: keyID)
-        withExtendedLifetime(removedValue) {}
+        withExtendedLifetime(removedEntry) {}
         guard try migrationSnapshot(for: keyID) == nil else {
             throw PersistentKeyMigrationError.removalVerificationFailed
         }
@@ -385,16 +453,16 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
         for key: Key,
         context: UnsafeMutableRawPointer?
     ) where Key: PersistentKeyProtocol {
-        let keyID = key.id
+        let keyID = Self.storageKey(for: key.id)
 
-        let liveObservers = withLock {
+        let references = withLock {
             removeObservations { registeredObserver, observation in
                 registeredObserver === observer && observation.keyID == keyID && observation.context == context
             }
         }
 
-        // Release the observers after the lock is unlocked.
-        withExtendedLifetime(liveObservers) {}
+        // Release the observers and registrations after the lock is unlocked.
+        withExtendedLifetime(references) {}
     }
 
     public func register<Key>(
@@ -403,10 +471,10 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
         with context: UnsafeMutableRawPointer?,
         and selector: Selector
     ) where Key: PersistentKeyProtocol {
-        let keyID = key.id
+        let keyID = Self.storageKey(for: key.id)
 
-        let liveObservers = withLock {
-            let liveObservers = removeObservations { _, _ in
+        let references = withLock {
+            let references = removeObservations { _, _ in
                 false
             }
 
@@ -418,11 +486,11 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
                 )
             )
 
-            return liveObservers
+            return references
         }
 
-        // Release the observers after the lock is unlocked.
-        withExtendedLifetime(liveObservers) {}
+        // Release the observers and registrations after the lock is unlocked.
+        withExtendedLifetime(references) {}
     }
 
 }

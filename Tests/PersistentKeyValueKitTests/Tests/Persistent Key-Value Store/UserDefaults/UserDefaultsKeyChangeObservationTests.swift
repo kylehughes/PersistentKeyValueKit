@@ -733,6 +733,161 @@ extension UserDefaultsKeyChangeObservationTests {
 extension UserDefaultsKeyChangeObservationTests {
     // MARK: Tests
 
+    func test_deregister_keyIdentifierCharactersRegisterAnotherKey_doesNotDeadlock() {
+        nonisolated(unsafe) let storage: UserDefaults = self.storage
+        let name = "com.example.key.\(#function).pr\u{E9}f\u{E9}rence"
+        let identifier = AccessObservingString.make(name)
+        let key = PersistentKey(identifier as String, defaultValue: 0)
+        let otherKey = PersistentKey("com.example.other.\(#function)", defaultValue: 0)
+        let observer = RecordingKeyObserver()
+        let otherObserver = RecordingKeyObserver()
+        let accessed = LockedFlag(false)
+        let deregistered = expectation(description: "Deregistered")
+
+        storage.register(
+            observer: observer,
+            for: PersistentKey(name, defaultValue: 0),
+            with: nil,
+            and: #selector(RecordingKeyObserver.didReceive(_:))
+        )
+        identifier.onAccess = {
+            storage.register(
+                observer: otherObserver,
+                for: otherKey,
+                with: nil,
+                and: #selector(RecordingKeyObserver.didReceive(_:))
+            )
+            storage.deregister(otherObserver, for: otherKey, context: nil)
+            accessed.value = true
+        }
+
+        // Deregister on another thread, so a deadlock fails the wait instead of blocking the test process.
+        Thread.detachNewThread {
+            storage.deregister(observer, for: key, context: nil)
+            deregistered.fulfill()
+        }
+
+        waitDetachingMonitorOnTimeout(for: [deregistered], of: storage)
+        identifier.onAccess = nil
+        storage.set(1, forKey: name)
+
+        XCTAssertTrue(accessed.value)
+        XCTAssertTrue(observer.observations.isEmpty)
+    }
+
+    func test_deregister_releasingLastKeyIdentifierRegistersAnotherKey_doesNotDeadlock() {
+        nonisolated(unsafe) let storage: UserDefaults = self.storage
+        let name = "com.example.key.\(#function).pr\u{E9}f\u{E9}rence"
+        let key = PersistentKey(name, defaultValue: 0)
+        let otherKey = PersistentKey("com.example.other.\(#function)", defaultValue: 0)
+        let firstObserver = RecordingKeyObserver()
+        let secondObserver = RecordingKeyObserver()
+        let otherObserver = RecordingKeyObserver()
+        let released = expectation(description: "Identifier released")
+        let deregistered = expectation(description: "Deregistered")
+
+        // The first registration's identifier names the key's shared read, so it outlives that registration.
+        autoreleasepool {
+            let keyID = releaseObservingKeyID(name) {
+                storage.register(
+                    observer: otherObserver,
+                    for: otherKey,
+                    with: nil,
+                    and: #selector(RecordingKeyObserver.didReceive(_:))
+                )
+                storage.deregister(otherObserver, for: otherKey, context: nil)
+                released.fulfill()
+            }
+
+            storage.register(
+                observer: firstObserver,
+                for: PersistentKey(keyID, defaultValue: 0),
+                with: nil,
+                and: #selector(RecordingKeyObserver.didReceive(_:))
+            )
+        }
+
+        storage.register(
+            observer: secondObserver,
+            for: key,
+            with: nil,
+            and: #selector(RecordingKeyObserver.didReceive(_:))
+        )
+        storage.deregister(firstObserver, for: key, context: nil)
+
+        // Deregister on another thread, so a deadlock fails the wait instead of blocking the test process.
+        Thread.detachNewThread {
+            storage.deregister(secondObserver, for: key, context: nil)
+            deregistered.fulfill()
+        }
+
+        waitDetachingMonitorOnTimeout(for: [released, deregistered], of: storage)
+        storage.set(1, forKey: name)
+
+        XCTAssertTrue(firstObserver.observations.isEmpty)
+        XCTAssertTrue(secondObserver.observations.isEmpty)
+    }
+
+    func test_register_keyIdentifierCharactersRegisterAnotherKey_doesNotDeadlock() throws {
+        // Foundation holds its own lock while it hashes a key it reads, so the stub keeps the identifier's accessor from
+        // reentering Foundation. The stub is configured before the registering thread starts.
+        nonisolated(unsafe) let storage = try XCTUnwrap(StubbedUserDefaults(suiteName: suiteName))
+        let name = "com.example.key.\(#function).pr\u{E9}f\u{E9}rence"
+        let identifier = AccessObservingString.make(name)
+        let key = PersistentKey(identifier as String, defaultValue: 0)
+        let otherKey = PersistentKey("com.example.other.\(#function)", defaultValue: 0)
+        let firstObserver = RecordingKeyObserver()
+        let secondObserver = RecordingKeyObserver()
+        let otherObserver = RecordingKeyObserver()
+        let accessed = LockedFlag(false)
+        let registered = expectation(description: "Registered")
+
+        // An existing registration for the key makes the second one join the key's shared read.
+        storage.register(
+            observer: firstObserver,
+            for: PersistentKey(name, defaultValue: 0),
+            with: nil,
+            and: #selector(RecordingKeyObserver.didReceive(_:))
+        )
+        identifier.onAccess = {
+            storage.register(
+                observer: otherObserver,
+                for: otherKey,
+                with: nil,
+                and: #selector(RecordingKeyObserver.didReceive(_:))
+            )
+            storage.deregister(otherObserver, for: otherKey, context: nil)
+            accessed.value = true
+        }
+
+        // Register on another thread, so a deadlock fails the wait instead of blocking the test process.
+        Thread.detachNewThread {
+            storage.register(
+                observer: secondObserver,
+                for: key,
+                with: nil,
+                and: #selector(RecordingKeyObserver.didReceive(_:))
+            )
+            registered.fulfill()
+        }
+
+        guard waitDetachingMonitorOnTimeout(for: [registered], of: storage) else {
+            return
+        }
+
+        identifier.onAccess = nil
+        storage.stubbedObject = 1
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: storage)
+
+        XCTAssertTrue(accessed.value)
+        XCTAssertEqual(firstObserver.observations.count, 1)
+        XCTAssertEqual(secondObserver.observations.count, 1)
+        XCTAssertTrue(otherObserver.observations.isEmpty)
+
+        storage.deregister(firstObserver, for: key, context: nil)
+        storage.deregister(secondObserver, for: key, context: nil)
+    }
+
     func test_register_releasingObserversWhileAnotherSuiteIsWrittenDoesNotDeadlock() throws {
         let isWriting = LockedFlag(true)
         let writersFinished = expectation(description: "Writers finished")
@@ -830,22 +985,26 @@ extension UserDefaultsKeyChangeObservationTests {
 
     // MARK: Private Instance Interface
 
-    /// Waits for `expectations`, failing after a bounded timeout.
+    /// Waits for `expectations`, failing after a bounded timeout, and returns whether they were fulfilled.
     ///
     /// A deadlocked monitor would block every later defaults change in the process, so on timeout the monitor stops
-    /// receiving change notifications and later tests can still run.
+    /// receiving change notifications and later tests can still run. Its lock stays held, so callers must not register
+    /// or deregister with `userDefaults` after this returns `false`.
+    @discardableResult
     private func waitDetachingMonitorOnTimeout(
         for expectations: [XCTestExpectation],
         of userDefaults: UserDefaults,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) {
+    ) -> Bool {
         guard XCTWaiter.wait(for: expectations, timeout: 30) != .completed else {
-            return
+            return true
         }
 
         NotificationCenter.default.removeObserver(UserDefaultsKeyChangeMonitor.monitor(for: userDefaults))
         XCTFail("Timed out waiting for \(expectations.map(\.description)); the monitor deadlocked", file: file, line: line)
+
+        return false
     }
 }
 

@@ -138,6 +138,7 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
 private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObservation, @unchecked Sendable {
     let context: UnsafeMutableRawPointer?
     let keyID: String
+    let literalKeyID: [UInt16]
     private(set) weak var observer: NSObject?
 
     private var isInvalidated: Bool
@@ -163,6 +164,7 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
         self.store = store
 
         isInvalidated = false
+        literalKeyID = StoreKeyObservationRegistry.literalKeyID(keyID)
         lock = NSLock()
 
         super.init()
