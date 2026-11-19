@@ -442,15 +442,19 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
                 return
             }
 
-            // A delivered change is already enqueued on the main queue when the write returns.
-            let deadline = Date().addingTimeInterval(5)
+            // A delivered change is already enqueued on the main queue when the write returns, so draining the main
+            // queue once runs it.
+            let drained = expectation(description: "Main queue drained after write \(value)")
 
-            while notifiedValue != value, Date() < deadline {
-                RunLoop.main.run(until: Date().addingTimeInterval(0.001))
+            DispatchQueue.main.async {
+                drained.fulfill()
             }
+
+            wait(for: [drained], timeout: 5)
 
             if notifiedValue != value {
                 missedWrites += 1
+                break
             }
         }
 

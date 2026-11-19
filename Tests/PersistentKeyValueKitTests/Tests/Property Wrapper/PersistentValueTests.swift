@@ -802,12 +802,13 @@ extension PersistentValueTests {
         let secondStore = InMemoryPersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: 0)
         let model = SwitchingModel(keyID: key.id, store: firstStore, environmentStore: userDefaults)
+        let markerModel = SwitchingMarkerModel()
         let recorder = SwitchingRecorder()
 
         firstStore.set(key, to: 1)
         secondStore.set(key, to: 2)
 
-        host(SwitchingRoot(model: model, recorder: recorder), in: viewController)
+        host(SwitchingRoot(model: model, markerModel: markerModel, recorder: recorder), in: viewController)
         await waitForRenderedValue(1, in: recorder)
 
         let retainedBinding = recorder.binding
@@ -818,17 +819,18 @@ extension PersistentValueTests {
         recorder.renderedValues = []
         retainedBinding?.wrappedValue = 7
 
-        // The marker changes after the write, so SwiftUI renders any invalidation from the write no later than it.
-        model.renderMarker += 1
+        // Only a sibling view observes the marker, so the row renders in the same update only if the write
+        // invalidated it.
+        markerModel.marker += 1
         await waitForRenderedMarker(1, in: recorder)
 
         XCTAssertEqual(firstStore.get(key), 7)
-        XCTAssertEqual(recorder.renderedValues, [2], "Only the marker change should render the row")
+        XCTAssertEqual(recorder.renderedValues, [], "The retained binding's write should not render the row")
 
         secondStore.set(key, to: 8)
         await waitForRenderedValue(8, in: recorder)
 
-        XCTAssertEqual(recorder.renderedValues, [2, 8])
+        XCTAssertEqual(recorder.renderedValues, [8])
     }
 
     @MainActor
@@ -941,17 +943,17 @@ extension PersistentValueTests {
 
         let rendered = expectation(description: "Rendered marker \(marker)")
 
-        recorder.onRender = { _ in
-            guard recorder.renderedMarker == marker else {
+        recorder.onMarkerRender = { renderedMarker in
+            guard renderedMarker == marker else {
                 return
             }
 
-            recorder.onRender = nil
+            recorder.onMarkerRender = nil
             rendered.fulfill()
         }
 
         await fulfillment(of: [rendered], timeout: 5)
-        recorder.onRender = nil
+        recorder.onMarkerRender = nil
     }
 
     /// Waits until the row renders `value`, failing after a bounded timeout.
@@ -1132,7 +1134,6 @@ private struct ObservedObjectRow: View {
 private final class SwitchingModel: ObservableObject {
     @Published var environmentStore: any PersistentKeyValueStore
     @Published var keyID: String
-    @Published var renderMarker = 0
     @Published var store: (any PersistentKeyValueStore)?
 
     init(
@@ -1146,23 +1147,36 @@ private final class SwitchingModel: ObservableObject {
     }
 }
 
+// MARK: - SwitchingMarkerModel Definition
+
+/// A render marker that only the sibling marker view observes, so changing it does not re-render the row.
+@MainActor
+private final class SwitchingMarkerModel: ObservableObject {
+    @Published var marker = 0
+}
+
 // MARK: - SwitchingRecorder Definition
 
-/// Records the value, render marker, and binding from the row's most recent render.
+/// Records the value and binding from the row's most recent render, and the marker view's most recent marker.
 @MainActor
 private final class SwitchingRecorder {
     var binding: Binding<Int>?
+    var onMarkerRender: ((Int) -> Void)?
     var onRender: ((Int) -> Void)?
     var renderedMarker: Int?
     var renderedValue: Int?
     var renderedValues: [Int] = []
 
-    func record(_ value: Int, marker: Int = 0, binding: Binding<Int>) {
-        renderedMarker = marker
+    func record(_ value: Int, binding: Binding<Int>) {
         renderedValue = value
         renderedValues.append(value)
         self.binding = binding
         onRender?(value)
+    }
+
+    func recordMarker(_ marker: Int) {
+        renderedMarker = marker
+        onMarkerRender?(marker)
     }
 }
 
@@ -1171,11 +1185,29 @@ private final class SwitchingRecorder {
 private struct SwitchingRoot: View {
     @ObservedObject var model: SwitchingModel
 
+    var markerModel = SwitchingMarkerModel()
     let recorder: SwitchingRecorder
 
     var body: some View {
-        SwitchingRow(keyID: model.keyID, store: model.store, marker: model.renderMarker, recorder: recorder)
-            .defaultPersistentKeyValueStore(model.environmentStore)
+        VStack {
+            SwitchingRow(keyID: model.keyID, store: model.store, recorder: recorder)
+            SwitchingMarker(model: markerModel, recorder: recorder)
+        }
+        .defaultPersistentKeyValueStore(model.environmentStore)
+    }
+}
+
+// MARK: - SwitchingMarker Definition
+
+private struct SwitchingMarker: View {
+    @ObservedObject var model: SwitchingMarkerModel
+
+    let recorder: SwitchingRecorder
+
+    var body: some View {
+        recorder.recordMarker(model.marker)
+
+        return Text(String(model.marker))
     }
 }
 
@@ -1184,17 +1216,15 @@ private struct SwitchingRoot: View {
 private struct SwitchingRow: View {
     @PersistentValue<PersistentKey<Int>> var value: Int
 
-    let marker: Int
     let recorder: SwitchingRecorder
 
-    init(keyID: String, store: (any PersistentKeyValueStore)?, marker: Int, recorder: SwitchingRecorder) {
+    init(keyID: String, store: (any PersistentKeyValueStore)?, recorder: SwitchingRecorder) {
         _value = PersistentValue(PersistentKey(keyID, defaultValue: 0), store: store)
-        self.marker = marker
         self.recorder = recorder
     }
 
     var body: some View {
-        recorder.record(value, marker: marker, binding: $value)
+        recorder.record(value, binding: $value)
 
         return Text(String(value))
     }

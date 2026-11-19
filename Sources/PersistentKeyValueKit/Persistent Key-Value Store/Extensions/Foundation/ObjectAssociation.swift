@@ -13,6 +13,8 @@ import ObjectiveC
 /// A stable object address gives Objective-C associations an immutable process-local key without a mutable global, so
 /// each association is a constant instance of this class.
 internal final class ObjectAssociation<Value>: Sendable where Value: AnyObject {
+    private let creationLock = NSLock()
+
     // MARK: Internal Initialization
 
     internal init() {
@@ -49,8 +51,6 @@ internal final class ObjectAssociation<Value>: Sendable where Value: AnyObject {
     }
 
     // MARK: Private Instance Interface
-
-    private let creationLock = NSLock()
 
     private var address: UnsafeRawPointer {
         UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())

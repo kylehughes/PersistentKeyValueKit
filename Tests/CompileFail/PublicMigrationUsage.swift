@@ -53,4 +53,9 @@ let key = PersistentKey("key", defaultValue: 0)
 let old = PersistentKey("old", defaultValue: 0)
 let new = PersistentKey("new", defaultValue: 0)
 _ = try? source.copy(key, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
-_ = try? source.copy(items: [.key(old, to: new)], to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+_ = try? source.copy(
+    items: [.key(old, to: new)],
+    to: destination,
+    onConflict: .overwriteDestination,
+    tracking: .untracked
+)
