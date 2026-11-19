@@ -473,7 +473,9 @@ extension PersistentKeyValueStore {
     /// destination key's representation, and written to the destination key in `destination`. After the write is
     /// verified, or when ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` resolves a conflict, the
     /// source value is removed. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, a conflicting source value is left
-    /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
+    /// in place. When an existing destination value makes a keep policy resolve the conflict, neither value is decoded,
+    /// so ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` removes the source even if it cannot be
+    /// decoded. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither moved nor treated as destination conflicts.
     ///
     /// `destination` can be this store when every item maps its source key to a different key identifier, which
@@ -501,7 +503,9 @@ extension PersistentKeyValueStore {
     /// changes it can observe, including those these releases cause, but code that writes to a migrating store as a
     /// side effect of reading, encoding, or deallocating a value, such as a getter, `deinit`, allocator callback, or
     /// observer, is an uncoordinated writer. Coordinate such writers before migrating, as with other writers;
-    /// otherwise, behavior is unspecified.
+    /// otherwise, behavior is unspecified. On `UserDefaults` and `NSUbiquitousKeyValueStore`, the check of the source
+    /// and its removal are separate calls, so a write between them is removed even when the move reports
+    /// ``PersistentKeyMigrationReport/Status/moved``.
     ///
     /// - Parameter items: The items to move, processed in order.
     /// - Parameter destination: The destination store.

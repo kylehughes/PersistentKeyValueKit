@@ -407,8 +407,9 @@ principles:
   store); and bridging a stored Foundation dictionary to `[String: Value]`
   collapses canonically equivalent `NSString` keys into one Swift key, so
   checked conversion (`Dictionary.decode`) rejects `NSDictionary` instances
-  whose entry count shrinks on bridging (failing at `.decode` and keeping the
-  source entry during migration), whereas an ordinary `Dictionary` read keeps
+  whose entry count shrinks on bridging (failing at `.decode` and, when the
+  conflict policy selects a write, leaving the source entry in place during
+  migration), whereas an ordinary `Dictionary` read keeps
   at most one colliding entry (which one is unspecified) and omits it when its
   value cannot decode, even if another colliding entry could.
 - **Type-aware recursive snapshot verification, mutable in-memory references, and file URLs**:
@@ -487,7 +488,11 @@ principles:
   (including tilde-prefixed and relative paths) decode exactly as
   `UserDefaults.url(forKey:)` reads them, and paths that
   `UserDefaults.url(forKey:)` reads as `nil` (such as an empty string) throw `PersistentKeyValueConversionError.invalidStorageValue`,
-  so a migration fails at `.decode` and keeps the source entry. Because
+  so a migration whose conflict policy selects a write fails at `.decode` and
+  leaves the source entry in place. When an existing destination makes a keep
+  policy resolve the conflict, the source is not decoded, and
+  `.keepDestinationAndRemoveSource` can remove an unreadable source and record
+  completion. Because
   `UserDefaults` stores file URLs as paths (which strips a
   non-existent directory's trailing slash or drops a file URL host),
   `URL.encode(format: .userDefaults)` verifies that decoding the tilde-abbreviated
@@ -504,7 +509,10 @@ principles:
   `get(_:)` returns the declared default while raw `url(forKey:)` returns
   `nil` when no other value is visible), while ordinary `UserDefaults` `set`
   keeps Foundation's lossy path behavior and `[URL]` stores `absoluteString`
-  values in `.propertyList` format. In `InMemoryPersistentKeyValueStore`,
+  values in `.propertyList` format. The `.ubiquitousKeyValueStore` and
+  `.propertyList` formats store `absoluteString` for every URL, so a relative
+  URL with an absolute base reads back as its resolved URL, without its original
+  relative reference or base. In `InMemoryPersistentKeyValueStore`,
   snapshots and prepared writes capture an exact immutable copy for Foundation
   property-list objects (such as `NSMutableArray`, including nested
   `NSDecimalNumber` values, including when wrapped in `Optional`) using
@@ -521,7 +529,9 @@ principles:
   snapshot's revision (which is never reused). A `copy` releases its source
   snapshot without rechecking it, so an edit to a source Foundation collection
   made during the transform is not detected, whereas a `move` rechecks the source
-  before removing it. Other
+  before removing it. On the Foundation stores the recheck and the native
+  removal are separate calls, so a write between them is removed along with the
+  source, and the move can still report `.moved`. Other
   reference types (including references inside Swift values) cannot be copied,
   so snapshots verify them by revision only. Those immutable snapshots (along
   with ordinary write snapshots) are a defense rather than a guarantee of the
@@ -544,11 +554,12 @@ principles:
   `copy` the source snapshot is released before the committed write is rechecked
   for the same result. Removing a move's source key
   notifies synchronous observers and releases the source snapshot, which can
-  modify either store before `move` returns. Both `.overwriteDestination` and
-  `.keepDestinationAndRemoveSource` recheck the destination snapshot after
-  removing the source and verifying its removal (failing at `.cleanup` with
+  modify either store before `move` returns. Every move that removes
+  its source (`.overwriteDestination`, `.keepDestinationAndRemoveSource`, and
+  `.keepBoth` when the destination was initially absent) rechecks the
+  destination snapshot after removing the source and verifying its removal (failing at `.cleanup` with
   `.destinationChanged` and suppressing completion recording if it changed),
-  and then recheck that the source key is still absent (failing at `.cleanup` with
+  and then rechecks that the source key is still absent (failing at `.cleanup` with
   `PersistentKeyMigrationError.removalVerificationFailed` if the source still
   holds a value, such as when restored by a deinitializer or by the destination
   comparison). Under `.keepDestinationAndRemoveSource`, verifying that the
@@ -656,12 +667,13 @@ principles:
   dictionary element inside such an array keeps its readable
   entries, and an external array reader can filter elements. An `Optional` or
   proxy representation delegates to its wrapped reader, so it preserves that
-  reader's filtering, and a checked migration can succeed with fewer elements
-  even though the outer representation is built in. Checked conversion
+  reader's filtering, as does a built-in array or dictionary that nests it (a
+  dictionary of arrays, for example), so a checked migration can succeed with
+  fewer elements even though the outer representation is built in. Checked conversion
   (`decode(storageObject:format:)`, used by migration) is strict for both
   `Array` and `Dictionary` across built-in representations, failing at `.decode`
-  and preserving the source entry instead of silently dropping dictionary
-  entries, while representations defined outside the package run their container
+  and, when the conflict policy selects a write, preserving the source entry
+  instead of silently dropping dictionary entries, while representations defined outside the package run their container
   hooks as written.
 - **Privacy manifest (`PrivacyInfo.xcprivacy`) reasons**: The library ships
   `PrivacyInfo.xcprivacy` declaring `NSPrivacyAccessedAPICategoryUserDefaults`
@@ -732,10 +744,14 @@ principles:
   key, whereas 1.x delivered every change notification from the store to it.
   Manual deregistration removes every registration on the store with the same
   observer, key, and context (a duplicate registration is not deduplicated, so
-  one call removes both), whereas 1.x removed every registration the observer
-  held on that store.
+  one call removes both). Manual iCloud deregistration did nothing in 1.0.0 and
+  removed all of the observer's change registrations on the store in 1.1.0
+  through 1.2.3, so each key and context pair now needs its own call. Native
+  `UserDefaults` key-value observation already matched key and context in 1.x
+  and still requires one removal per registration.
   `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
-  shared references, compacting `nil` only from top-level Swift arrays and `String`-keyed
+  shared references, which are not observed, so an in-place mutation changes later
+  reads without notifying key observers until the value is written back, compacting `nil` only from top-level Swift arrays and `String`-keyed
   dictionaries of optionals, merging canonically equivalent keys, and verifying
   Foundation property-list snapshots by exact copy plus revision while
   verifying other references by revision only).

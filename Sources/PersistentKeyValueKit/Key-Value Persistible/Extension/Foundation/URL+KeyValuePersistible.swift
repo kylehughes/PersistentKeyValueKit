@@ -84,7 +84,8 @@ extension URL: PrimitiveKeyValuePersistible {
     ///
     /// Encodes as `absoluteString` for ``PersistentKeyValueStorageFormat/propertyList`` and
     /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``; a relative URL without a base URL encodes as its
-    /// relative reference. For
+    /// relative reference, and a relative URL with a base URL encodes as its resolved address, so it decodes without
+    /// its original relative reference or base URL. For
     /// ``PersistentKeyValueStorageFormat/userDefaults``, encodes file URLs as tilde-abbreviated paths and non-file
     /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`.
     ///

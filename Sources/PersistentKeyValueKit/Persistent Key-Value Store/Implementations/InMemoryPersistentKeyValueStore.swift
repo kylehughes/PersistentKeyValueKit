@@ -22,7 +22,8 @@ import Foundation
 /// encodes `nil` as removal, as the built-in optional representation does.
 ///
 /// Because the store keeps the Swift value itself rather than an encoded copy, a class-typed value is shared, not
-/// copied: every read returns the same instance that was written, and mutating it changes the stored value. Use
+/// copied: every read returns the same instance that was written, and mutating it changes the stored value without
+/// notifying key observers, which only a write or removal through the store notifies. Use
 /// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
 /// A migration captures an exact copy of a Foundation property-list object that it reads or prepares as a key's value,
 /// such as an `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents, including each
