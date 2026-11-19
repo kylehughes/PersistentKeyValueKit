@@ -708,7 +708,7 @@ final class MigrationNativeFidelityTests: XCTestCase {
     func testUbiquitousOverwriteReplacesFoundationEqualValueOfAnotherType() throws {
         let destination = StrictMigrationUbiquitousStore()
 
-        try assertOverwriteReplacesFoundationEqualValueOfAnotherType(in: destination, rawValue: destination.storedValue)
+        try assertOverwriteReplacesFoundationEqualValueOfAnotherType(in: destination, rawValue: destination.storedValue(for:))
     }
 
     @available(watchOS 9.0, *)
