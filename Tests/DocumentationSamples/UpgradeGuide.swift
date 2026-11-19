@@ -8,7 +8,7 @@ import PersistentKeyValueKit
 
 // MARK: - Stubs
 
-struct LayoutValue {
+nonisolated struct LayoutValue {
     let serializedString: String
 
     init?(parsing string: String) {
@@ -16,11 +16,11 @@ struct LayoutValue {
     }
 }
 
-struct CustomRepresentation {
+nonisolated struct CustomRepresentation {
     typealias Value = LayoutValue
 }
 
-struct CustomPrimitive {
+nonisolated struct CustomPrimitive {
     let rawValue: Int
 
     static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
@@ -60,7 +60,7 @@ struct ForwardingStore {
 
 // MARK: - Samples
 
-extension CustomRepresentation: PersistentKeyValueRepresentation {
+nonisolated extension CustomRepresentation: PersistentKeyValueRepresentation {
     func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
         guard let string = storageObject as? String, let value = Value(parsing: string) else {
             throw PersistentKeyValueConversionError.invalidStorageValue
@@ -73,7 +73,7 @@ extension CustomRepresentation: PersistentKeyValueRepresentation {
     }
 }
 
-extension CustomPrimitive: PrimitiveKeyValuePersistible {
+nonisolated extension CustomPrimitive: PrimitiveKeyValuePersistible {
     static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Self {
         Self(rawValue: try Int.decode(storageObject: storageObject, format: format))
     }

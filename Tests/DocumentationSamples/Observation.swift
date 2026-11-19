@@ -73,6 +73,7 @@ func publishValues() {
 
 func publishChanges() {
     UserDefaults.standard.changesPublisher(for: .username)
+        .receive(on: DispatchQueue.main)
         .sink { username in
             handleChange(username: username)
         }

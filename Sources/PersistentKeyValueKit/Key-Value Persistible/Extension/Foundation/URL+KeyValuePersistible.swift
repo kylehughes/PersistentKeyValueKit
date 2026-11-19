@@ -94,7 +94,8 @@ extension URL: PrimitiveKeyValuePersistible {
     /// including through `Optional` and proxy representations, so migration to `UserDefaults` fails at
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` before any store is modified, and
     /// `UserDefaults.register(_:)` skips such a default value. Ordinary `UserDefaults` writes of such a URL keep
-    /// Foundation's behavior and store the path.
+    /// Foundation's behavior and store the path. Only `absoluteString` is compared, so a relative file URL's original
+    /// reference and `baseURL` can be lost.
     public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
         switch format {
         case .propertyList, .ubiquitousKeyValueStore:

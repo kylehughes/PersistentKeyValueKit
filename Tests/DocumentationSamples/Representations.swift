@@ -14,7 +14,7 @@ extension Date: @retroactive KeyValuePersistible {
     }
 }
 
-enum NotificationFrequency: String {
+nonisolated enum NotificationFrequency: String {
     case daily
     case weekly
     case monthly
@@ -26,7 +26,7 @@ extension NotificationFrequency: KeyValuePersistible {
     }
 }
 
-struct Contact: Codable, Sendable {
+nonisolated struct Contact: Codable, Sendable {
     let nickname: String
     let dateOfBirth: Date
 }

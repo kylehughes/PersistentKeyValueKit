@@ -18,10 +18,10 @@ a requirement. `InMemoryPersistentKeyValueStore` exists for testing and
 convenience.
 
 Representations own conversion between a Swift value and the object stored by a
-backend. Migration must use those existing representations, including proxy
-representations and consumer-provided conversion closures. A migration-specific
-conversion protocol would split that contract and make custom representations
-harder to compose.
+backend. Foundation endpoints use the key's representation, including proxy
+representations and consumer-provided conversion closures. An in-memory endpoint
+bypasses its codecs. A migration-specific conversion protocol would split that
+contract and make custom representations harder to compose.
 
 Migration is uncommon. It must not reshape ordinary reads, writes, observation,
 property wrappers, or store creation for every caller. At the same time,
@@ -413,8 +413,9 @@ principles:
   value cannot decode, even if another colliding entry could.
 - **Type-aware recursive snapshot verification, mutable in-memory references, and file URLs**:
   Core Foundation treats boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)`
-  as equal under `==` and `CFEqual`, even though format-aware representations
-  distinguish booleans, integers, and floating-point widths. Snapshots in
+  as equal under `==` and `CFEqual`, even though a representation can
+  distinguish stored numeric types and widths. Migration verification checks
+  those distinctions according to the destination store's rules. Snapshots in
   `UserDefaultsMigrationBackend` and `UbiquitousKeyValueMigrationBackend` capture
   `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
   number's `CFNumber` type, including integer width and `NSDecimalNumber`), so
@@ -467,8 +468,10 @@ principles:
   so an `.overwriteDestination` move whose destination representation encodes the
   value as `nil` (as the built-in optional representation does for `nil`) removes
   the destination entry, then the source, and still reports `.moved`. An
-  in-memory destination does not call the representation: it stores the Swift
-  value directly, including an explicit optional `nil`.
+  in-memory destination does not call the representation: it preserves an
+  explicit optional `nil` and applies the ordinary setter's shallow compaction
+  to a qualifying array or dictionary of optionals, including one wrapped in an
+  `Optional`.
   `UserDefaultsMigrationBackend`
   removes an existing key before writing when Foundation considers the
   replacement object equal to the snapshot (`CFEqual`) but migration
@@ -603,8 +606,9 @@ principles:
   reference, including `NSNumber`, and fast-pathing identical cached
   non-`NSNumber` object references before calling
   `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths: true)`,
-  which compares integer widths recursively because `UserDefaults` returns
-  in-process writes with their written `CFNumber` width),
+  which compares integer widths recursively across the effective objects that
+  `object(forKey:)` returns, so an argument-domain value of a different width
+  can mask a persisted value in the writing process),
   notifies a registration inserted while a reconciliation was in progress, even
   when the value read equals its comparison value, if the change count advanced
   between the start of its initial read and the start of the first pass that
@@ -636,10 +640,12 @@ principles:
 - **Dictionary-read leniency versus strict migration (and all-or-nothing writes)**:
   Writes for both `Array` and `Dictionary` are all-or-nothing so a single
   unencodable element or entry leaves the existing stored collection unchanged.
-  On ordinary reads, `Array` is all-or-nothing because element positions carry
-  meaning, whereas `Dictionary` keeps readable entries and drops only
-  undecodable ones so a single unknown entry (such as an enum case written by a
-  newer app version) does not blank the whole dictionary. Checked conversion
+  An ordinary built-in array read fails if an element cannot decode, because
+  element positions carry meaning, whereas `Dictionary` keeps readable entries
+  and drops only undecodable ones so a single unknown entry (such as an enum
+  case written by a newer app version) does not blank the whole dictionary. A
+  dictionary element inside such an array keeps its readable
+  entries, and an external array reader can filter elements. Checked conversion
   (`decode(storageObject:format:)`, used by migration) is strict for both
   `Array` and `Dictionary` across built-in representations, failing at `.decode`
   and preserving the source entry instead of silently dropping dictionary

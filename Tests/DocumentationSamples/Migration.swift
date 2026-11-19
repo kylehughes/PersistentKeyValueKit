@@ -5,7 +5,7 @@ import PersistentKeyValueKit
 
 // MARK: - Stubs
 
-enum RuntimeColorScheme: String, KeyValuePersistible {
+nonisolated enum RuntimeColorScheme: String, KeyValuePersistible {
     case dark
     case light
     case system

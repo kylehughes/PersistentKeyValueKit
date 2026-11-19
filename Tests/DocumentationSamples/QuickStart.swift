@@ -15,7 +15,7 @@ func apply(_ runtimeColorScheme: RuntimeColorScheme) {
 
 import PersistentKeyValueKit
 
-enum RuntimeColorScheme: String {
+nonisolated enum RuntimeColorScheme: String {
     case dark
     case light
     case system

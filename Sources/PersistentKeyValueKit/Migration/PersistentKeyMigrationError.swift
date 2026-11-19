@@ -73,7 +73,7 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// The destination store did not retain the expected value after writing.
     case writeVerificationFailed
 
-    /// The source store still contained a value for the key after removal.
+    /// The source store still contained a value for the key after the removal attempt.
     case removalVerificationFailed
 
     /// The existing completion marker in the recording store could not be decoded as a `Bool`.
