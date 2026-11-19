@@ -42,16 +42,26 @@ Store identity, migration, and representation boundaries are deliberate design c
 ```text
 ├── Package.swift
 ├── README.md
+├── Scripts/
 ├── Sources/PersistentKeyValueKit/
 │   ├── Async Sequence/
+│   ├── Combine/
 │   ├── Key-Value Persistible/
+│   ├── Migration/
 │   ├── Persistent Key/
 │   ├── Persistent Key-Value Representation/
 │   ├── Persistent Key-Value Store/
 │   └── Property Wrapper/
-└── Tests/PersistentKeyValueKitTests/
-    ├── Scaffolding/
-    └── Tests/
+├── Tests/
+│   ├── CompileFail/
+│   ├── DocumentationSamples/
+│   ├── PersistentKeyValueKitPublicAPITests/
+│   └── PersistentKeyValueKitTests/
+│       ├── Scaffolding/
+│       └── Tests/
+└── docs/
+    ├── decisions/
+    └── release-notes/
 ```
 
 Source folders are grouped by feature area. Put new code beside the feature it extends. Keep reusable mocks, observable stores, and custom persistible types in `Tests/PersistentKeyValueKitTests/Scaffolding/`.

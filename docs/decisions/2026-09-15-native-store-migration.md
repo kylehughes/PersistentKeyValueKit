@@ -99,43 +99,48 @@ unchanged. Endpoint construction, backend identity, snapshots, and verification
 remain internal. Migration does not intercept a wrapper's ordinary `get` or
 `set` behavior.
 
-`copy` and `move` provide four overloads (for a single key, a single
-`PersistentKeyMigrationItem`, an unlabeled `[any PersistentKeyProtocol]` array,
-and a labeled `items: [PersistentKeyMigrationItem]` array), each requiring
-explicit `onConflict:` and `tracking:` arguments (`PersistentKeyMigrationTracking.untracked`,
-`.once(id:)` recorded in the destination store, or `.once(id:recordedIn:)`).
-A marker depends only on the migration `id` and the recording store, so two
-independent sources that record in the same store (such as one shared App Group
-destination) must use distinct identifiers or recording stores; otherwise the
-second migration reads the first one's marker, returns `.alreadyRecorded` with
-no outcomes, and never transfers its keys. `.once(id:recordedIn: UserDefaults.standard)`
-scopes completion to the local defaults domain of the process's main bundle,
-not to the device as a whole, and that marker survives an Apple Account change,
-which replaces the iCloud data, so a later seed of the new account's store
-returns `.alreadyRecorded` unless the identifier is scoped to the account. Every call validates its setup and claims its
-keys before it reads the marker, so a call whose marker is already `true` can
-still throw (`.overlappingMigration` while another migration holds one of its
-keys); once those steps succeed, the `true` marker returns `.alreadyRecorded`.
-Completion marker keys (`PersistentKey.isMigrationCompleted(id:)`) normalize
-`id` to Unicode Normalization Form C (NFC) before hashing with SHA-256 and
-unpadded base64url encoding under the dotless prefix
-`PersistentKeyValueKit_MigrationCompleted_`, so identifiers of any length fit
-within `NSUbiquitousKeyValueStore`'s 128-UTF-16-code-unit key limit (84 UTF-16
-code units) and can be observed directly by `UserDefaults` key-value
-observation. `PersistentKeyMigrationItem` supports migrating a key unchanged
-(`.key(_:)`), renaming a key of the same value type (`.key(_:to:)`), and
-transforming a value across keys or types (`.key(_:to:transform:)`). Migrating
-within a single store is permitted when every item maps its source key to a
-different destination key in that store; any same-store item whose source and
-destination key identifiers are the same throws `sameStore` during setup before
-any key is read (to change a key's stored representation or value format, move
-it to a new key identifier), duplicate source or destination key identifiers
-throw `duplicateKey(_:)`, and same-store batches where one item's destination
-is another item's source throw `overlappingKeys(_:)`. Setup validates and
-reserves key identifiers, and execution reads each key's `id` again, so the
-validation holds only while a custom key returns the same `id` throughout the
-migration; a key whose `id` changes between those reads can write to or remove
-an entry that setup did not check, and a move can still report `.moved`.
+- `copy` and `move` provide four overloads (for a single key, a single
+  `PersistentKeyMigrationItem`, an unlabeled `[any PersistentKeyProtocol]`
+  array, and a labeled `items: [PersistentKeyMigrationItem]` array), each
+  requiring explicit `onConflict:` and `tracking:` arguments
+  (`PersistentKeyMigrationTracking.untracked`, `.once(id:)` recorded in the
+  destination store, or `.once(id:recordedIn:)`).
+- A marker depends only on the migration `id` and the recording store, so two
+  independent sources that record in the same store (such as one shared App
+  Group destination) must use distinct identifiers or recording stores;
+  otherwise the second migration reads the first one's marker, returns
+  `.alreadyRecorded` with no outcomes, and never transfers its keys.
+  `.once(id:recordedIn: UserDefaults.standard)` scopes completion to the local
+  defaults domain of the process's main bundle, not to the device as a whole,
+  and that marker survives an Apple Account change, which replaces the iCloud
+  data, so a later seed of the new account's store returns `.alreadyRecorded`
+  unless the identifier is scoped to the account. Every call validates its setup
+  and claims its keys before it reads the marker, so a call whose marker is
+  already `true` can still throw (`.overlappingMigration` while another
+  migration holds one of its keys); once those steps succeed, the `true` marker
+  returns `.alreadyRecorded`.
+- Completion marker keys (`PersistentKey.isMigrationCompleted(id:)`) normalize
+  `id` to Unicode Normalization Form C (NFC) before hashing with SHA-256 and
+  unpadded base64url encoding under the dotless prefix
+  `PersistentKeyValueKit_MigrationCompleted_`, so identifiers of any length fit
+  within `NSUbiquitousKeyValueStore`'s 128-UTF-16-code-unit key limit (84 UTF-16
+  code units) and can be observed directly by `UserDefaults` key-value
+  observation.
+- `PersistentKeyMigrationItem` supports migrating a key unchanged (`.key(_:)`),
+  renaming a key of the same value type (`.key(_:to:)`), and transforming a
+  value across keys or types (`.key(_:to:transform:)`). Migrating within a
+  single store is permitted when every item maps its source key to a different
+  destination key in that store; any same-store item whose source and
+  destination key identifiers are the same throws `sameStore` during setup
+  before any key is read (to change a key's stored representation or value
+  format, move it to a new key identifier), duplicate source or destination key
+  identifiers throw `duplicateKey(_:)`, and same-store batches where one item's
+  destination is another item's source throw `overlappingKeys(_:)`. Setup
+  validates and reserves key identifiers, and execution reads each key's `id`
+  again, so the validation holds only while a custom key returns the same `id`
+  throughout the migration; a key whose `id` changes between those reads can
+  write to or remove an entry that setup did not check, and a move can still
+  report `.moved`.
 
 `copy` and `move` return `PersistentKeyMigrationReport` and are not marked
 `@discardableResult`. `PersistentKeyMigrationReport.Completion` and
@@ -176,8 +181,8 @@ The factory puts the one piece of Foundation knowledge at the point where the
 native store is created. Generic code receives the same `UserDefaults` value it
 would have received otherwise. This is a small, migration-only construction
 concession rather than a rule that native stores should be replaced or wrapped.
-The spelling `migratable(suiteName:)` is an ergonomic choice. It does not imply
-that every factory should use that name or that `make` is forbidden.
+The name `migratable(suiteName:)` carries no design constraint: it does not
+imply that every factory should use that name or that `make` is forbidden.
 
 Several tempting shortcuts were rejected:
 
@@ -276,97 +281,102 @@ principles:
   `static var persistentKeyValueRepresentation`, usually returning
   `PrimitivePersistentKeyValueRepresentation()`, because
   `PrimitiveKeyValuePersistible` inherits that requirement from
-  `KeyValuePersistible`. Built-in representations and primitive types keep
-  their specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
+  `KeyValuePersistible`. Built-in representations and primitive types keep their
+  specialized `get` and `set` overrides so `UserDefaults.argumentDomain`
   launch-argument string coercion and direct property-list container casting
-  remain intact. Ordinary collection writes (`propertyListArray(encoding:)`,
-  `propertyListArrays(encoding:)`, `propertyListDictionary(encoding:)`, and
-  `propertyListDictionaries(encoding:)`) route built-in `Optional` and proxy
-  representations through `BuiltInValueOmission`
-  (`builtInOrdinaryPropertyListArray(encoding:)`,
-  `builtInOrdinaryPropertyListDictionary(encoding:)`, and
-  `builtInOrdinaryDictionaryEntryWriter()` on
-  `OptionalPersistentKeyValueRepresentation` and `BuiltInProxyConversion`),
-  which unwraps optionals or converts each value to its proxy once and decides
-  omission from that conversion (converting each dictionary entry through every
-  wrapper layer before the next entry when wrapping another
-  `BuiltInValueOmission` representation, or writing directly with
-  `set(_:to:in:)` otherwise, so the first failing entry stops the write), while
-  encoding any other representation directly with `set(_:to:)` or
-  `set(_:to:in:)`. Converting each value once keeps both failed and all-omitted
-  writes linear even for recursive proxy-over-optional types while keeping
-  writes all-or-nothing. For `Array` and `Dictionary` checked
-  conversion (`Array.decode`/`encode` and `Dictionary.decode`/`encode`; migration
-  uses both, and `UserDefaults.register(_:)` uses encoding), representations defined by the
-  package (`PrimitivePersistentKeyValueRepresentation` for `Array` and
-  `Dictionary`, `OptionalPersistentKeyValueRepresentation`,
-  `ProxyPersistentKeyValueRepresentation`,
-  `RawRepresentablePersistentKeyValueRepresentation`,
-  `LosslessStringConvertiblePersistentKeyValueRepresentation`, and
-  `CodablePersistentKeyValueRepresentation` via `BuiltInContainerConversion`,
-  plus built-in scalar primitives via `BuiltInScalarPrimitive` and
-  `BuiltInScalarConversion`) convert their containers through strict, linear
-  checked paths on any thread without relying on ambient task-local state that
-  can be lost across threads or leak into ordinary store reads inside a codec:
-  when every representation in the conversion chain is built in and converts
-  only built-in primitive types, checked array decoding finishes both storage
-  decoding and proxy conversion for each element (`checkedValues(decoding:converting:)`)
-  before reading the next so it rethrows the first element's error in input
-  order, whereas checked encoding converts proxy layers first
-  (`values.map(checkedProxy(for:))`) and can therefore report a later element's
-  outer proxy error before an earlier element's inner encoding error (such as
-  `EncodingError`). Representations defined outside the package (including
-  custom `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible`
-  conformances and consumer types conforming to
-  `ProxyPersistentKeyValueRepresentationProtocol`), as well as
-  `PrimitivePersistentKeyValueRepresentation` for a `PrimitiveKeyValuePersistible`
-  type defined outside it, have their `get(from:)`, `set(_:to:)`,
-  `get(_:from:)`, and `set(_:to:in:)` container methods called as written,
-  whether overridden or inherited from the protocol default: an external array
-  hook reads the whole array through `get(from:)` first (so even when wrapped
-  in a built-in proxy representation, its `nil` return throws
-  `PersistentKeyValueConversionError.invalidStorageValue` before any outer
-  proxy converts an earlier element), a custom array hook that returns a
-  filtered array drops the omitted elements in migration too, whereas a
-  dictionary entry reader that returns `nil` throws `.invalidStorageValue`, and a consumer type conforming to
-  `ProxyPersistentKeyValueRepresentationProtocol` over a `[String: Value]` proxy
-  with default container methods delegates to `[String: Value]`'s container
-  methods and reads nested dictionaries leniently. Container write hooks receive
-  an empty array (or a dictionary without `dictionaryKey`): array hooks may
-  only assign to or append to that empty array, and only after every element
-  succeeds, leaving it empty on failure, because the package stores a nonempty
-  result as written (this preserves 1.x representations that append to
-  `propertyListArray`), and dictionary hooks write only the
-  entry for `dictionaryKey` without reading, modifying, adding, or removing
-  other entries. On every collection write path (arrays, dictionaries, nested
-  collections, and `Optional` or proxy paths, in both ordinary writes and
-  checked `[T].encode` and `[String: T].encode` across all three formats),
-  custom container hook output is validated against the store property-list
-  allow-list (`storableSnapshot`), accepted mutable containers and mutable
-  string/data leaves are copied recursively (dictionary keys may be shared with the representation, so leave them unmodified after handover,
-  while default write paths pass plain Swift `String`, `Int`, `Double`, `Bool`,
-  `Data`, and `Date` values as-is), and external dictionary hooks undergo a
-  final completed-dictionary validation pass (`isStorableDictionary`) so
-  altering an earlier entry during a later call cannot leave non-storable
-  objects or uncopied mutables. Because an external
-  representation's container methods report failure only by returning `nil`,
-  leaving the array empty for non-empty input, or leaving `dictionaryKey`
-  absent, and re-running conversion to reconstruct an error or check whether
-  every element encoded to `nil` causes exponential work on recursive types,
-  checked conversion throws the generic
-  `PersistentKeyValueConversionError.invalidStorageValue` or `.encodingFailed`
-  directly and ordinary collection writes distinguish omission from failure only
-  through `BuiltInValueOmission` during the single conversion pass.
-  Consequently, for representations defined outside the package, an entry left
-  out by a container write hook counts as a failure: writing a dictionary in
-  which a value's `encode` returns `nil` fails and leaves the store unchanged
-  under the default hooks, as does a non-empty array whose every element
-  encodes to `nil` (the default array hook otherwise omits individual elements
-  that encode to `nil`, so `[2, omitted]` is written as `[2]`; a custom hook can
-  report success for such a value, and
-  checked reads then use the hooks as implemented; package
-  `OptionalPersistentKeyValueRepresentation` and package proxies over omitting
-  representations conform to `BuiltInValueOmission`).
+  remain intact.
+  - Ordinary collection writes (`propertyListArray(encoding:)`,
+    `propertyListArrays(encoding:)`, `propertyListDictionary(encoding:)`, and
+    `propertyListDictionaries(encoding:)`) route built-in `Optional` and proxy
+    representations through `BuiltInValueOmission`
+    (`builtInOrdinaryPropertyListArray(encoding:)`,
+    `builtInOrdinaryPropertyListDictionary(encoding:)`, and
+    `builtInOrdinaryDictionaryEntryWriter()` on
+    `OptionalPersistentKeyValueRepresentation` and `BuiltInProxyConversion`),
+    which unwraps optionals or converts each value to its proxy once and decides
+    omission from that conversion (converting each dictionary entry through
+    every wrapper layer before the next entry when wrapping another
+    `BuiltInValueOmission` representation, or writing directly with
+    `set(_:to:in:)` otherwise, so the first failing entry stops the write),
+    while encoding any other representation directly with `set(_:to:)` or
+    `set(_:to:in:)`. Converting each value once keeps both failed and
+    all-omitted writes linear even for recursive proxy-over-optional types while
+    keeping writes all-or-nothing.
+  - For `Array` and `Dictionary` checked conversion (`Array.decode`/`encode` and
+    `Dictionary.decode`/`encode`; migration uses both, and
+    `UserDefaults.register(_:)` uses encoding), representations defined by the
+    package (`PrimitivePersistentKeyValueRepresentation` for `Array` and
+    `Dictionary`, `OptionalPersistentKeyValueRepresentation`,
+    `ProxyPersistentKeyValueRepresentation`,
+    `RawRepresentablePersistentKeyValueRepresentation`,
+    `LosslessStringConvertiblePersistentKeyValueRepresentation`, and
+    `CodablePersistentKeyValueRepresentation` via `BuiltInContainerConversion`,
+    plus built-in scalar primitives via `BuiltInScalarPrimitive` and
+    `BuiltInScalarConversion`) convert their containers through strict, linear
+    checked paths on any thread without relying on ambient task-local state that
+    can be lost across threads or leak into ordinary store reads inside a codec:
+    when every representation in the conversion chain is built in and converts
+    only built-in primitive types, checked array decoding finishes both storage
+    decoding and proxy conversion for each element
+    (`checkedValues(decoding:converting:)`) before reading the next so it
+    rethrows the first element's error in input order, whereas checked encoding
+    converts proxy layers first (`values.map(checkedProxy(for:))`) and can
+    therefore report a later element's outer proxy error before an earlier
+    element's inner encoding error (such as `EncodingError`).
+  - Representations defined outside the package (including custom
+    `PersistentKeyValueRepresentation` or `PrimitiveKeyValuePersistible`
+    conformances and consumer types conforming to
+    `ProxyPersistentKeyValueRepresentationProtocol`), as well as
+    `PrimitivePersistentKeyValueRepresentation` for a
+    `PrimitiveKeyValuePersistible` type defined outside it, have their
+    `get(from:)`, `set(_:to:)`, `get(_:from:)`, and `set(_:to:in:)` container
+    methods called as written, whether overridden or inherited from the protocol
+    default: an external array hook reads the whole array through `get(from:)`
+    first (so even when wrapped in a built-in proxy representation, its `nil`
+    return throws `PersistentKeyValueConversionError.invalidStorageValue` before
+    any outer proxy converts an earlier element), a custom array hook that
+    returns a filtered array drops the omitted elements in migration too,
+    whereas a dictionary entry reader that returns `nil` throws
+    `.invalidStorageValue`, and a consumer type conforming to
+    `ProxyPersistentKeyValueRepresentationProtocol` over a `[String: Value]`
+    proxy with default container methods delegates to `[String: Value]`'s
+    container methods and reads nested dictionaries leniently.
+  - Container write hooks receive an empty array (or a dictionary without
+    `dictionaryKey`): array hooks may only assign to or append to that empty
+    array, and only after every element succeeds, leaving it empty on failure,
+    because the package stores a nonempty result as written (this preserves 1.x
+    representations that append to `propertyListArray`), and dictionary hooks
+    write only the entry for `dictionaryKey` without reading, modifying, adding,
+    or removing other entries.
+  - On every collection write path (arrays, dictionaries, nested collections,
+    and `Optional` or proxy paths, in both ordinary writes and checked
+    `[T].encode` and `[String: T].encode` across all three formats), custom
+    container hook output is validated against the store property-list
+    allow-list (`storableSnapshot`), accepted mutable containers and mutable
+    string/data leaves are copied recursively (dictionary keys may be shared
+    with the representation, so leave them unmodified after handover, while
+    default write paths pass plain Swift `String`, `Int`, `Double`, `Bool`,
+    `Data`, and `Date` values as-is), and external dictionary hooks undergo a
+    final completed-dictionary validation pass (`isStorableDictionary`) so
+    altering an earlier entry during a later call cannot leave non-storable
+    objects or uncopied mutables.
+  - Because an external representation's container methods report failure only
+    by returning `nil`, leaving the array empty for non-empty input, or leaving
+    `dictionaryKey` absent, and re-running conversion to reconstruct an error or
+    check whether every element encoded to `nil` causes exponential work on
+    recursive types, checked conversion throws the generic
+    `PersistentKeyValueConversionError.invalidStorageValue` or `.encodingFailed`
+    directly and ordinary collection writes distinguish omission from failure
+    only through `BuiltInValueOmission` during the single conversion pass.
+    Consequently, for representations defined outside the package, an entry left
+    out by a container write hook counts as a failure: writing a dictionary in
+    which a value's `encode` returns `nil` fails and leaves the store unchanged
+    under the default hooks, as does a non-empty array whose every element
+    encodes to `nil` (the default array hook otherwise omits individual elements
+    that encode to `nil`, so `[2, omitted]` is written as `[2]`; a custom hook
+    can report success for such a value, and checked reads then use the hooks as
+    implemented; package `OptionalPersistentKeyValueRepresentation` and package
+    proxies over omitting representations conform to `BuiltInValueOmission`).
 - **Storage-location contract (`PersistentKeyProtocol.id`)**: A key's value
   lives under its `id` in every store. Store-specific `PersistentKeyProtocol`
   methods (`get`, `set`, and `remove` on `UserDefaults`,
@@ -399,55 +409,57 @@ principles:
   `UserDefaults` and `NSUbiquitousKeyValueStore` store and look up `NSString`
   keys by literal UTF-16 code units, whereas Swift `String` equality merges
   canonically equivalent spellings (such as NFC and NFD spellings of `"café"`).
-  The package uses literal UTF-16 key identity (`LiteralKeyID`) across Foundation
-  stores: `PersistentKey` and `PersistentDebugKey` `Equatable` and `Hashable`
-  conformances compare and hash identifiers by their original UTF-16 code
-  units (reading original code units via `NSString` for bridged strings because
-  Swift's `String.utf16` reports `U+FFFD` for unpaired surrogates such as one
-  left by `NSString.substring(to:)` truncating an emoji, comparing native
-  strings by UTF-8 bytes, bridged strings with literal `CFStringCompare`, and
-  mixed pairs directly against the Foundation string's UTF-16 buffer when it has
-  one and otherwise by copying bounded chunks into temporary storage), so both canonically equivalent spellings and identifiers differing
-  only in unpaired surrogates remain distinct set members (whereas SwiftUI
-  callers should pass `ForEach(keys, id: \.id.utf8CString)` rather than relying
-  on `Identifiable`, whose `id: String` merges canonically equivalent spellings,
-  noting that UTF-8 still cannot represent unpaired UTF-16 surrogates so
-  identifiers differing only in unpaired surrogates share an ID and `ForEach`
-  does not guarantee distinct rows for them, or `\.self`, because a custom key
-  with synthesized equality compares a stored `String` identifier using Swift
-  string equality, and `PersistentKey` and `PersistentDebugKey` compare
-  identifiers literally and include the default value, so changing that default
-  changes the row's identity under `\.self`),
-  `UserDefaultsMigrationBackend` sends
-  `persistentDomain(forName:)` through Objective-C to keep the unbridged
-  `NSDictionary` and looks up keys as `NSString`,
-  `PropertyListMigrationStorage.equal` compares strings and
-  dictionary keys with `NSString.isEqual` and `NSDictionary.object(forKey:)`,
-  duplicate/overlap/`sameStore` validation in `UserDefaults` and
-  `NSUbiquitousKeyValueStore` uses literal UTF-16 identity,
-  `UserDefaults.register(_:)` builds an `NSMutableDictionary` keyed by
-  `NSString`, launch-argument coercion looks up the literal key in the unbridged
-  `UserDefaults.argumentDomain` dictionary, and Foundation observation
-  deregistration, iCloud changed-key filtering, and `@PersistentValue`
-  key-change detection compare key identifiers by UTF-16 code units. Two
-  exceptions follow from Swift `String` storage: `InMemoryPersistentKeyValueStore`
-  backs its storage with a Swift dictionary and therefore treats canonically
-  equivalent key identifiers as one key in both storage and migration
-  validation, and, because converting a bridged identifier to contiguous Swift
-  UTF-8 repairs unpaired UTF-16 surrogates, also merges identifiers that differ
-  only in such surrogates (a test that needs them distinct needs a Foundation
-  store); and bridging a stored Foundation dictionary to `[String: Value]`
-  collapses `NSString` keys that compare equal as Swift strings (canonically
-  equivalent spellings, and keys that differ only in unpaired UTF-16 surrogates,
-  which Swift repairs) into one Swift key, so
-  checked conversion (`Dictionary.decode`) rejects `NSDictionary` instances
-  whose entry count shrinks on bridging (failing at `.decode` and, when the
-  conflict policy selects a write, leaving the source entry in place during
-  migration), whereas an ordinary `Dictionary` read keeps
-  at most one colliding entry (which one is unspecified) and omits it when its
-  value cannot decode, even if another colliding entry could. Writing that
-  dictionary back replaces the stored one and deletes the other colliding entry
-  even when both values decode.
+  - The package uses literal UTF-16 key identity (`LiteralKeyID`) across
+    Foundation stores: `PersistentKey` and `PersistentDebugKey` `Equatable` and
+    `Hashable` conformances compare and hash identifiers by their original
+    UTF-16 code units (reading original code units via `NSString` for bridged
+    strings because Swift's `String.utf16` reports `U+FFFD` for unpaired
+    surrogates such as one left by `NSString.substring(to:)` truncating an
+    emoji, comparing native strings by UTF-8 bytes, bridged strings with literal
+    `CFStringCompare`, and mixed pairs directly against the Foundation string's
+    UTF-16 buffer when it has one and otherwise by copying bounded chunks into
+    temporary storage), so both canonically equivalent spellings and identifiers
+    differing only in unpaired surrogates remain distinct set members (whereas
+    SwiftUI callers should pass `ForEach(keys, id: \.id.utf8CString)` rather
+    than relying on `Identifiable`, whose `id: String` merges canonically
+    equivalent spellings, noting that UTF-8 still cannot represent unpaired
+    UTF-16 surrogates so identifiers differing only in unpaired surrogates share
+    an ID and `ForEach` does not guarantee distinct rows for them, or `\.self`,
+    because a custom key with synthesized equality compares a stored `String`
+    identifier using Swift string equality, and `PersistentKey` and
+    `PersistentDebugKey` compare identifiers literally and include the default
+    value, so changing that default changes the row's identity under `\.self`),
+    `UserDefaultsMigrationBackend` sends `persistentDomain(forName:)` through
+    Objective-C to keep the unbridged `NSDictionary` and looks up keys as
+    `NSString`, `PropertyListMigrationStorage.equal` compares strings and
+    dictionary keys with `NSString.isEqual` and `NSDictionary.object(forKey:)`,
+    duplicate/overlap/`sameStore` validation in `UserDefaults` and
+    `NSUbiquitousKeyValueStore` uses literal UTF-16 identity,
+    `UserDefaults.register(_:)` builds an `NSMutableDictionary` keyed by
+    `NSString`, launch-argument coercion looks up the literal key in the
+    unbridged `UserDefaults.argumentDomain` dictionary, and Foundation
+    observation deregistration, iCloud changed-key filtering, and
+    `@PersistentValue` key-change detection compare key identifiers by UTF-16
+    code units.
+  - Two exceptions follow from Swift `String` storage:
+    - `InMemoryPersistentKeyValueStore` backs its storage with a Swift
+      dictionary and therefore treats canonically equivalent key identifiers as
+      one key in both storage and migration validation, and, because converting
+      a bridged identifier to contiguous Swift UTF-8 repairs unpaired UTF-16
+      surrogates, also merges identifiers that differ only in such surrogates (a
+      test that needs them distinct needs a Foundation store); and
+    - bridging a stored Foundation dictionary to `[String: Value]` collapses
+      `NSString` keys that compare equal as Swift strings (canonically
+      equivalent spellings, and keys that differ only in unpaired UTF-16
+      surrogates, which Swift repairs) into one Swift key, so checked conversion
+      (`Dictionary.decode`) rejects `NSDictionary` instances whose entry count
+      shrinks on bridging (failing at `.decode` and, when the conflict policy
+      selects a write, leaving the source entry in place during migration),
+      whereas an ordinary `Dictionary` read keeps at most one colliding entry
+      (which one is unspecified) and omits it when its value cannot decode, even
+      if another colliding entry could. Writing that dictionary back replaces
+      the stored one and deletes the other colliding entry even when both values
+      decode.
 - **Type-aware recursive snapshot verification, mutable in-memory references, and file URLs**:
   Core Foundation treats boolean `kCFBooleanTrue` and numeric `NSNumber(value: 1)`
   as equal under `==` and `CFEqual`, even though a representation can

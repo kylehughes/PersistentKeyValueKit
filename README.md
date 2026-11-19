@@ -166,7 +166,9 @@ if let layoutID = NSUbiquitousKeyValueStore.default.get(.selectedLayoutID(forLis
 }
 ```
 
-Read with `store[.launchCount]` and delete a persisted value with `remove(_:)`. After removal, reads return the key's `defaultValue` unless another `UserDefaults` domain, such as launch arguments or registered defaults, supplies a value. Built-in `Bool`, numeric, and `URL` representations accept string `UserDefaults` launch arguments. `NSUbiquitousKeyValueStore` limits key identifiers to 128 UTF-16 code units.
+`store[.launchCount]` is equivalent to `store.get(.launchCount)`. Delete a persisted value with `remove(_:)`. After removal, reads return the key's `defaultValue` unless another `UserDefaults` domain, such as launch arguments or registered defaults, supplies a value.
+
+Built-in `Bool`, numeric, and `URL` representations accept string `UserDefaults` launch arguments. `NSUbiquitousKeyValueStore` limits key identifiers to 128 UTF-16 code units.
 
 <a name="behavior-differences"></a>
 ### No Implicit Defaults
@@ -250,7 +252,7 @@ When listing keys in `ForEach`, use `ForEach(keys, id: \.id.utf8CString)` so ide
 
 ### Observation
 
-`PersistentKeyValues` is an `AsyncSequence` that emits a key's current value when iteration starts, then values read on change notifications. Both the store and the key provide entry points. The example loops run until their tasks are cancelled, so start them in cancellable tasks (on the main actor here to update a UIKit label):
+`PersistentKeyValues` is an `AsyncSequence` that emits a key's current value when iteration starts, then values read on change notifications. Both the store and the key provide entry points: `store.values(for: key)` and `key.values(in: store)`. The example loops run until their tasks are cancelled, so start them in cancellable tasks (on the main actor here to update a UIKit label):
 
 ```swift
 for await username in UserDefaults.standard.values(for: .username) {
@@ -268,7 +270,7 @@ for await username in UserDefaults.standard.changes(for: .username) {
 
 Pending changes default to `.bufferingNewest(1)`, so a slow consumer gets the latest value; pass `bufferingPolicy: .unbounded` to keep every emission. Each emission reads the latest value from the store, so rapid changes can arrive as one value and consecutive values can be equal.
 
-`PersistentKeyValuePublisher` is the Combine equivalent. `publisher(for:)` and `publisher(in:)` start with the current value, while `changesPublisher(for:)` and `changesPublisher(in:)` skip it. Retain each returned `AnyCancellable` while its observation should run. Delivery is serial per subscription and can occur on a background thread, so use `.receive(on: DispatchQueue.main)` before updating UI. In this example, the `@MainActor` view controller has two stored properties, `usernameLabel` and `cancellables` (`Set<AnyCancellable>`):
+`PersistentKeyValuePublisher` is the Combine equivalent. `publisher(for:)` and `publisher(in:)` start with the current value, while `changesPublisher(for:)` and `changesPublisher(in:)` skip it. The `for:` forms are called on the store and take a key; the `in:` forms are called on the key and take a store. Retain each returned `AnyCancellable` while its observation should run. Delivery is serial per subscription and can occur on a background thread, so use `.receive(on: DispatchQueue.main)` before updating UI. In this example, the `@MainActor` view controller has two stored properties, `usernameLabel` and `cancellables` (`Set<AnyCancellable>`):
 
 ```swift
 UserDefaults.standard.publisher(for: .username)
@@ -357,7 +359,7 @@ extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
 }
 ```
 
-To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)` to convert between Swift values and storage objects. Do not mutate an object after returning it from `encode` or writing it with `set`. Ordinary reads and writes stay non-throwing; Foundation migration endpoints use checked conversions, and `UserDefaults` registration uses checked encoding. See `PersistentKeyValueRepresentation` for the full contract, including collection writes.
+To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)` to convert between Swift values and storage objects. Do not mutate an object after returning it from `encode` or writing it with `set`. These two methods throw and are the checked conversion. Ordinary reads and writes stay non-throwing; Foundation migration endpoints use checked conversions, and `UserDefaults` registration uses checked encoding. See `PersistentKeyValueRepresentation` for the full contract, including collection writes.
 
 ### Collections
 
@@ -376,7 +378,7 @@ Collection writes are all or nothing. With built-in element readers, an array re
 
 Use `copy` or `move` to transfer persisted values between stores or to rename and transform keys within one store. Both require `onConflict:` and `tracking:` and return a `PersistentKeyMigrationReport`. Migration is not transactional and does not roll back completed writes. Coordinate other writers in this or any other process before migrating.
 
-Create any named `UserDefaults` suite that takes part in a migration with `UserDefaults.migratable(suiteName:)`. Sharing preferences requires the same App Group on each target (replace `group.example.app` with its identifier), and `NSUbiquitousKeyValueStore` requires the Key-value storage service:
+Create any named `UserDefaults` suite that takes part in a migration with `UserDefaults.migratable(suiteName:)`. `NSUbiquitousKeyValueStore` requires the Key-value storage service. This example moves two keys from standard defaults into an App Group suite; sharing preferences requires the same App Group on each target (replace `group.example.app` with its identifier):
 
 ```swift
 func makeAppGroupDefaults() throws -> UserDefaults? {
@@ -396,9 +398,9 @@ func makeAppGroupDefaults() throws -> UserDefaults? {
 }
 ```
 
-Call this helper only from the target that owns the legacy defaults. A target with nothing to move still attempts to record the shared marker. If it succeeds, the owning target's later call returns `.alreadyRecorded` and skips migration. Other targets can open the suite directly. If another target runs an independent migration that records completion in the shared suite, give that migration its own marker `id`.
+Call this helper only from the target that owns the legacy defaults. A target with nothing to move still attempts to record the shared marker. If that recording succeeds, the owning target's later call returns `.alreadyRecorded` and skips migration even though `throwIfIncomplete()` succeeds. Other targets can open the suite directly.
 
-Pass `PersistentKeyMigrationItem` values when keys change name or value type. Within one store, source identifiers and destination identifiers must each be unique and the two sets must be disjoint, so changing how a key is stored requires moving it to a new key:
+Pass `PersistentKeyMigrationItem` values when keys change name or value type:
 
 ```swift
 let report = try UserDefaults.standard.move(
@@ -418,6 +420,8 @@ let report = try UserDefaults.standard.move(
 )
 try report.throwIfIncomplete()
 ```
+
+Within one store, source identifiers and destination identifiers must each be unique and the two sets must be disjoint, so changing how a key is stored requires moving it to a new key.
 
 The conflict policy decides what happens when the destination already has a value:
 
@@ -448,7 +452,9 @@ if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.e
 try report.throwIfIncomplete()
 ```
 
-With `.once(id:)`, migration attempts to record a completion marker once every item resolves without failure. After setup succeeds, a true marker for that `id` in the selected recording store skips the batch (`.alreadyRecorded`). Give each independent source its own completion marker. Sources that share a recording store need distinct `id` values. A marker in `NSUbiquitousKeyValueStore` syncs across devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as shown above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data arrives. Remove `.isMigrationCompleted(id:)` or choose a new `id` to run a migration again.
+With `.once(id:)`, migration attempts to record a completion marker once every item resolves without failure. After setup succeeds, a true marker for that `id` in the selected recording store skips the batch (`.alreadyRecorded`). Remove the `.isMigrationCompleted(id:)` marker from the recording store or choose a new `id` to run a migration again.
+
+Give each independent source its own completion marker; sources that share a recording store need distinct `id` values. A marker in `NSUbiquitousKeyValueStore` syncs across devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as shown above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data arrives.
 
 ## Contributions
 
