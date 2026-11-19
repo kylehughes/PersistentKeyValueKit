@@ -90,8 +90,9 @@ public struct PersistentValue<Key> where Key: PersistentKeyProtocol {
     /// closure, keeps reading and writing its original key and store. While the observation that existed when the
     /// binding was created is current, a write through the binding invalidates the view directly. After a different key
     /// identifier or store replaces that observation, such a write does not itself update the view, and the view
-    /// updates only when its current store reports a change to its current key. The binding keeps its store alive, but
-    /// not the property's later stores or the view's state.
+    /// updates only when its current store reports a change to its current key. A value-type store replaces the
+    /// observation on every view update, so a binding retained from an earlier update relies on that observation in
+    /// the same way. The binding keeps its store alive, but not the property's later stores or the view's state.
     public var projectedValue: Binding<Key.Value> {
         let observer = observer
         let key = observer.key

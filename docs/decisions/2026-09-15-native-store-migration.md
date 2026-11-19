@@ -110,7 +110,10 @@ destination) must use distinct identifiers or recording stores; otherwise the
 second migration reads the first one's marker, returns `.alreadyRecorded` with
 no outcomes, and never transfers its keys. `.once(id:recordedIn: UserDefaults.standard)`
 scopes completion to the local defaults domain of the process's main bundle,
-not to the device as a whole.
+not to the device as a whole. Every call validates its setup and claims its
+keys before it reads the marker, so a call whose marker is already `true` can
+still throw (`.overlappingMigration` while another migration holds one of its
+keys); once those steps succeed, the `true` marker returns `.alreadyRecorded`.
 Completion marker keys (`PersistentKey.isMigrationCompleted(id:)`) normalize
 `id` to Unicode Normalization Form C (NFC) before hashing with SHA-256 and
 unpadded base64url encoding under the dotless prefix
@@ -519,7 +522,10 @@ principles:
   over `URL`, and that `UserDefaults.register(_:)` skips such defaults (so typed
   `get(_:)` returns the declared default while raw `url(forKey:)` returns
   `nil` when no other value is visible), while ordinary `UserDefaults` `set`
-  keeps Foundation's lossy path behavior and `[URL]` stores `absoluteString`
+  keeps Foundation's lossy path behavior (a file URL with no path, such as
+  `file:`, can remove the existing entry, and `file://localhost` stores an
+  unreadable empty path, after which the typed read returns the declared default
+  unless another domain supplies a value) and `[URL]` stores `absoluteString`
   values in `.propertyList` format. Registration through the checked encoder is a
   compatibility change from 1.x, which registered `absoluteString`: a
   representable file URL now registers as a path and a non-file URL as archive
@@ -676,15 +682,19 @@ principles:
   Writes for both `Array` and `Dictionary` are all-or-nothing so a single
   unencodable element or entry leaves the existing stored collection unchanged.
   An ordinary built-in array read fails if an element cannot decode, because
-  element positions carry meaning, whereas `Dictionary` keeps readable entries
+  element positions carry meaning (the key then returns its default array, the
+  stored array is unchanged, and saving an edit to that default replaces the
+  stored array, including the elements that could decode), whereas `Dictionary` keeps readable entries
   and drops only undecodable ones so a single unknown entry (such as an enum
   case written by a newer app version) does not blank the whole dictionary. A
   dictionary element inside such an array keeps its readable
   entries, and an external array or dictionary-entry reader can filter
   elements or nested entries. An ordinary read leaves the omitted entries in
-  storage, but the native setters replace the whole stored dictionary, so writing
-  the decoded dictionary back deletes them, even when only a different entry
-  changed. An `Optional` or
+  storage, but the native setters replace the whole dictionary in the writable
+  defaults domain, so writing the decoded dictionary back deletes the omitted
+  entries there, even when only a different entry changed. If an added suite
+  supplied the dictionary that was read, the write instead hides that suite's
+  dictionary, which keeps its entries. An `Optional` or
   proxy representation delegates to its wrapped reader, so it preserves that
   reader's filtering, as does a built-in array or dictionary that nests it (a
   dictionary of arrays, for example), so a checked migration can succeed with
@@ -761,10 +771,10 @@ principles:
   notifications without a usable key list refresh every observed key. A manual
   observer's selector receives only notifications for its registered literal
   key, whereas 1.x delivered every change notification from the store to it.
-  A manual `UserDefaults` observer receives every key, including keys observed
-  through `UserDefaults.didChangeNotification`, by
-  `observeValue(forKeyPath:of:change:context:)`; the supplied selector is used
-  only for `NSUbiquitousKeyValueStore` observation.
+  A manual `UserDefaults` observer receives
+  `observeValue(forKeyPath:of:change:context:)` for its registered keys only,
+  including keys observed through `UserDefaults.didChangeNotification`; the
+  supplied selector is used only for `NSUbiquitousKeyValueStore` observation.
   Manual deregistration removes every registration on the store with the same
   observer, key, and context (a duplicate registration is not deduplicated, so
   one call removes both). Manual iCloud deregistration did nothing in 1.0.0 and

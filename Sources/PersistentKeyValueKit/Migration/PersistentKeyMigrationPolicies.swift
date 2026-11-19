@@ -31,9 +31,10 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// Determines whether a migration checks and records a persistent completion marker.
 ///
 /// With ``once(id:)`` or ``once(id:recordedIn:)``, the migration first reads the marker
-/// ``PersistentKeyProtocol/isMigrationCompleted(id:)`` from the recording store. When the marker is `true`, the
-/// migration is skipped without reading or mutating any keys, and the report has no outcomes and
-/// ``PersistentKeyMigrationReport/Completion/alreadyRecorded``. Otherwise the batch runs, and the marker is written
+/// ``PersistentKeyProtocol/isMigrationCompleted(id:)`` from the recording store. Every call first validates its setup
+/// and claims its keys, so it can still throw, as when another migration holds a key. After those steps succeed and
+/// the marker is `true`, the migration is skipped without reading or mutating any keys, and the report has no outcomes
+/// and ``PersistentKeyMigrationReport/Completion/alreadyRecorded``. Otherwise the batch runs, and the marker is written
 /// and verified only if every item resolves without failure (``PersistentKeyMigrationReport/Completion/recorded``).
 /// An empty batch resolves without failure, so it records the marker.
 ///

@@ -139,8 +139,9 @@ public final class PersistentKeyUIObservableObject<Key>: ObservableObject where 
     ///
     /// The latest key is always adopted so reads use its current default value and representation. The observation is
     /// replaced only when the key identifier or the store instance differs, so repeated view updates with the same
-    /// inputs keep the existing registration. Key identifiers are compared literally, as Foundation stores compare
-    /// keys, so a change between canonically equivalent spellings observes the new key.
+    /// key identifier and reference store keep the existing registration. A value-type store has no identity, so each
+    /// view update that supplies one replaces the registration. Key identifiers are compared literally, as Foundation
+    /// stores compare keys, so a change between canonically equivalent spellings observes the new key.
     ///
     /// This does not send `objectWillChange`: SwiftUI calls it while updating the view, which then reads ``value``,
     /// and publishing changes during a view update is not allowed.

@@ -157,7 +157,8 @@ where
     /// Decodes the dictionary at `userDefaultsKey`, returning `nil` if it is absent or is not a dictionary.
     ///
     /// Entries that fail to decode are omitted from the result but stay in storage. Writing the result back replaces
-    /// the whole stored dictionary and deletes them.
+    /// the whole dictionary in the writable domain and deletes the omitted entries there. If an added suite supplied
+    /// the dictionary that was read, the write can hide that suite's dictionary, which keeps its entries.
     @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
         guard let propertyListDictionary = userDefaults.dictionary(forKey: userDefaultsKey) else {

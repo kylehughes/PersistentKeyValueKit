@@ -84,7 +84,8 @@ public protocol PersistentKeyValueStore {
     /// `NSUbiquitousKeyValueStore`.
     ///
     /// If `Self` is `UserDefaults` then `target` is notified directly through
-    /// `observeValue(forKeyPath:of:change:context:)` with the key's identifier as the key path. Key-value observation
+    /// `observeValue(forKeyPath:of:change:context:)` with the key's identifier as the key path, only for the
+    /// registered key. Key-value observation
     /// parses an identifier as a key path, so it is used only for identifiers that it reads as one key. It does not
     /// report a write of a value that Foundation considers equal to the stored value, such as an `Int64` over an equal
     /// `Int32` or `-0.0` over `0.0`, so `target` is not notified of such a write. An identifier that is empty, begins
