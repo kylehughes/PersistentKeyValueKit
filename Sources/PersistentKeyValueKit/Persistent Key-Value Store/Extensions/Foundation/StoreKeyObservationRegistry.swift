@@ -108,6 +108,10 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
         observation.activate()
     }
 
+    /// Removes every matching registration, then invalidates each one outside the lock.
+    ///
+    /// A concurrent call finds no matching registration and can return before the first call has invalidated them, so
+    /// a notification posted in that window can still start a callback.
     internal func remove(_ observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
         let literalKeyID = LiteralKeyID.codeUnits(of: keyID)
 

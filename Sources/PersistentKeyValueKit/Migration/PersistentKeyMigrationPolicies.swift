@@ -1,6 +1,9 @@
 import Foundation
 
 /// Determines how a copy operation handles a key that already has a persisted value in the destination store.
+///
+/// An entry in an ``InMemoryPersistentKeyValueStore`` that holds an explicit `nil` counts as a persisted value. Call
+/// `remove(_:)` on the destination key to make it absent before migrating into it.
 public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
     /// Preserves the existing destination value after verifying that the destination snapshot has not changed, and
     /// leaves the source value unchanged, reporting ``PersistentKeyMigrationReport/Status/keptDestination``.
@@ -12,6 +15,10 @@ public enum PersistentKeyCopyConflictPolicy: Sendable, Equatable {
 }
 
 /// Determines how a move operation handles a key that already has a persisted value in the destination store.
+///
+/// An entry in an ``InMemoryPersistentKeyValueStore`` that holds an explicit `nil` counts as a persisted value, so
+/// ``keepDestinationAndRemoveSource`` discards a persisted source. Call `remove(_:)` on the destination key to make it
+/// absent before migrating into it.
 public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
     /// Preserves both the existing destination value and the source value after verifying that the destination snapshot
     /// has not changed, reporting ``PersistentKeyMigrationReport/Status/keptDestination``.
@@ -57,7 +64,8 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// otherwise distinct, including identifiers that differ only by case.
 ///
 /// This type is not `Sendable` because ``once(id:recordedIn:)`` holds the recording store. Create the tracking value
-/// where the migration runs.
+/// where the migration runs. A prebuilt value cannot be captured by an `@Sendable` closure; capture the identifier
+/// and call ``once(id:)`` inside the closure instead.
 public struct PersistentKeyMigrationTracking {
     /// The prefix of every completion marker key identifier, which source and destination keys cannot use.
     static let completionMarkerPrefix = "PersistentKeyValueKit_MigrationCompleted_"

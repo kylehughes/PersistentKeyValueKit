@@ -533,9 +533,9 @@ principles:
   keeps Foundation's lossy path behavior (a file URL with no path, such as
   `file:`, can remove the existing entry, and `file://localhost` stores an
   unreadable empty path, after which the typed read returns the declared default
-  even when a lower-priority domain, such as a registered default, supplies a
-  valid URL) and `[URL]` stores `absoluteString`
-  values in `.propertyList` format. Registration through the checked encoder is a
+  when the empty path is the effective value, though a valid URL from a
+  higher-priority domain, such as a launch argument, still wins) and `[URL]`
+  stores `absoluteString` values in `.propertyList` format. Registration through the checked encoder is a
   compatibility change from 1.x, which registered `absoluteString`: a
   representable file URL now registers as a path and a non-file URL as archive
   data, so raw `string(forKey:)` on a registered non-file URL default returns

@@ -118,6 +118,11 @@ extension UserDefaults {
     /// equivalent but spelled differently register separately. When two keys have the same identifier, the later one
     /// wins.
     ///
+    /// Every `UserDefaults` instance in the process shares the registration domain, so registering an identifier in
+    /// another suite can replace its fallback everywhere in that process. Typed reads decode a visible registered
+    /// object, so the result can differ from the key's `defaultValue` when encoding loses information, such as an array
+    /// encoding that omits `nil` elements.
+    ///
     /// - Parameter keys: The keys to register.
     public func register(_ keys: [any PersistentKeyProtocol]) {
         // `register(defaults:)` takes a Swift dictionary, which merges canonically equivalent identifiers. Sending the

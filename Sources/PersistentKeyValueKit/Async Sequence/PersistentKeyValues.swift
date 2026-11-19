@@ -22,9 +22,10 @@ import Foundation
 /// }
 /// ```
 ///
-/// By default, the sequence emits the current value immediately upon iteration, followed by subsequent changes. Slow
-/// consumers receive the latest pending change rather than every intermediate value. To observe only changes without
-/// the initial value, pass `emitsInitialValue: false`.
+/// Each iterator starts observing when it is created, not when the sequence is created. By default, it reads the
+/// current value then and emits it first, followed by subsequent changes. Slow consumers receive the latest pending
+/// change rather than every intermediate value. To observe only changes without the initial value, pass
+/// `emitsInitialValue: false`; such an iterator buffers only changes reported after it is created.
 ///
 /// e.g.
 ///
@@ -62,7 +63,7 @@ public struct PersistentKeyValues<Key> where Key: PersistentKeyProtocol {
     /// The buffering policy used for pending changes.
     public let bufferingPolicy: BufferingPolicy
 
-    /// Whether the sequence emits the current value immediately upon iteration.
+    /// Whether each iterator emits the value it reads when it is created.
     public let emitsInitialValue: Bool
 
     /// The key being observed.
@@ -77,7 +78,8 @@ public struct PersistentKeyValues<Key> where Key: PersistentKeyProtocol {
     ///
     /// - Parameter key: The key to observe.
     /// - Parameter store: The ``PersistentKeyValueStore`` to observe the key in.
-    /// - Parameter emitsInitialValue: Whether to emit the current value immediately upon iteration. Defaults to `true`.
+    /// - Parameter emitsInitialValue: Whether each iterator emits the value it reads when it is created. Defaults to
+    ///   `true`.
     /// - Parameter bufferingPolicy: The buffering policy to use for pending changes. Defaults to `.bufferingNewest(1)`.
     @inlinable
     public init(
