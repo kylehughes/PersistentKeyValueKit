@@ -130,9 +130,9 @@ extension UserDefaults {
     ///
     /// With the built-in `URL` representation, a default registers as its checked `.userDefaults` encoding: a
     /// representable file URL as a path and a non-file URL as archive data, while a file URL that is not representable
-    /// is skipped as described above. A custom representation registers its own `.userDefaults` encoding. Earlier
-    /// versions registered `absoluteString`, so raw `string(forKey:)` on a registered non-file URL default now returns
-    /// `nil`; use `url(forKey:)` for raw access.
+    /// is skipped as described above. In 1.x, the built-in representation registered `absoluteString`; when its
+    /// registered non-file URL archive is now the visible value, `string(forKey:)` returns `nil` and `url(forKey:)`
+    /// returns the URL. A custom representation registers its own `.userDefaults` encoding.
     ///
     /// - Parameter keys: The keys to register.
     public func register(_ keys: [any PersistentKeyProtocol]) {

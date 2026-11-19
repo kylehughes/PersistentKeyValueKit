@@ -535,7 +535,9 @@ extension PersistentKeyValueStore {
     /// transform made through a reference to the stored value remain even if it throws. Migrations do not roll back
     /// completed items, and a move that fails during ``PersistentKeyMigrationReport/FailureStage/cleanup`` does not
     /// roll back its destination write (though another writer or observer may have modified or removed the value in
-    /// either store). An empty batch is valid; with completion tracking, it attempts to record the marker.
+    /// either store). An empty batch is valid; with completion tracking, it returns
+    /// ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` if the marker is already `true` and otherwise
+    /// attempts to record the marker.
     ///
     /// The backend verifies the commit. The move then releases its references to the prepared write and to a replaced
     /// destination value and verifies the destination again, and releases its reference to the removed source value
