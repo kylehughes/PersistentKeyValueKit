@@ -5,11 +5,12 @@ import Foundation
 /// Setup errors are thrown before any key is read or modified: ``missingApplicationIdentifier``,
 /// ``missingMigrationDomain``, ``sameStore``, ``duplicateKey(_:)``, ``overlappingKeys(_:)``, ``reservedKey(_:)``,
 /// ``keyIdentifierTooLong(_:)``, ``invalidMigrationIdentifier``, and ``overlappingMigration``.
-/// ``invalidCompletionRecord`` is thrown after reading the completion marker and before any key is read or modified.
-/// Errors thrown by a store's ``PersistentKeyValueStore/migrationEndpoint`` propagate unchanged.
+/// Errors that reading the completion marker throws, including ``invalidCompletionRecord``, are thrown before any
+/// item runs, and errors thrown by a store's ``PersistentKeyValueStore/migrationEndpoint`` propagate unchanged.
 ///
-/// Per-key errors are captured in ``PersistentKeyMigrationReport/Outcome/error`` and completion-marker errors in
-/// ``PersistentKeyMigrationReport/completionError``, so the remaining keys in a batch can still be processed.
+/// Per-key errors are captured in ``PersistentKeyMigrationReport/Outcome/error``, so the remaining keys in a batch can
+/// still be processed. Errors writing or verifying the final completion marker are captured in
+/// ``PersistentKeyMigrationReport/completionError``.
 public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// `UserDefaults.standard` was used in a migration, but `Bundle.main.bundleIdentifier` is missing or empty.
     case missingApplicationIdentifier
@@ -22,7 +23,9 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
     /// key.
     ///
     /// Migrating within one store is allowed when every item maps its source key to a different destination key,
-    /// including items created with ``PersistentKeyMigrationItem/key(_:to:transform:)``. Keys are the same when the
+    /// including items created with ``PersistentKeyMigrationItem/key(_:to:transform:)``, and the batch also satisfies
+    /// the uniqueness and disjointness rules of ``duplicateKey(_:)`` and ``overlappingKeys(_:)``: source identifiers
+    /// are unique, destination identifiers are unique, and the two sets are disjoint. Keys are the same when the
     /// store treats their identifiers as one key: `UserDefaults` and `NSUbiquitousKeyValueStore` compare identifiers by
     /// their UTF-16 code units, while ``InMemoryPersistentKeyValueStore`` treats canonically equivalent identifiers as
     /// one key. To change how a key's value is stored, move it to a new key.

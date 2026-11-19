@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// A protocol for a key-value store that persists data across app launches.
+/// A typed interface for reading, writing, and observing key-value pairs. The backing store determines their lifetime.
 ///
 /// This interface is molded to the two persistent key-value stores provided by Apple platforms: `UserDefaults` and
 /// `NSUbiquitousKeyValueStore`. It takes necessary liberties by being fully aware of these implementations. It is not

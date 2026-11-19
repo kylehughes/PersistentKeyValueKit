@@ -115,9 +115,11 @@ extension UserDefaults {
     /// dictionary.
     ///
     /// Identifiers are compared literally, as `UserDefaults` compares them, so identifiers that are canonically
-    /// equivalent but spelled differently register separately. When two keys have the same identifier, the later one
-    /// wins. A default that encodes to `nil` is removed only from the dictionary being filled, while a default already
-    /// submitted in a separate `UserDefaults.register(_:)` call in the same process remains registered.
+    /// equivalent but spelled differently register separately. When two keys have the same identifier, a later
+    /// successful encoding replaces the earlier entry in the dictionary being filled, and a later encoding that fails
+    /// leaves the earlier entry intact. A default that encodes to `nil` is removed only from the dictionary being
+    /// filled, while a default already submitted in a separate `UserDefaults.register(_:)` call in the same process
+    /// remains registered.
     ///
     /// The registration domain is volatile, so register on every launch in each app or extension process, before raw
     /// `UserDefaults` readers need the fallbacks. Every `UserDefaults` instance in the process shares it, so

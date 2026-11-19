@@ -13,8 +13,9 @@ import Foundation
 /// `UserDefaults` or `NSUbiquitousKeyValueStore`.
 ///
 /// Unlike Foundation stores, `InMemoryPersistentKeyValueStore` stores typed Swift values directly (compacting `nil`
-/// elements out of a top-level Swift array or dictionary of optionals) and records an explicit entry when an optional
-/// key is set to `nil` through the default in-memory setter. Calling ``remove(_:)`` deletes the entry. Migrations read
+/// elements out of a supported Swift array or dictionary of optionals, including one exposed by a box, when the
+/// compacted result still has the set value's type) and records an explicit entry when an optional key is set to
+/// `nil` through the default in-memory setter. Calling ``remove(_:)`` deletes the entry. Migrations read
 /// and write the stored Swift value directly without calling the key's representation `decode` or `encode` for an
 /// in-memory source or destination. When migrating a stored `nil` from an in-memory store to `UserDefaults` or
 /// `NSUbiquitousKeyValueStore` with ``PersistentKeyCopyConflictPolicy/overwriteDestination`` or
@@ -39,11 +40,11 @@ import Foundation
 /// immutable or `Sendable` reference types for values that are read or written from more than one concurrency domain.
 /// A migration captures an exact copy of a Foundation property-list object that it reads or prepares as a key's value,
 /// such as an `NSMutableArray` (including nested `NSDecimalNumber` values), and compares its contents, including each
-/// integer's width, before it overwrites a destination value, removes a move's source, or verifies a write, so an
-/// in-place edit fails the migration at that step instead of the value being replaced or removed. A `copy` does not
-/// recheck its source after reading it. The migration detects other references only when they are replaced, so do not
-/// mutate them while a migration runs. A destination verification failure can leave the new value stored. When a move
-/// removes its source, the store checks the entry's revision under the lock that removes it, so an intervening
+/// integer's width, before it overwrites a destination value or removes a move's source, and again to verify a write.
+/// A change detected before replacement or removal prevents that operation and fails the migration. A post-write
+/// verification failure can leave the replacement stored. A `copy` does not recheck its source after reading it. The
+/// migration detects other references only when they are replaced, so do not mutate them while a migration runs. When
+/// a move removes its source, the store checks the entry's revision under the lock that removes it, so an intervening
 /// replacement fails the item with ``PersistentKeyMigrationError/sourceChanged`` and is preserved.
 ///
 /// - Important: Storage access is protected by a lock so this type satisfies ``PersistentKeyValueStore``'s

@@ -294,7 +294,8 @@ extension PersistentKeyValueStore {
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle an existing persisted value for the item's destination key in `destination`.
     /// - Parameter tracking: Whether to check and record a completion marker for this migration.
-    /// - Returns: A report containing the item's outcome and the completion-tracking status.
+    /// - Returns: A report with the completion status and the item's outcome if the item ran. A report for an
+    ///   already-recorded migration has no outcomes.
     public func copy<Destination>(
         _ item: PersistentKeyMigrationItem,
         to destination: Destination,
@@ -313,7 +314,8 @@ extension PersistentKeyValueStore {
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle an existing persisted value in `destination`.
     /// - Parameter tracking: Whether to check and record a completion marker for this migration.
-    /// - Returns: A report containing the key's outcome and the completion-tracking status.
+    /// - Returns: A report with the completion status and the key's outcome if the key ran. A report for an
+    ///   already-recorded migration has no outcomes.
     public func copy<Key, Destination>(
         _ key: Key,
         to destination: Destination,
@@ -353,22 +355,25 @@ extension PersistentKeyValueStore {
 
     /// Copies persisted values for the given items from this store to another store, in input order.
     ///
-    /// Each item's value is read from its source key in this store, decoded with the source key's
-    /// ``PersistentKeyProtocol/representation``, converted by the item's transform if it has one, encoded with the
-    /// destination key's representation, and written to the destination key in `destination`. The source value is left
-    /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
-    /// added suites, and key default values are neither copied nor treated as destination conflicts. When an existing
+    /// Each item's value is read from its source key in this store, converted by the item's transform if it has one,
+    /// and written to the destination key in `destination`. Foundation sources decode with the source key's
+    /// ``PersistentKeyProtocol/representation``, and Foundation destinations encode and validate with the destination
+    /// key's representation. An in-memory endpoint uses the Swift value directly. The source value is left in place.
+    /// Only values persisted in each store's own domain participate; registered defaults, launch arguments, added
+    /// suites, and key default values are neither copied nor treated as destination conflicts. When an existing
     /// destination value makes ``PersistentKeyCopyConflictPolicy/keepDestination`` keep it, neither value is decoded.
     ///
-    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
-    /// destination entry is removed only when the destination key's top-level encoding is `nil` and the value written
-    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes its
-    /// own `.none` as `nil` and delegates `.some` to its base representation. A value that is not `nil` at an
-    /// `Optional` layer but whose top-level encoding is `nil` fails the item at
+    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a
+    /// successful write leaves the destination entry absent only when the destination key's top-level encoding is `nil`
+    /// and the value written is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional
+    /// representation encodes its own `.none` as `nil` and delegates `.some` to its base representation. A value that
+    /// is not `nil` at an `Optional` layer but whose top-level encoding is `nil` fails the item at
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
     /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
     /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
-    /// does not always remove the entry.
+    /// does not always remove the entry. A type-changing `UserDefaults` replacement, such as `1` over `true`, can
+    /// temporarily remove the old entry before storing the new object, as
+    /// ``PersistentKeyMigrationError/destinationChanged`` describes.
     ///
     /// `destination` can be this store when the items' source identifiers are unique, their destination identifiers are
     /// unique, and the two sets are disjoint.
@@ -377,20 +382,22 @@ extension PersistentKeyValueStore {
     /// within one store, duplicate source or destination key identifiers, a destination that is another item's source
     /// within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an empty
     /// migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by a
-    /// store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    /// store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged,
+    /// and a marker that cannot be decoded as a `Bool` throws ``PersistentKeyMigrationError/invalidCompletionRecord``.
+    /// Errors writing or verifying the final marker are reported in ``PersistentKeyMigrationReport/completionError``.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue,
     /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``.
     /// Completed writes are not rolled back if a later item fails. An empty batch is valid; with completion tracking,
     /// it records the marker.
     ///
-    /// The copy releases its references to the encoded value and to a replaced destination value before verifying the
-    /// write, and to the source value before verifying the write again. Under
-    /// ``PersistentKeyCopyConflictPolicy/keepDestination``, it releases the source value before verifying the kept
-    /// destination value. Verification guards against the changes it can observe, including those these releases
-    /// cause, but code that writes to a migrating store as a side effect of reading, encoding, or deallocating a value,
-    /// such as a getter, `deinit`, allocator callback, or observer, is an uncoordinated writer. Coordinate such writers
-    /// before migrating, as with other writers; otherwise, behavior is unspecified.
+    /// The backend verifies the commit. The copy then releases its references to the prepared write and to a replaced
+    /// destination value and verifies the destination again, and releases its reference to the source value before
+    /// verifying it once more. Under ``PersistentKeyCopyConflictPolicy/keepDestination``, it releases the source value
+    /// before verifying the kept destination value. Verification guards against the changes it can observe, including
+    /// those these releases cause, but code that writes to a migrating store as a side effect of reading, encoding, or
+    /// deallocating a value, such as a getter, `deinit`, allocator callback, or observer, is an uncoordinated writer.
+    /// Coordinate such writers before migrating, as with other writers; otherwise, behavior is unspecified.
     ///
     /// Local completion does not guarantee disk durability or iCloud delivery. A copy into `NSUbiquitousKeyValueStore`
     /// posts `NSUbiquitousKeyValueStore.didChangeInternallyNotification` for each key it writes.
@@ -425,7 +432,8 @@ extension PersistentKeyValueStore {
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle an existing persisted value for the item's destination key in `destination`.
     /// - Parameter tracking: Whether to check and record a completion marker for this migration.
-    /// - Returns: A report containing the item's outcome and the completion-tracking status.
+    /// - Returns: A report with the completion status and the item's outcome if the item ran. A report for an
+    ///   already-recorded migration has no outcomes.
     public func move<Destination>(
         _ item: PersistentKeyMigrationItem,
         to destination: Destination,
@@ -444,7 +452,8 @@ extension PersistentKeyValueStore {
     /// - Parameter destination: The destination store.
     /// - Parameter policy: How to handle an existing persisted value in `destination`.
     /// - Parameter tracking: Whether to check and record a completion marker for this migration.
-    /// - Returns: A report containing the key's outcome and the completion-tracking status.
+    /// - Returns: A report with the completion status and the key's outcome if the key ran. A report for an
+    ///   already-recorded migration has no outcomes.
     public func move<Key, Destination>(
         _ key: Key,
         to destination: Destination,
@@ -484,25 +493,29 @@ extension PersistentKeyValueStore {
 
     /// Moves persisted values for the given items from this store to another store, in input order.
     ///
-    /// Each item's value is read from its source key in this store, decoded with the source key's
-    /// ``PersistentKeyProtocol/representation``, converted by the item's transform if it has one, encoded with the
-    /// destination key's representation, and written to the destination key in `destination`. After the write is
-    /// verified, or when ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` resolves a conflict, the
-    /// source value is removed. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, a conflicting source value is left
-    /// in place. When an existing destination value makes a keep policy resolve the conflict, neither value is decoded,
-    /// so ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` removes the source even if it cannot be
+    /// Each item's value is read from its source key in this store, converted by the item's transform if it has one,
+    /// and written to the destination key in `destination`. Foundation sources decode with the source key's
+    /// ``PersistentKeyProtocol/representation``, and Foundation destinations encode and validate with the destination
+    /// key's representation. An in-memory endpoint uses the Swift value directly. After the write is verified, or when
+    /// ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` resolves a conflict, the source value is
+    /// removed. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, a conflicting source value is left in place. When
+    /// an existing destination value makes a keep policy resolve the conflict, neither value is decoded, so
+    /// ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` removes the source even if it cannot be
     /// decoded. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither moved nor treated as destination conflicts.
     ///
-    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
-    /// destination entry is removed only when the destination key's top-level encoding is `nil` and the value written
-    /// is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional representation encodes its
-    /// own `.none` as `nil` and delegates `.some` to its base representation. A value that is not `nil` at an
-    /// `Optional` layer but whose top-level encoding is `nil` fails the item at
+    /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a
+    /// successful write leaves the destination entry absent only when the destination key's top-level encoding is `nil`
+    /// and the value written is `nil` at an actual `Optional` layer, including `.some(nil)`. The built-in optional
+    /// representation encodes its own `.none` as `nil` and delegates `.some` to its base representation. A value that
+    /// is not `nil` at an `Optional` layer but whose top-level encoding is `nil` fails the item at
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with ``PersistentKeyValueConversionError/encodingFailed``
     /// and writes neither entry, while the other items in the batch proceed independently. A custom optional
     /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
-    /// does not always remove the entry. A move item can fail at a stage after its destination write or source removal.
+    /// does not always remove the entry. A type-changing `UserDefaults` replacement, such as `1` over `true`, can
+    /// temporarily remove the old entry before storing the new object, as
+    /// ``PersistentKeyMigrationError/destinationChanged`` describes. A move item can fail at a stage after its
+    /// destination write or source removal.
     ///
     /// `destination` can be this store when the items' source identifiers are unique, their destination identifiers are
     /// unique, and the two sets are disjoint. A same-store move renames keys within the store.
@@ -511,27 +524,29 @@ extension PersistentKeyValueStore {
     /// within one store, duplicate source or destination key identifiers, a destination that is another item's source
     /// within one store, reserved completion-marker keys, key identifiers that exceed a store's limit, an empty
     /// migration identifier, or an overlapping in-process migration of the same keys or marker. Errors thrown by a
-    /// store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged.
+    /// store's ``PersistentKeyValueStore/migrationEndpoint`` or by reading the completion marker propagate unchanged,
+    /// and a marker that cannot be decoded as a `Bool` throws ``PersistentKeyMigrationError/invalidCompletionRecord``.
+    /// Errors writing or verifying the final marker are reported in ``PersistentKeyMigrationReport/completionError``.
     ///
     /// Per-item failures are recorded in ``PersistentKeyMigrationReport/outcomes`` while the remaining items continue,
-    /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``.
-    /// On a failure before the destination write, including a transform failure, the migration writes to neither
-    /// store. Migrations do not roll back completed items, and a move that fails during
+    /// and the report is not discardable: inspect it or call ``PersistentKeyMigrationReport/throwIfIncomplete()``. A
+    /// failure before an item's destination write, including a transform failure, makes no storage changes for that
+    /// item. Migrations do not roll back completed items, and a move that fails during
     /// ``PersistentKeyMigrationReport/FailureStage/cleanup`` does not roll back its destination write (though another
     /// writer or observer may have modified or removed the value in either store). An empty batch is valid; with
     /// completion tracking, it records the marker.
     ///
-    /// The move releases its references to the encoded value and to a replaced destination value before verifying the
-    /// write, and to the removed source value before verifying the removal. Under
-    /// ``PersistentKeyMoveConflictPolicy/keepBoth``, it releases the source value before verifying the kept
-    /// destination value. After removing the source, the move checks that the destination is unchanged and then that
-    /// the source is still absent, because observers notified of the removal, the removed value's `deinit`, or the
-    /// destination value's code run by that comparison can change either store. Verification guards against the
-    /// changes it can observe, including those these releases cause, but code that writes to a migrating store as a
-    /// side effect of reading, encoding, or deallocating a value, such as a getter, `deinit`, allocator callback, or
-    /// observer, is an uncoordinated writer. Coordinate such writers before migrating, as with other writers;
-    /// otherwise, behavior is unspecified. On `UserDefaults` and `NSUbiquitousKeyValueStore`, the check of the source
-    /// and its removal are separate calls, so a write between them is removed even when the move reports
+    /// The backend verifies the commit. The move then releases its references to the prepared write and to a replaced
+    /// destination value and verifies the destination again, and releases its reference to the removed source value
+    /// before verifying the removal. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, it releases the source value
+    /// before verifying the kept destination value. After removing the source, the move checks that the destination is
+    /// unchanged and then that the source is still absent, because observers notified of the removal, the removed
+    /// value's `deinit`, or the destination value's code run by that comparison can change either store. Verification
+    /// guards against the changes it can observe, including those these releases cause, but code that writes to a
+    /// migrating store as a side effect of reading, encoding, or deallocating a value, such as a getter, `deinit`,
+    /// allocator callback, or observer, is an uncoordinated writer. Coordinate such writers before migrating, as with
+    /// other writers; otherwise, behavior is unspecified. On `UserDefaults` and `NSUbiquitousKeyValueStore`, the check
+    /// of the source and its removal are separate calls, so a write between them is removed even when the move reports
     /// ``PersistentKeyMigrationReport/Status/moved``.
     ///
     /// Local completion does not guarantee disk durability or iCloud delivery, and removing a key from

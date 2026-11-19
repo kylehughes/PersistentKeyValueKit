@@ -174,8 +174,9 @@ extension PersistentKeyMigrationReport {
         /// itself, or that the destination store cannot keep exactly, such as an `NSDecimalNumber` that a
         /// `UserDefaults` or `NSUbiquitousKeyValueStore` store would keep as a `Double`
         /// (``PersistentKeyValueConversionError/encodingFailed``). An integer's width is not part of the value these
-        /// stores keep, so an encoded `Int32` does not fail. As after an ordinary write, the writing process reads it
-        /// back as written, while other processes and later launches can read a 64-bit integer. It also includes a
+        /// stores keep, so an encoded `Int32` does not fail. The writable domain can retain the integer's original
+        /// width in the writing process. Ordinary reads use the effective defaults domain, and a later process or
+        /// launch can read a widened integer. It also includes a
         /// value that is not `nil` at an actual `Optional` layer but whose top-level encoding for the destination key is
         /// `nil`, because writing it would remove the destination entry; the item writes neither entry and the source
         /// value stays in place.

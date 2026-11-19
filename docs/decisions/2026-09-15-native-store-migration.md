@@ -832,17 +832,20 @@ principles:
   `observeValue(forKeyPath:of:change:context:)` for its registered keys only,
   including keys observed through `UserDefaults.didChangeNotification`; the
   supplied selector is used only for `NSUbiquitousKeyValueStore` observation.
-  Manual deregistration removes every registration on the store with the same
-  observer, key, and context (a duplicate registration is not deduplicated, so
-  one call removes both). Manual iCloud deregistration did nothing in 1.0.0 and
-  removed all of the observer's change registrations on the store in 1.1.0
-  through 1.2.3, so each key and context pair now needs its own call. Native
-  `UserDefaults` key-value observation already matched key and context in 1.x
-  and still requires one removal per registration.
+  Notification-backed `UserDefaults` keys and the iCloud and in-memory stores
+  remove every matching registration (same observer, key, and context) in one
+  call, because a duplicate registration is not deduplicated. Native
+  `UserDefaults` key-value observation removes one registration per call, and it
+  already matched key and context in 1.x. Manual iCloud deregistration did
+  nothing in 1.0.0 and removed all of the observer's change registrations on the
+  store in 1.1.0 through 1.2.3, so each key and context pair now needs its own
+  call.
   `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
   shared references, which are not observed, so an in-place mutation changes later
-  reads without notifying key observers until the value is written back, compacting `nil` only from top-level Swift arrays and `String`-keyed
-  dictionaries of optionals, merging canonically equivalent keys, and verifying
+  reads without notifying key observers until the value is written back,
+  compacting `nil` elements from a supported Swift array or `String`-keyed
+  dictionary of optionals, including one exposed by a box, when the compacted
+  result still has the requested type, merging canonically equivalent keys, and verifying
   Foundation property-list snapshots by exact copy plus revision while
   verifying other references by revision only).
 - **NFC reserved prefix for completion markers**: Migration setup rejects any

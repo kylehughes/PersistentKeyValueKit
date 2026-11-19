@@ -383,7 +383,7 @@ The conflict policy decides what happens when the destination already has a valu
 | Move | `.overwriteDestination` | Replace destination, then remove source (`.moved`). |
 | Move | `.keepDestinationAndRemoveSource` | Keep destination and remove source (`.discardedSource`). |
 
-Migration reads and writes only values persisted in each store's own domain, so registered defaults, launch arguments, and a key's `defaultValue` are ignored. For a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the destination entry is removed only for a value that is `nil` at an actual `Optional` layer and encodes to `nil`. Any other value that encodes to `nil` fails that item at `.prepare`, writing neither entry. Setup problems throw before any item runs, while a failure in one item goes into `report.outcomes` and the remaining items continue. `try report.throwIfIncomplete()` throws if any item or completion marker failed.
+Migration reads and writes only values persisted in each store's own domain, so registered defaults, launch arguments, and a key's `defaultValue` are ignored. For a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a successful write leaves the destination entry absent only for a value that is `nil` at an actual `Optional` layer and encodes to `nil`. Any other value that encodes to `nil` fails that item at `.prepare`, writing neither entry. A type-changing `UserDefaults` replacement can temporarily remove the old entry before storing the new object. Setup problems throw before any item runs, while a failure in one item goes into `report.outcomes` and the remaining items continue. `try report.throwIfIncomplete()` throws if any item or completion marker failed.
 
 ```swift
 let report = try UserDefaults.standard.copy(
@@ -400,7 +400,7 @@ if let outcome = report.outcome(for: .runtimeColorScheme), let error = outcome.e
 try report.throwIfIncomplete()
 ```
 
-With `.once(id:)`, the migration records a completion marker once every item resolves without failure, and later calls with the same `id` skip the whole batch (`.alreadyRecorded`). The marker depends only on its `id` and recording store, so give each independent source its own. A marker in `NSUbiquitousKeyValueStore` syncs to other devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data has arrived. Remove `.isMigrationCompleted(id:)` or choose a new `id` to run a migration again.
+With `.once(id:)`, the migration records a completion marker once every item resolves without failure. After setup succeeds, a true marker for that `id` in the selected recording store skips the whole batch (`.alreadyRecorded`). The marker depends only on its `id` and recording store, so give each independent source its own. A marker in `NSUbiquitousKeyValueStore` syncs to other devices, so record local-to-iCloud migrations in local defaults with `recordedIn:`, as above. Migration does not wait for iCloud's initial sync, so seed or migrate from iCloud only after the current account's data has arrived. Remove `.isMigrationCompleted(id:)` or choose a new `id` to run a migration again.
 
 ### `UserDefaults` Registration
 

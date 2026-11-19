@@ -65,9 +65,10 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
 
     /// Whether this key participates in migration operations.
     ///
-    /// When `false`, an item that uses the key reports ``PersistentKeyMigrationReport/Status/keyDisabled`` and skips
-    /// its value reads and writes. Setup validation and completion-marker checks still run. The default implementation
-    /// returns `true`.
+    /// If the batch runs, an item with a disabled source or destination key reports
+    /// ``PersistentKeyMigrationReport/Status/keyDisabled`` and skips its value reads and writes. Setup validation and
+    /// completion-marker checks still run, so a recorded marker can skip the batch before the item is considered. The
+    /// default implementation returns `true`.
     var isMigrationEnabled: Bool { get }
     
     /// The representation of the key-value pair in the ``PersistentKeyValueStore``.

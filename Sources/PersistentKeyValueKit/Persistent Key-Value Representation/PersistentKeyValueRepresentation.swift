@@ -50,15 +50,15 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     ///
     /// The default Foundation setters remove the entry when this method returns `nil`; a custom setter can do
     /// otherwise. Collections apply their own rules. The default container methods omit such a value from a
-    /// property-list collection, so an array can omit an element and still succeed, but an omission that leaves a
-    /// dictionary entry absent or a nonempty array empty fails the write; see ``set(_:to:in:)-91w4n`` and
-    /// ``set(_:to:)``. Callers such as migration write validation may invoke conversion more than once for the same
-    /// value; do not rely on a specific invocation count. Do not mutate the returned object, or any object it contains,
-    /// after returning it.
+    /// property-list collection, so a built-in optional writer can omit every value and succeed. An external writer
+    /// signals failure by leaving a nonempty input array empty or a required dictionary entry absent; see
+    /// ``set(_:to:in:)-91w4n`` and ``set(_:to:)``. Callers such as migration write validation may invoke conversion
+    /// more than once for the same value; do not rely on a specific invocation count. Do not mutate the returned
+    /// object, or any object it contains, after returning it.
     ///
-    /// Migration to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes the destination entry only
-    /// when this method returns `nil` for the key's top-level value and that value is `nil` at an actual `Optional`
-    /// layer. If it returns `nil` for any other top-level value, the item fails at
+    /// After a successful migration write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
+    /// destination entry is absent only when this method returns `nil` for the key's top-level value and that value is
+    /// `nil` at an actual `Optional` layer. If it returns `nil` for any other top-level value, the item fails at
     /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with
     /// ``PersistentKeyValueConversionError/encodingFailed``, writes neither entry, and the other items in the batch
     /// proceed independently. This does not cover a `nil` element inside a collection, such as a custom element
@@ -75,11 +75,11 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Decodes the elements of `propertyListArray` as ``Value``.
     ///
     /// Array reads decode a stored array with this method, so it must accept the arrays that ``set(_:to:)`` writes.
-    /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for
-    /// representations defined outside this package, so an implementation that omits elements it cannot decode omits
-    /// them from migrated values too, including when an optional, proxy, or nested collection representation reaches
-    /// it. Checked migration can therefore succeed with fewer elements, and remove the source of a move, when this
-    /// method filters unreadable elements.
+    /// Checked collection decoding, which migration uses, also calls this method for representations defined outside
+    /// this package, so an implementation that omits elements it cannot decode omits them from migrated values too,
+    /// including when an optional, proxy, or nested collection representation reaches it. Checked migration can
+    /// therefore succeed with fewer elements, and remove the source of a move, when this method filters unreadable
+    /// elements. Default registration uses checked encoding, which does not call it.
     ///
     /// - Parameter propertyListArray: The array to decode values from.
     /// - Returns: The decoded values, or `nil` if any element cannot be decoded as ``Value``.
@@ -107,9 +107,9 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     ///
     /// Dictionary reads decode a stored entry with this method, so it must accept the objects that
     /// ``set(_:to:in:)-91w4n`` writes. Ordinary dictionary reads omit an entry for which this method returns `nil`.
-    /// Checked conversion, which migration and `UserDefaults.register(_:)` use, also calls this method for
-    /// representations defined outside this package and fails instead: checked dictionary decoding throws when this
-    /// method returns `nil`, but accepts a value from which it has already omitted nested entries.
+    /// Checked collection decoding, which migration uses, also calls this method for representations defined outside
+    /// this package and fails instead: checked dictionary decoding throws when this method returns `nil`, but accepts
+    /// a value from which it has already omitted nested entries.
     ///
     /// - Parameter dictionaryKey: The key to look up.
     /// - Parameter propertyListDictionary: The dictionary to read from.
