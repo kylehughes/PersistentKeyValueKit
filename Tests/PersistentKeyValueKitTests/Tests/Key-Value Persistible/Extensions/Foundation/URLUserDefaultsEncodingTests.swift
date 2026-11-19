@@ -178,8 +178,15 @@ extension URLUserDefaultsEncodingTests {
         let file = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("file", isDirectory: false)
         let directory = FileManager.default.temporaryDirectory
 
-        XCTAssertEqual(try representation.encode(file, format: .userDefaults) as? String, file.path)
-        XCTAssertEqual(try representation.encode(directory, format: .userDefaults) as? String, directory.path)
+        // Simulator temporary directories sit under the home directory, so the stored path can be tilde-abbreviated.
+        XCTAssertEqual(
+            try representation.encode(file, format: .userDefaults) as? String,
+            (file.path as NSString).abbreviatingWithTildeInPath
+        )
+        XCTAssertEqual(
+            try representation.encode(directory, format: .userDefaults) as? String,
+            (directory.path as NSString).abbreviatingWithTildeInPath
+        )
     }
 
     func test_encode_propertyListAndUbiquitous_lossyFileURL_returnsAbsoluteString() throws {
