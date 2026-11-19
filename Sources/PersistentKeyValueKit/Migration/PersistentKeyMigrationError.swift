@@ -42,6 +42,9 @@ public enum PersistentKeyMigrationError: Error, Equatable, Sendable {
 
     /// A source or destination key in the batch uses the given identifier, which is reserved for migration completion
     /// markers (`PersistentKeyValueKit_MigrationCompleted_*`).
+    ///
+    /// An identifier is reserved when its UTF-16 code units in Unicode Normalization Form C begin with the prefix, so
+    /// the prefix followed by a combining mark, or spelled with a canonically equivalent character, is also reserved.
     case reservedKey(String)
 
     /// The given key identifier exceeds the key length limit of the store that would hold it.

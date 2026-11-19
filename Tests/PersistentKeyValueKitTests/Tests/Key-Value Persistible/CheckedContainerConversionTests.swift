@@ -277,6 +277,23 @@ extension CheckedContainerConversionTests {
         }
     }
 
+    func test_checkedDecode_proxyOfClientPrimitive_readsWholeArrayBeforeConverting() throws {
+        let representation = [ClientPrimitiveColor].persistentKeyValueRepresentation
+
+        XCTAssertEqual(
+            try representation.decode(storageObject: ["red", "red"], format: .propertyList),
+            [ClientPrimitiveColor(), ClientPrimitiveColor()]
+        )
+        XCTAssertThrowsError(try representation.decode(storageObject: ["blue"], format: .propertyList)) {
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .invalidValue)
+        }
+
+        // The client primitive's array reader rejects the second element before the proxy converts the first.
+        XCTAssertThrowsError(try representation.decode(storageObject: ["blue", 123], format: .propertyList)) {
+            XCTAssertEqual($0 as? PersistentKeyValueConversionError, .invalidStorageValue)
+        }
+    }
+
     func test_move_codableArrayWithMalformedElements_reportsFirstElementError() throws {
         let key = PersistentKey("key:\(#function)", defaultValue: [CodedPayload]())
         let destination = InMemoryPersistentKeyValueStore()
@@ -768,6 +785,40 @@ private indirect enum RecursiveMapNode: KeyValuePersistible {
                 throw PersistentKeyValueConversionError.invalidValue
             }
         }
+    }
+}
+
+// MARK: - Client Primitive Definitions
+
+/// A primitive type defined outside this package that implements only scalar conversion, so arrays of it use the
+/// default ``PrimitiveKeyValuePersistible`` array reader.
+private struct ClientPrimitiveText: PrimitiveKeyValuePersistible {
+    let text: String
+
+    static var persistentKeyValueRepresentation: PrimitivePersistentKeyValueRepresentation<Self> {
+        PrimitivePersistentKeyValueRepresentation()
+    }
+
+    static func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Self {
+        guard let text = storageObject as? String else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return Self(text: text)
+    }
+
+    func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
+        text
+    }
+}
+
+/// A value persisted through a closure proxy whose proxy is a ``ClientPrimitiveText`` that must be `"red"`.
+private struct ClientPrimitiveColor: Equatable, KeyValuePersistible {
+    static var persistentKeyValueRepresentation: ProxyPersistentKeyValueRepresentation<Self, ClientPrimitiveText> {
+        ProxyPersistentKeyValueRepresentation(
+            to: { _ in ClientPrimitiveText(text: "red") },
+            from: { $0.text == "red" ? ClientPrimitiveColor() : nil }
+        )
     }
 }
 

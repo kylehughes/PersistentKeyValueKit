@@ -502,8 +502,10 @@ extension PersistentKeyValueRepresentation {
     ///
     /// A built-in representation decodes each element with its own checked conversion, so a nested dictionary fails
     /// instead of omitting an entry, and rethrows the first error in input order when every representation in its
-    /// conversion chain is built in. Any other representation is decoded with ``get(from:)`` exactly as it implements
-    /// it, and a `nil` result throws ``PersistentKeyValueConversionError/invalidStorageValue``.
+    /// conversion chain is built in and converts only built-in primitive types. Any other representation, including
+    /// ``PrimitivePersistentKeyValueRepresentation`` for a primitive type defined outside this package, is decoded with
+    /// ``get(from:)`` exactly as it implements it, and a `nil` result throws
+    /// ``PersistentKeyValueConversionError/invalidStorageValue``.
     internal func checkedValues(decoding propertyListArray: [Any]) throws -> [Value] {
         if let builtIn = self as? any BuiltInContainerConversion {
             return try builtInValues(decoding: propertyListArray, with: builtIn)
@@ -515,12 +517,13 @@ extension PersistentKeyValueRepresentation {
     /// Returns the values stored in `propertyListArray`, each converted with `convert`, throwing if any element cannot
     /// be decoded or converted.
     ///
-    /// When every representation in the conversion chain is built in, including a built-in scalar such as `Int`, each
-    /// element is decoded and converted before the next is read, so the first error in input order is rethrown even
-    /// when it comes from `convert`, such as a proxy representation's conversion of its decoded proxy. Any other
-    /// representation, including one that a built-in proxy representation wraps, is decoded with ``get(from:)``
-    /// exactly as it implements it, so a `nil` result throws ``PersistentKeyValueConversionError/invalidStorageValue``
-    /// before any value is converted.
+    /// When every representation in the conversion chain is built in and converts only built-in primitive types, such
+    /// as `Int`, each element is decoded and converted before the next is read, so the first error in input order is
+    /// rethrown even when it comes from `convert`, such as a proxy representation's conversion of its decoded proxy.
+    /// Any other representation, including one that a built-in proxy representation wraps and
+    /// ``PrimitivePersistentKeyValueRepresentation`` for a primitive type defined outside this package, is decoded with
+    /// ``get(from:)`` exactly as it implements it, so a `nil` result throws
+    /// ``PersistentKeyValueConversionError/invalidStorageValue`` before any value is converted.
     internal func checkedValues<Element>(
         decoding propertyListArray: [Any],
         converting convert: (Value) throws -> Element
@@ -730,8 +733,9 @@ extension PersistentKeyValueRepresentation {
 /// representation therefore converts its elements through checked conversion directly, recursing into the checked
 /// conversion of its base or proxy representation. Checked decoding converts an array one element at a time, so a
 /// conversion chain of these representations reports the first error in input order. A chain that reaches a
-/// representation defined outside this package does not: that representation reads the whole array first, so its
-/// error is reported before an outer proxy representation converts an earlier element. Checked encoding makes no
+/// representation defined outside this package, or ``PrimitivePersistentKeyValueRepresentation`` for a primitive type
+/// defined outside it, does not: that representation reads the whole array first, so its error is reported before an
+/// outer proxy representation converts an earlier element. Checked encoding makes no
 /// input-order promise: a proxy representation converts every value to its proxy before encoding any, so a later
 /// value's failed conversion can be reported instead of an earlier value's encoding error. A representation defined
 /// outside this package does not conform, so checked conversion calls its container methods exactly as it implements
@@ -746,7 +750,8 @@ internal protocol BuiltInContainerConversion: PersistentKeyValueRepresentation {
     /// Returns the values stored in `propertyListArray`, each converted with `convert`, throwing the first error.
     ///
     /// Each element is decoded and passed to `convert` before the next element is read, unless the conversion chain
-    /// reaches a representation defined outside this package, which reads the whole array first.
+    /// reaches a representation defined outside this package or ``PrimitivePersistentKeyValueRepresentation`` for a
+    /// primitive type defined outside it, which reads the whole array first.
     func builtInValues<Element>(
         decoding propertyListArray: [Any],
         converting convert: (Value) throws -> Element

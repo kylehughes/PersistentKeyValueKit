@@ -327,6 +327,58 @@ final class MigrationSetupValidationTests: XCTestCase {
         )
     }
 
+    @available(watchOS 9.0, *)
+    func testReservedPrefixSpellingsAreRejectedBeforeMutationInEveryStore() throws {
+        let prefix = "PersistentKeyValueKit_MigrationCompleted_"
+        let sourceSuiteName = stableSuiteName("MigrationSetupValidationTests.ReservedPrefix.Source")
+        let destinationSuiteName = stableSuiteName("MigrationSetupValidationTests.ReservedPrefix.Destination")
+        let defaultsSource = try XCTUnwrap(UserDefaults.migratable(suiteName: sourceSuiteName))
+        let defaultsDestination = try XCTUnwrap(UserDefaults.migratable(suiteName: destinationSuiteName))
+        let ubiquitousSource = UbiquitousKeyValueMigrationBackend(
+            store: StrictMigrationUbiquitousStore(),
+            identity: .init(namespace: "reserved", identifier: "source")
+        )
+        let ubiquitousDestination = UbiquitousKeyValueMigrationBackend(
+            store: StrictMigrationUbiquitousStore(),
+            identity: .init(namespace: "reserved", identifier: "destination")
+        )
+
+        addTeardownBlock {
+            for name in [sourceSuiteName, destinationSuiteName] {
+                UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+            }
+        }
+
+        // A combining mark or variation selector joins the prefix's final `_` into one character, and KELVIN SIGN is
+        // canonically equivalent to `K`.
+        for reservedID in [
+            prefix + "v1",
+            prefix + "\u{301}v1",
+            prefix + "\u{FE0F}v1",
+            prefix.replacingOccurrences(of: "K", with: "\u{212A}") + "v1",
+        ] {
+            assertReservedKeyIsRejected(reservedID, from: defaultsSource, to: defaultsDestination)
+            assertReservedKeyIsRejected(
+                reservedID,
+                from: InMemoryPersistentKeyValueStore(),
+                to: InMemoryPersistentKeyValueStore()
+            )
+            assertReservedKeyIsRejected(reservedID, from: ubiquitousSource, to: ubiquitousDestination)
+        }
+
+        // A combining mark before the final `_` leaves the identifier outside the reserved namespace.
+        let source = InMemoryPersistentKeyValueStore()
+        let destination = InMemoryPersistentKeyValueStore()
+        let unreserved = PersistentKey("PersistentKeyValueKit_MigrationCompleted\u{301}_v1", defaultValue: 0)
+
+        source.set(unreserved, to: 1)
+
+        let report = try source.move(unreserved, to: destination, onConflict: .overwriteDestination, tracking: .untracked)
+
+        XCTAssertEqual(report.outcomes.map(\.status), [.moved])
+        XCTAssertEqual(destination.get(unreserved), 1)
+    }
+
     func testSameStoreIsRejectedWhenAnyItemMapsAKeyToItself() throws {
         let store = MigrationFaultStore()
         let a = key(#function, "a")
@@ -351,6 +403,45 @@ final class MigrationSetupValidationTests: XCTestCase {
     }
 
     // MARK: Private Instance Interface
+
+    private func assertReservedKeyIsRejected<Source, Destination>(
+        _ reservedID: String,
+        from source: Source,
+        to destination: Destination,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) where Source: PersistentKeyValueStore, Destination: PersistentKeyValueStore {
+        let marker = PersistentKey<Bool>.isMigrationCompleted(id: "reserved-prefix")
+        let ordinary = PersistentKey("reserved-prefix.ordinary", defaultValue: 0)
+        let reserved = PersistentKey(reservedID, defaultValue: 0)
+
+        for reservedIsSource in [true, false] {
+            let input = reservedIsSource ? reserved : ordinary
+            let output = reservedIsSource ? ordinary : reserved
+
+            source.set(input, to: 19)
+            destination.set(output, to: 27)
+
+            XCTAssertThrowsError(
+                try source.move(
+                    .key(input, to: output),
+                    to: destination,
+                    onConflict: .overwriteDestination,
+                    tracking: .once(id: "reserved-prefix")
+                ),
+                file: file,
+                line: line
+            ) {
+                XCTAssertEqual($0 as? PersistentKeyMigrationError, .reservedKey(reservedID), file: file, line: line)
+            }
+            XCTAssertEqual(source.get(input), 19, file: file, line: line)
+            XCTAssertEqual(destination.get(output), 27, file: file, line: line)
+            XCTAssertFalse(destination.get(marker), file: file, line: line)
+
+            source.remove(input)
+            destination.remove(output)
+        }
+    }
 
     private func assertSetupError(
         _ expected: PersistentKeyMigrationError,

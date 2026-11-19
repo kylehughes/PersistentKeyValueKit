@@ -573,14 +573,19 @@ extension PersistentKeyValueMigrationBackend {
             throw PersistentKeyMigrationError.sameStore
         }
 
-        let markerPrefix = PersistentKeyMigrationTracking.completionMarkerPrefix
+        // `hasPrefix` compares characters, so a combining mark that joins the prefix's final `_` would hide the prefix.
+        // Comparing code units of the NFC form also rejects canonically equivalent spellings of the prefix, such as one
+        // with KELVIN SIGN for `K`, which the in-memory store treats as a marker's key.
+        let markerPrefix = PersistentKeyMigrationTracking.completionMarkerPrefix.utf16
         var sourceIDs = Set<PersistentKeyMigrationKeyIdentity>()
         var destinationIDs = Set<PersistentKeyMigrationKeyIdentity>()
         for mapping in mappings {
             let sourceID = mapping.sourceKeyID
             let destinationID = mapping.destinationKeyID
-            for id in [sourceID, destinationID] where id.hasPrefix(markerPrefix) {
-                throw PersistentKeyMigrationError.reservedKey(id)
+            for id in [sourceID, destinationID] {
+                guard !id.precomposedStringWithCanonicalMapping.utf16.starts(with: markerPrefix) else {
+                    throw PersistentKeyMigrationError.reservedKey(id)
+                }
             }
 
             guard sourceIDs.insert(migrationKeyIdentity(sourceID)).inserted else {
