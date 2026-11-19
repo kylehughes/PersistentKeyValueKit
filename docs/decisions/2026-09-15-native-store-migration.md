@@ -479,8 +479,9 @@ principles:
   property-list types, or `0.0` and `-0.0`), so `UserDefaults` does not ignore
   the write, rechecking that the key is still
   absent after removal and failing at `.write` with
-  `PersistentKeyMigrationError.destinationChanged` if an observer wrote during
-  removal. For `.userDefaults`, `URL.decode(storageObject:format: .userDefaults)`
+  `PersistentKeyMigrationError.destinationChanged` if an observer left a value
+  there during removal. A write that an observer undoes before that check goes
+  undetected. For `.userDefaults`, `URL.decode(storageObject:format: .userDefaults)`
   reads stored path strings through `NSURL.fileURL(withPath:)` after tilde
   expansion (`(path as NSString).expandingTildeInPath`) so stored paths
   (including tilde-prefixed and relative paths) decode exactly as
@@ -709,14 +710,18 @@ principles:
   bit width across processes or launches, so a later process or launch can read
   a widened integer (the writing process usually reads back what it wrote, but
   not when another domain, such as an argument-domain value, supplies the
-  effective object), whereas in-memory objects and in-process notification reads
-  remain unserialized `CFNumber` objects whose width a representation can
-  observe via `objCType`. Foundation migration can therefore move an integer
+  effective object), whereas in-memory objects remain unserialized `CFNumber`
+  objects whose width a representation can observe via `objCType`. Foundation migration can therefore move an integer
   that serialization widened (a four-byte integer can become eight bytes) and
   report success, so a decoder of persisted values must accept widened
-  integers. The notification fallback compares the widths of the
-  effective objects it reads, and `NSUbiquitousKeyValueStore` notification
-  observers filter by key without comparing widths.
+  integers. The notification fallback compares the widths of the effective
+  integers returned by `object(forKey:)`, which may already have widened during
+  persistence. `NSUbiquitousKeyValueStore` notification observers filter by
+  changed key without comparing widths, except that account changes and
+  notifications without a key list refresh every observed key. Manual
+  deregistration removes only the registration matching the store, observer,
+  key, and context, whereas 1.x removed every registration the observer held on
+  that store.
   `InMemoryPersistentKeyValueStore` stores Swift values directly (retaining
   shared references, compacting `nil` only from top-level Swift arrays and `String`-keyed
   dictionaries of optionals, merging canonically equivalent keys, and verifying

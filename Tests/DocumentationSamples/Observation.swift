@@ -19,8 +19,6 @@ final class Label {
 
 let usernameLabel = Label()
 
-nonisolated(unsafe) var cancellables = Set<AnyCancellable>()
-
 func handleChange(username: String) {
 }
 
@@ -54,28 +52,36 @@ func observeBufferedChanges() async {
 }
 
 @MainActor
-func publishValues() {
-    UserDefaults.standard.publisher(for: .username)
-        .receive(on: DispatchQueue.main)
-        .sink { username in
-            usernameLabel.text = username
-        }
-        .store(in: &cancellables)
+final class ProfileViewController {
+    let usernameLabel = Label()
+    var cancellables = Set<AnyCancellable>()
 
-    let usernameKey: PersistentKey<String> = .username
-    usernameKey.publisher(in: UserDefaults.standard)
-        .receive(on: DispatchQueue.main)
-        .sink { username in
-            usernameLabel.text = username
-        }
-        .store(in: &cancellables)
-}
+    func handleChange(username: String) {
+    }
 
-func publishChanges() {
-    UserDefaults.standard.changesPublisher(for: .username)
-        .receive(on: DispatchQueue.main)
-        .sink { username in
-            handleChange(username: username)
-        }
-        .store(in: &cancellables)
+    func publishValues() {
+        UserDefaults.standard.publisher(for: .username)
+            .receive(on: DispatchQueue.main)
+            .sink { [usernameLabel] username in
+                usernameLabel.text = username
+            }
+            .store(in: &cancellables)
+
+        let usernameKey: PersistentKey<String> = .username
+        usernameKey.publisher(in: UserDefaults.standard)
+            .receive(on: DispatchQueue.main)
+            .sink { [usernameLabel] username in
+                usernameLabel.text = username
+            }
+            .store(in: &cancellables)
+    }
+
+    func publishChanges() {
+        UserDefaults.standard.changesPublisher(for: .username)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] username in
+                self?.handleChange(username: username)
+            }
+            .store(in: &cancellables)
+    }
 }

@@ -131,13 +131,13 @@ for await runtimeColorScheme in userDefaults.values(for: .runtimeColorScheme) {
 }
 ```
 
-Observe changes with Combine, retaining the returned `AnyCancellable` for as long as the observation should run (here, in a stored `Set<AnyCancellable>` named `cancellables`):
+Observe changes with Combine, retaining the returned `AnyCancellable` for as long as the observation should run. These examples run in a view controller that has `userDefaults` and `cancellables` (a `Set<AnyCancellable>`) as stored properties and `apply(_:)` as a method, so the closure captures `self` weakly to call it:
 
 ```swift
 userDefaults.publisher(for: .runtimeColorScheme)
     .receive(on: DispatchQueue.main)
-    .sink { runtimeColorScheme in
-        apply(runtimeColorScheme)
+    .sink { [weak self] runtimeColorScheme in
+        self?.apply(runtimeColorScheme)
     }
     .store(in: &cancellables)
 ```
@@ -270,12 +270,12 @@ Each change emission reads the latest value from the store (several store change
 
 #### Combine Publishers
 
-`PersistentKeyValuePublisher` is a Combine `Publisher` (`Failure == Never`) that reads the current value on subscription and delivers it on initial demand, followed by subsequent changes. Retain each returned `AnyCancellable` for as long as the observation should run; these examples store it in a `Set<AnyCancellable>` named `cancellables`. The sinks update a UIKit label, so create them from a `@MainActor` context:
+`PersistentKeyValuePublisher` is a Combine `Publisher` (`Failure == Never`). `publisher(for:)` and `publisher(in:)` read the current value on subscription and deliver it on first demand, followed by subsequent changes; `changesPublisher(for:)` and `changesPublisher(in:)` skip that initial read. Retain each returned `AnyCancellable` for as long as the observation should run; these examples store it in a `Set<AnyCancellable>` named `cancellables`. They run in a `@MainActor` view controller with stored `usernameLabel` and `cancellables` properties and a `handleChange(username:)` method. Closures that use those members capture the label directly (`[usernameLabel]`) or capture `self` weakly:
 
 ```swift
 UserDefaults.standard.publisher(for: .username)
     .receive(on: DispatchQueue.main)
-    .sink { username in
+    .sink { [usernameLabel] username in
         usernameLabel.text = username
     }
     .store(in: &cancellables)
@@ -283,19 +283,19 @@ UserDefaults.standard.publisher(for: .username)
 let usernameKey: PersistentKey<String> = .username
 usernameKey.publisher(in: UserDefaults.standard)
     .receive(on: DispatchQueue.main)
-    .sink { username in
+    .sink { [usernameLabel] username in
         usernameLabel.text = username
     }
     .store(in: &cancellables)
 ```
 
-Use `changesPublisher(for:)` or `changesPublisher(in:)` to skip the initial value:
+To skip the initial value, use `changesPublisher(for:)`:
 
 ```swift
 UserDefaults.standard.changesPublisher(for: .username)
     .receive(on: DispatchQueue.main)
-    .sink { username in
-        handleChange(username: username)
+    .sink { [weak self] username in
+        self?.handleChange(username: username)
     }
     .store(in: &cancellables)
 ```
@@ -491,7 +491,7 @@ Same-store migrations are allowed when every item maps its source key to a diffe
 
 `.keepBoth` on a `move` leaves conflicting source values in place; use `.keepDestinationAndRemoveSource` or `.overwriteDestination` to remove conflicting source entries. The keep policies compare the stored destination without decoding it, so `.keepDestinationAndRemoveSource` can discard the only readable value when the key cannot decode the destination. A Foundation destination stores the object its key's representation encodes, and a `nil` encoding removes the entry (as the built-in optional representation does for `nil`), so a successful move can leave both entries absent. An in-memory destination bypasses the key's representation: it keeps an explicit optional `nil` and applies the ordinary setter's shallow compaction to a qualifying array or dictionary of optionals, including one wrapped in an `Optional`. Only values persisted in each store's own domain participate (registered defaults, launch arguments, added suites, and `defaultValue` are ignored).
 
-Setup errors (`PersistentKeyMigrationError`, or an error a store's `migrationEndpoint` throws, which propagates unchanged) throw before any item runs, as does an error reading a tracked batch's completion marker (an undecodable marker throws `.invalidCompletionRecord`). A tracked migration requires a nonempty ID, and a concurrent in-process migration using any of the same store and key pairs, including the completion marker, throws `.overlappingMigration`; other writers and processes need separate coordination. Per-item failures go into `report.outcomes` (`.failed(FailureStage)` with `outcome.error`) as remaining items continue. Foundation writes fail at `.prepare` with `.encodingFailed` when the encoded object cannot persist as is (such as keyed-archive UIDs, or an `NSDecimalNumber`, which serialization stores as a `Double`) or, for an iCloud destination, with `.invalidStorageValue` when its binary property list exceeds 1 MiB; iCloud also limits the store to 1 MB in total and 1,024 keys, including a completion marker recorded there. Preparation verifies that the object decodes and that serialization preserves it, comparing integers by value across widths, so a decoder of persisted values must accept widened integers. A custom representation determines how much of the original Swift value survives (the ISO 8601 date above stores whole seconds). At `.write`, a destination that appeared, disappeared, or changed after its snapshot produces `.destinationChanged`, before any attempt to remove the source, and a committed value that fails verification produces `.writeVerificationFailed`. Migrations do not roll back completed writes: at `.cleanup`, `.sourceChanged` means the move skipped removal, `.destinationChanged` means the destination differed after the source was removed, and `.removalVerificationFailed` means the source held a value after the removal attempt (the original entry may have remained, or a writer may have restored it); another writer may have changed either key. Coordinate other writers, processes, and reentrant callbacks (getters, `deinit`, allocators, observers) before migrating, or behavior is unspecified. Local completion does not guarantee disk durability or iCloud delivery, and removing an iCloud key deletes it across devices.
+Setup errors (`PersistentKeyMigrationError`, or an error a store's `migrationEndpoint` throws, which propagates unchanged) throw before any item runs, as does an error reading a tracked batch's completion marker (an undecodable marker throws `.invalidCompletionRecord`). A tracked migration requires a nonempty ID, and a concurrent in-process migration using any of the same store and key pairs, including the completion marker, throws `.overlappingMigration`; other writers and processes need separate coordination. Per-item failures go into `report.outcomes` (`.failed(FailureStage)` with `outcome.error`) as remaining items continue. Foundation writes fail at `.prepare` with `.encodingFailed` when the encoded object cannot persist as is (such as keyed-archive UIDs, or an `NSDecimalNumber`, which serialization stores as a `Double`) or, for an iCloud destination, with `.invalidStorageValue` when its binary property list exceeds 1 MiB; iCloud also limits the store to 1 MB in total and 1,024 keys, including a completion marker recorded there. Preparation verifies that the object decodes and that serialization preserves it, comparing integers by value across widths, so a decoder of persisted values must accept widened integers. A custom representation determines how much of the original Swift value survives (the ISO 8601 date above stores whole seconds). At `.write`, a destination that appeared, disappeared, or differs from its snapshot when checked produces `.destinationChanged`, before any attempt to remove the source (when `UserDefaults` replaces a value that Foundation considers equal, it also checks that the entry is still absent after temporarily removing it, so a change undone before that check can go undetected), and a committed value that fails verification produces `.writeVerificationFailed`. Migrations do not roll back completed writes: at `.cleanup`, `.sourceChanged` means the move skipped removal, `.destinationChanged` means the destination differed after the source was removed, and `.removalVerificationFailed` means the source held a value after the removal attempt (the original entry may have remained, or a writer may have restored it); another writer may have changed either key. Coordinate other writers, processes, and reentrant callbacks (getters, `deinit`, allocators, observers) before migrating, or behavior is unspecified. Local completion does not guarantee disk durability or iCloud delivery, and removing an iCloud key deletes it across devices.
 
 ```swift
 let report = try UserDefaults.standard.copy(
@@ -512,7 +512,7 @@ try report.throwIfIncomplete()
 
 `PersistentKeyMigrationTracking` provides `.untracked` (`report.completion` is `.untracked`), `.once(id:)` (recorded in the destination store), and `.once(id:recordedIn:)`. With `.once`, `.isMigrationCompleted(id:)` is recorded once every item resolves without failure (`.recorded`), including skipped items, so a batch that transferred nothing is still recorded, and later calls skip the whole batch (`.alreadyRecorded`), including keys that arrived later; if any item fails, `report.completion` is `.notRecorded`, and if recording or verifying the marker fails, `report.completion` is `.failed` with `report.completionError`. A retry reads the stored marker again, so a marker that was written but failed verification can still be honored. An item failure, or a failure to record or verify the marker, leaves `report.isComplete == false`, causing `try report.throwIfIncomplete()` to throw `PersistentKeyMigrationIncompleteError`; an error reading the initial marker throws before the batch runs. Until a `.once` marker is recorded, retrying re-runs the batch under its conflict policy; remove `.isMigrationCompleted(id:)` (or set it to `false`) to reset tracking, or pick a new `id` when changing a migration.
 
-A marker recorded in `NSUbiquitousKeyValueStore` syncs across devices; pass `.once(id:recordedIn: UserDefaults.standard)` to run a local-to-iCloud migration once per device instead. When migrating *from* `NSUbiquitousKeyValueStore`, an enabled key missing from the local cache before initial sync reports `.sourceAbsent` on that run, and if the batch records completion, later calls with that marker skip every item, including keys that have since synced; use `.untracked` until initial sync completes or record completion yourself. Conflict checks against an iCloud destination likewise read this device's local cache, so to preserve existing cloud preferences, wait for the current account's initial data before seeding; migration does not wait for sync.
+A marker recorded in `NSUbiquitousKeyValueStore` syncs across devices; pass `.once(id:recordedIn: UserDefaults.standard)` to run a local-to-iCloud migration once per device instead. When migrating *from* `NSUbiquitousKeyValueStore` with both keys enabled, a source missing from the local cache before initial sync reports `.sourceAbsent` on that run, and if the batch records completion, later calls with that marker skip every item, including keys that have since synced; use `.untracked` until initial sync completes or record completion yourself. Conflict checks against an iCloud destination likewise read this device's local cache, so to preserve existing cloud preferences, wait for the current account's initial data before seeding; migration does not wait for sync.
 
 #### Named `UserDefaults` Suites
 
