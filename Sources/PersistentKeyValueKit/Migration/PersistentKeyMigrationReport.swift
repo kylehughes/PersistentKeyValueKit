@@ -172,7 +172,10 @@ extension PersistentKeyMigrationReport {
         /// `UserDefaults` or `NSUbiquitousKeyValueStore` store would keep as a `Double`
         /// (``PersistentKeyValueConversionError/encodingFailed``). An integer's width is not part of the value these
         /// stores keep, so an encoded `Int32` does not fail. As after an ordinary write, the writing process reads it
-        /// back as written, while other processes and later launches can read a 64-bit integer.
+        /// back as written, while other processes and later launches can read a 64-bit integer. It also includes a
+        /// value that is not an optional `nil` but that the destination key's representation encodes as `nil` for a
+        /// `UserDefaults` or `NSUbiquitousKeyValueStore` destination, because writing it would remove the destination
+        /// entry; the source value stays in place.
         case prepare
 
         /// Writing to or verifying the destination store failed. A move had not started removing the source value.

@@ -44,6 +44,11 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// invoke conversion more than once for the same value; do not rely on a specific invocation count. Do not mutate
     /// the returned object, or any object it contains, after returning it.
     ///
+    /// Migration to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes the destination entry only
+    /// when the value is an optional `nil`. If this method returns `nil` for any other value, the item fails at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+    /// ``PersistentKeyValueConversionError/encodingFailed`` and neither store changes.
+    ///
     /// - Parameter value: The value to encode.
     /// - Parameter format: The target storage format.
     /// - Returns: The encoded storage object, or `nil` to remove the key.
@@ -1230,10 +1235,37 @@ where Representation.Value == Value {
     return object
 }
 
+/// Returns the checked storage object for `value` that migration writes, or `nil` when `value` is an optional that is
+/// `nil`, which a Foundation store keeps as an absent key.
+///
+/// Throws ``PersistentKeyValueConversionError/encodingFailed`` when the key's representation encodes any other value
+/// to `nil`, because removing the destination entry would discard a value that migration could not write.
 internal func encodeStorageValue<Key: PersistentKeyProtocol>(
     _ value: Key.Value,
     for key: Key,
     format: PersistentKeyValueStorageFormat
 ) throws -> Any? {
-    try encodeStorageRepresentation(key.representation, value: value, format: format)
+    guard let object = try encodeStorageRepresentation(key.representation, value: value, format: format) else {
+        guard isNilOptional(value) else {
+            throw PersistentKeyValueConversionError.encodingFailed
+        }
+
+        return nil
+    }
+
+    return object
+}
+
+/// Whether `value` is an optional that is `nil` at any level of nesting, as `Int??.some(nil)` is.
+private func isNilOptional(_ value: Any) -> Bool {
+    var value = value
+    while let optional = value as? any OptionalElement {
+        guard let wrapped = optional.wrappedObject else {
+            return true
+        }
+
+        value = wrapped
+    }
+
+    return false
 }

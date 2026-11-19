@@ -632,8 +632,9 @@ private protocol OptionalElementCollection {
     func compactedValue() -> Any
 }
 
-/// An `Optional`, used to constrain ``OptionalElementCollection`` conformances to collections of optionals.
-private protocol OptionalElement {
+/// An `Optional`, used to constrain ``OptionalElementCollection`` conformances to collections of optionals and to
+/// find a `nil` value during migration.
+protocol OptionalElement {
     associatedtype Wrapped
 
     var optionalValue: Wrapped? { get }
@@ -641,7 +642,7 @@ private protocol OptionalElement {
 
 extension OptionalElement {
     /// The wrapped value, if any, as `Any`.
-    fileprivate var wrappedObject: Any? {
+    var wrappedObject: Any? {
         optionalValue.map {
             $0 as Any
         }
@@ -649,7 +650,7 @@ extension OptionalElement {
 }
 
 extension Optional: OptionalElement {
-    fileprivate var optionalValue: Wrapped? {
+    var optionalValue: Wrapped? {
         self
     }
 }

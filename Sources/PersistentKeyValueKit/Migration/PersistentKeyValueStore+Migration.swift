@@ -359,6 +359,11 @@ extension PersistentKeyValueStore {
     /// in place. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither copied nor treated as destination conflicts.
     ///
+    /// A `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes its entry when the value to write is an
+    /// optional `nil`, which the built-in optional representation encodes as `nil`. An item whose value is not `nil`
+    /// but whose destination encoding is `nil` fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+    /// ``PersistentKeyValueConversionError/encodingFailed`` and writes to neither store.
+    ///
     /// `destination` can be this store when every item maps its source key to a different key identifier.
     ///
     /// Setup failures are thrown before any key is read or modified: missing domain metadata, an item that maps a key
@@ -477,6 +482,11 @@ extension PersistentKeyValueStore {
     /// so ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource`` removes the source even if it cannot be
     /// decoded. Only values persisted in each store's own domain participate; registered defaults, launch arguments,
     /// added suites, and key default values are neither moved nor treated as destination conflicts.
+    ///
+    /// A `UserDefaults` or `NSUbiquitousKeyValueStore` destination removes its entry when the value to write is an
+    /// optional `nil`, which the built-in optional representation encodes as `nil`. An item whose value is not `nil`
+    /// but whose destination encoding is `nil` fails at ``PersistentKeyMigrationReport/FailureStage/prepare`` with
+    /// ``PersistentKeyValueConversionError/encodingFailed``, so the move removes neither value.
     ///
     /// `destination` can be this store when every item maps its source key to a different key identifier, which
     /// renames keys within the store.
