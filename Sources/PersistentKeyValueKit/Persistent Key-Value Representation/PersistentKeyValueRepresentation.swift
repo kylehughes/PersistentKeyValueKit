@@ -65,9 +65,10 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// Writes the encoded representations of `values` into `propertyListArray`.
     ///
     /// Array writes, registration, and migration call this method with an empty `propertyListArray`, and an
-    /// implementation may only assign the encoded array to it or append the encoded elements to it. The result is the
-    /// stored form of `values` and need not contain each element's own encoding. If any value fails to encode, leave
-    /// `propertyListArray` unchanged. Callers rely on this to keep the stored collection when one of its elements
+    /// implementation may only assign the encoded array to it or append the encoded elements to it. Build the encoded
+    /// array separately and assign or append it only after every value encodes, because the package stores a nonempty
+    /// result as written. The result is the stored form of `values` and need not contain each element's own encoding.
+    /// If any value fails to encode, leave `propertyListArray` empty. Callers rely on this to keep the stored collection when one of its elements
     /// cannot be encoded, so an empty result for nonempty `values` counts as a failure, even if every value encodes to
     /// `nil`. So does a result that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept,
     /// such as one that contains the UIDs in a keyed archive's property list. Do not mutate the objects written to

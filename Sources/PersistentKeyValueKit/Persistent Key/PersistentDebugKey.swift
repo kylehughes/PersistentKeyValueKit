@@ -28,7 +28,7 @@ import Foundation
 /// }
 ///
 /// userDefaults.set(.isAppStoreRatingEnabled, to: false)
-/// userDefaults.get(.isAppStoreRatingEnabled) // false in Debug, true in Release
+/// userDefaults.get(.isAppStoreRatingEnabled) // Debug: false unless a higher-priority defaults value overrides it; Release: true
 /// ```
 ///
 /// - Warning: `PersistentDebugKey` relies on the `#if DEBUG` compilation condition when compiling

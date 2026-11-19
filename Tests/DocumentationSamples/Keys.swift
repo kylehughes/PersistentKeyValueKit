@@ -44,4 +44,4 @@ extension PersistentKeyProtocol where Self == PersistentDebugKey<Bool> {
 }
 
 userDefaults.set(.isAppStoreRatingEnabled, to: false)
-let isRatingEnabled = userDefaults.get(.isAppStoreRatingEnabled) // false in Debug, true in Release
+let isRatingEnabled = userDefaults.get(.isAppStoreRatingEnabled) // Debug: false unless a higher-priority defaults value overrides it; Release: true

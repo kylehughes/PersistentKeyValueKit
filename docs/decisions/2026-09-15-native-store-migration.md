@@ -205,7 +205,11 @@ principles:
 
 - **No default for `tracking:`**: Whether a migration repeats on every call or
   records a persistent completion marker changes what later launches do, so the
-  call site chooses `tracking:` explicitly.
+  call site chooses `tracking:` explicitly. A marker in an
+  `InMemoryPersistentKeyValueStore` lasts only for that instance, while a
+  persistent marker outlives a moved value, so moving a persisted value into
+  memory and retrying with a new, empty destination reports `.alreadyRecorded`
+  and transfers nothing.
 - **The `items:` label on item batches**: Observed with Apple Swift 6.4.2
   (Xcode 27.2), having two unlabeled array overloads (`_ keys: [any PersistentKeyProtocol]`
   and `_ items: [PersistentKeyMigrationItem]`) made an empty literal
@@ -529,7 +533,8 @@ principles:
   keeps Foundation's lossy path behavior (a file URL with no path, such as
   `file:`, can remove the existing entry, and `file://localhost` stores an
   unreadable empty path, after which the typed read returns the declared default
-  unless another domain supplies a value) and `[URL]` stores `absoluteString`
+  even when a lower-priority domain, such as a registered default, supplies a
+  valid URL) and `[URL]` stores `absoluteString`
   values in `.propertyList` format. Registration through the checked encoder is a
   compatibility change from 1.x, which registered `absoluteString`: a
   representable file URL now registers as a path and a non-file URL as archive
@@ -701,7 +706,10 @@ principles:
   the omitted entries there, even when only a different entry changed, and on
   iCloud that deletion can propagate to other devices. If an added suite
   supplied the dictionary that was read, the write instead hides that suite's
-  dictionary, which keeps its entries. An `Optional` or
+  dictionary, which keeps its entries. If a higher-priority domain such as a
+  launch argument supplies an `Array` or `Dictionary`, saving an edit still
+  replaces the writable-domain collection, including entries the getter never
+  returned, while the override keeps supplying the visible value. An `Optional` or
   proxy representation delegates to its wrapped reader, so it preserves that
   reader's filtering, as does a built-in array or dictionary that nests it (a
   dictionary of arrays, for example), so a checked migration can succeed with

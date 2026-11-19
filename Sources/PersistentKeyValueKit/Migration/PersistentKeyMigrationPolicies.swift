@@ -44,7 +44,9 @@ public enum PersistentKeyMoveConflictPolicy: Sendable, Equatable {
 /// `id` when changing the migration's keys or behavior. A marker recorded in `NSUbiquitousKeyValueStore` syncs to the
 /// user's other devices like any other value, so two devices can both run the migration before the marker syncs. A
 /// marker in local defaults survives an Apple Account change, which replaces the iCloud data, so a later seed of the
-/// new account's store is skipped unless the identifier is scoped to the account.
+/// new account's store is skipped unless the identifier is scoped to the account. A marker in an
+/// ``InMemoryPersistentKeyValueStore`` lasts only for that instance, and moving a persisted value into memory removes
+/// its source, so a persistent marker can make a retry skip a new, empty in-memory destination.
 ///
 /// The marker depends only on the migration identifier and the recording store. Independent migrations that record in
 /// the same store, such as several sources migrating into one shared App Group destination, need distinct identifiers
