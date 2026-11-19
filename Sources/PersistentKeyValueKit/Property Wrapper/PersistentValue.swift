@@ -45,7 +45,7 @@ import SwiftUI
 ///   might not be delivered, and neither are changes caused only by `addSuite(named:)` or `removeSuite(named:)`.
 ///   For other `UserDefaults` keys, key-value observation does not report a write of a value that Foundation considers
 ///   equal to the stored value, such as an `Int64` over an equal `Int32` or `-0.0` over `0.0`, so the observed value
-///   can remain the previous, numerically equal value until the key next changes.
+///   can remain the previous, numerically equal value.
 /// - Attention: We use `@preconcurrency` to conform to `DynamicProperty` because otherwise `update()` is forced to
 ///   be nonisolated in order to meet the conformance. Apple uses `@preconcurrency` for their `@MainActor`-isolated
 ///   property wrappers as of 2024-10-22.

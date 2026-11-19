@@ -7,12 +7,12 @@ import PersistentKeyValueKit
 
 nonisolated(unsafe) let userDefaults = UserDefaults.standard
 
-// MARK: - Samples
-
 extension PersistentKeyProtocol where Self == PersistentKey<Int> {
     static var launchCount: Self {
-        Self("LaunchCount", defaultValue: 1)
+        Self("LaunchCount", defaultValue: 0)
     }
 }
+
+// MARK: - Samples
 
 userDefaults.register(.launchCount)

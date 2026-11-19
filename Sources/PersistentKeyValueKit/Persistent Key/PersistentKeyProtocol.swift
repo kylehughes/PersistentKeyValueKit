@@ -43,11 +43,12 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     ///
     /// `UserDefaults` and `NSUbiquitousKeyValueStore` compare identifiers literally, so canonically equivalent
     /// spellings, such as composed and decomposed "café", are different keys. `ID` is `String`, which treats those
-    /// spellings as equal, so `Identifiable` identity merges them: SwiftUI's `ForEach(keys)` shows one row for both.
-    /// To give each stored key its own row, identify it by its identifier's UTF-8 code units:
+    /// spellings as equal, so `Identifiable` identity merges them: SwiftUI's `ForEach(keys)` gives both the same ID.
+    /// To keep well-formed spellings distinct, identify each key by its identifier's UTF-8 code units:
     /// `ForEach(keys, id: \.id.utf8CString)`. UTF-8 cannot represent an unpaired UTF-16 surrogate, such as one left by
     /// truncating an emoji with `NSString.substring(to:)`, so identifiers that differ only in such surrogates still
-    /// share a row. Key equality is not a substitute: synthesized equality compares identifiers as strings, and
+    /// share an ID, and `ForEach` does not guarantee distinct rows for repeated IDs. If identifiers can contain unpaired
+    /// surrogates, derive row IDs from their original UTF-16 code units. Key equality is not a substitute: synthesized equality compares identifiers as strings, and
     /// ``PersistentKey`` and ``PersistentDebugKey`` equality also compares default values, so with `\.self`, changing
     /// only a key's default value recreates its row.
     ///

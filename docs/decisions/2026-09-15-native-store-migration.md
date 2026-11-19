@@ -55,6 +55,7 @@ let report = try UserDefaults.standard.move(
     onConflict: .keepBoth,
     tracking: .untracked
 )
+try report.throwIfIncomplete()
 ```
 
 `UserDefaults.migratable(suiteName:)` calls Foundation's suite initializer and
@@ -86,8 +87,9 @@ NUL-truncated aliases, can resolve to the same preferences domain, so treating
 them as distinct stores risked a move removing the values it had just written.
 Because this comparison folds case and canonical equivalence on every platform,
 two genuinely distinct suites on a case-sensitive volume whose names differ
-only by case are also treated as one store, and migrations between them are
-rejected.
+only by case are also treated as one store. Migrations between them follow the
+same-store rules: disjoint key mappings are allowed, while same-key mappings and
+overlapping batches are rejected.
 
 The public migration operation stays generic. Its opaque, throwing endpoint
 requirement is part of `PersistentKeyValueStore`; wrappers forward it to their
@@ -205,9 +207,11 @@ principles:
   and the refining-protocol experiment were observed during design and are not
   checked by automated tests.
 - **Non-discardable `PersistentKeyMigrationReport`**: `copy` and `move` are not
-  `@discardableResult`. Because per-item and completion-marker failures are
-  recorded in the returned report rather than thrown, the unused-result warning
+  `@discardableResult`. Because per-item failures and failures to record the
+  completion marker are reported rather than thrown, the unused-result warning
   nudges callers to inspect the report or call `try report.throwIfIncomplete()`.
+  An existing marker that cannot decode as a `Bool` is different: it throws
+  `invalidCompletionRecord` after the marker is read and before any item runs.
 - **Report and outcome shape (and fixture invariants)**:
   `PersistentKeyMigrationReport.Completion` and
   `PersistentKeyMigrationReport.Status` (including `.failed(FailureStage)`)
@@ -230,7 +234,9 @@ principles:
   destination key identifiers are the same with `sameStore` during setup.
   Rejecting same-store batches where one item's destination is another item's
   source (`overlappingKeys(_:)`, such as `A -> B` and `B -> C` or `A -> B` and
-  `B -> A`) guarantees that batch results do not depend on item order.
+  `B -> A`) keeps an item from reading a value that another item in the batch
+  wrote or removed. Items run in input order, and a `transform` can run before a
+  later preparation or write failure.
 - **Representation defaults, container hooks in checked conversion, and the append-or-assign contract**:
   Providing default implementations of the eight store- and container-specific
   `get` and `set` methods on `PersistentKeyValueRepresentation` and
@@ -316,9 +322,10 @@ principles:
   through `BuiltInValueOmission` during the single conversion pass.
   Consequently, for representations defined outside the package, an entry left
   out by a container write hook counts as a failure: writing a dictionary in
-  which a value's `encode` returns `nil` fails and leaves the store unchanged,
-  and a non-empty array whose every element encodes to `nil` fails and leaves
-  the store unchanged (whereas package
+  which a value's `encode` returns `nil` fails and leaves the store unchanged
+  under the default hooks, as does a non-empty array whose every element
+  encodes to `nil` (a custom hook can report success for such a value, and
+  checked reads then use the hooks as implemented; package
   `OptionalPersistentKeyValueRepresentation` and package proxies over omitting
   representations conform to `BuiltInValueOmission`).
 - **Storage-location contract (`PersistentKeyProtocol.id`)**: A key's value
@@ -328,6 +335,8 @@ principles:
   how a value is read, written, or gated (such as clamping a value or locking
   `PersistentDebugKey` in Release builds), not where it is stored, so direct
   store access, observation, and migration operate on the same entry under `id`.
+  Migration does not call these methods, so a custom key gates migration with
+  `isMigrationEnabled`.
 - **Removing `storeUnavailable` and omitting `LocalizedError`**: A store
   wrapper that cannot migrate throws its own error from `migrationEndpoint`,
   which propagates unchanged instead of being replaced by a generic
@@ -358,14 +367,14 @@ principles:
   Swift's `String.utf16` reports `U+FFFD` for unpaired surrogates such as one
   left by `NSString.substring(to:)` truncating an emoji, comparing native
   strings by UTF-8 bytes, bridged strings with literal `CFStringCompare`, and
-  mixed pairs directly against the Foundation string's characters without
-  copying), so both canonically equivalent spellings and identifiers differing
+  mixed pairs directly against the Foundation string's UTF-16 buffer when it has
+  one and otherwise by copying bounded chunks into temporary storage), so both canonically equivalent spellings and identifiers differing
   only in unpaired surrogates remain distinct set members (whereas SwiftUI
   callers should pass `ForEach(keys, id: \.id.utf8CString)` rather than relying
   on `Identifiable`, whose `id: String` merges canonically equivalent spellings,
   noting that UTF-8 still cannot represent unpaired UTF-16 surrogates so
-  identifiers differing only in unpaired surrogates still share a row, or
-  `\.self`, because synthesized key equality compares identifiers as strings
+  identifiers differing only in unpaired surrogates share an ID and `ForEach`
+  does not guarantee distinct rows for them, or `\.self`, because synthesized key equality compares identifiers as strings
   and `PersistentKey` and `PersistentDebugKey` equality also compares default
   values so changing only a default recreates the row),
   `UserDefaultsMigrationBackend` sends
@@ -396,7 +405,8 @@ principles:
   `UserDefaultsMigrationBackend` and `UbiquitousKeyValueMigrationBackend` capture
   `PropertyListMigrationStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
   number's `CFNumber` type, including integer width and `NSDecimalNumber`), so
-  migration decodes the exact object an ordinary `get` returns.
+  migration decodes an exact snapshot of the persisted object, which an
+  ordinary `get` can differ from (a launch argument can mask it).
   `PropertyListMigrationStorage.equal(_:_:distinguishingIntegerWidths:)` checks
   `CFBooleanGetTypeID()`, `NSDecimalNumber` (which never compares equal to a
   non-decimal `NSNumber` such as a `Double`, and compares two decimals with
@@ -434,7 +444,7 @@ principles:
   captures `exactCopy(object)`, verifies that
   `PropertyListMigrationStorage.equal(copy, try freeze(copy))` holds against a
   binary-property-list-serialized copy, and returns `copy` so the backend commits
-  the exact immutable copy that an ordinary `set` writes, throwing
+  that exact immutable copy, bypassing the key's `set` accessor, throwing
   `PersistentKeyValueConversionError.encodingFailed` at `.prepare` before any
   mutation when binary property-list serialization would change the value or
   stored type (including any `NSDecimalNumber`, even when exact, because binary
@@ -497,9 +507,9 @@ principles:
   notifies synchronous observers and releases the source snapshot, which can
   modify either store before `move` returns. Both `.overwriteDestination` and
   `.keepDestinationAndRemoveSource` recheck the destination snapshot after
-  removing the source (failing at `.cleanup` with `.destinationChanged` and
-  suppressing completion recording if it changed), and then recheck that the
-  source key is still absent (failing at `.cleanup` with
+  removing the source and verifying its removal (failing at `.cleanup` with
+  `.destinationChanged` and suppressing completion recording if it changed),
+  and then recheck that the source key is still absent (failing at `.cleanup` with
   `PersistentKeyMigrationError.removalVerificationFailed` if the source still
   holds a value, such as when restored by a deinitializer or by the destination
   comparison). Under `.keepDestinationAndRemoveSource`, verifying that the
@@ -544,14 +554,17 @@ principles:
   `UserDefaults` instance, while all other keys use key-value observation and
   also see other processes' changes (except Foundation posts no KVO notification
   for writes it considers equal to the stored value, such as `Int64` over an
-  equal `Int32` or `-0.0` over `0.0`, so subscribers can keep the previous
-  numerically equal value until the key next changes). The monitor installs its
-  `UserDefaults.didChangeNotification` observer before the first read, reads and
-  stores each registration's own initial comparison value outside the lock
-  before registration returns (joining an in-progress same-thread first read for
+  equal `Int32` or `-0.0` over `0.0`, so a subscriber can keep the previous
+  numerically equal value). The monitor installs its
+  `UserDefaults.didChangeNotification` observer before the first read,
+  reads each registration's own initial comparison value outside the lock and
+  stores it under the lock before registration returns (joining an in-progress
+  same-thread first read for
   that key, such as from an overridden `object(forKey:)`, instead of calling the
   getter again, and reconciling again if a change arrived during the first
-  read), and serializes reconciliation with a single-drainer loop. Each
+  read; a nested registration of the same key returns before the outer read
+  supplies the shared value), and serializes reconciliation with a
+  single-drainer loop. Each
   reconciliation pass snapshots the observed keys and the registrations present
   when the pass begins, reads each literal UTF-16 key identifier once, compares
   the read against each registration's comparison value (reusing the previous
@@ -565,19 +578,21 @@ principles:
   progress if any change was reported since it joined (after its first read
   began), even when the value read equals its comparison value (so it may get
   one extra, possibly repeated, emission rather than missing a concurrent write
-  that overlapped its initial read), and invokes callbacks outside its lock
-  without checking weak observer liveness or releasing observer references under
-  the lock (matching `StoreKeyObservationRegistry` and
-  `InMemoryPersistentKeyValueStore`). Changes are sampled rather than queued: a
+  that overlapped its initial read), and invokes callbacks outside its lock,
+  checking weak observer liveness outside it as well (whereas
+  `StoreKeyObservationRegistry` and `InMemoryPersistentKeyValueStore` read weak
+  observers under their locks and release the retained observers after
+  unlocking). Changes are sampled rather than queued: a
   registration is notified only by reads made after it joined its key, multiple
   changes between two reads produce at most one notification, a change that is
   undone before it is sampled (`A` to `B` to `A`) can produce no notification
   for any subscriber, and consecutive emitted values can be equal. Because
   Foundation posts `didChangeNotification` only for in-process defaults writes
-  and not for `addSuite(named:)` or `removeSuite(named:)`, notification-monitored
-  `UserDefaults` observation is scoped to in-process changes to
-  `object(forKey:)`, and callbacks under concurrent writes can arrive on the
-  reconciling thread.
+  and not for `addSuite(named:)` or `removeSuite(named:)`, only in-process
+  notifications trigger a sample of `object(forKey:)`. A suite-list change or
+  cross-process write is not itself a trigger, but the sample rereads the
+  effective value, so it can become visible on a later sample. Callbacks under
+  concurrent writes can arrive on the reconciling thread.
 - **NFC normalization of migration IDs and dotless completion markers**:
   `PersistentKey.isMigrationCompleted(id:)` normalizes `id` with
   `precomposedStringWithCanonicalMapping` (NFC) before SHA-256 hashing so
