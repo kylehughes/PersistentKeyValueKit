@@ -37,7 +37,6 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
         cancellable.cancel()
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_observer_ignoresUnrelatedCloudNotifications() {
         let store: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -73,7 +72,6 @@ final class PersistentKeyUIObservableObjectTests: XCTestCase {
         cancellable.cancel()
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_observer_refreshesForCloudAccountChangeAndMissingChangedKeys() {
         let store: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()

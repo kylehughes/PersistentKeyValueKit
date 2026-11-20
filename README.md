@@ -36,11 +36,11 @@ All platform constraints of [`UserDefaults`][user-defaults-docs] and [`NSUbiquit
 
 ## Supported Platforms
 
-- iOS 15.0+
+- iOS 16.0+
 - macOS 13.0+
-- tvOS 15.0+
+- tvOS 16.0+
 - visionOS 1.0+
-- watchOS 8.0+ (`NSUbiquitousKeyValueStore` APIs require watchOS 9.0+)
+- watchOS 9.0+
 
 ## Requirements
 
@@ -321,7 +321,6 @@ nonisolated struct Contact: Codable, Sendable {
     let dateOfBirth: Date
 }
 
-@available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
 extension Contact: KeyValuePersistible {
     static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         CodablePersistentKeyValueRepresentation()

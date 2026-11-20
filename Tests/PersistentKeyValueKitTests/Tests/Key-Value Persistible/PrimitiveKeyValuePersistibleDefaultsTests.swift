@@ -145,7 +145,6 @@ extension PrimitiveKeyValuePersistibleDefaultsTests {
 
 // MARK: - Ubiquitous Key-Value Store Tests
 
-@available(watchOS 9.0, *)
 extension PrimitiveKeyValuePersistibleDefaultsTests {
     func test_getFromUbiquitousStore() {
         let store = MockUbiquitousKeyValueStore()

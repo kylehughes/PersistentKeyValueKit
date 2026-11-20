@@ -167,7 +167,6 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` instance to read from.
     /// - Returns: The decoded value at `ubiquitousStoreKey` in `ubiquitousStore`, or `nil` if it is absent or cannot
     ///   be decoded as ``Value``.
-    @available(watchOS 9.0, *)
     func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value?
     
     /// Sets the value at `ubiquitousStoreKey` in `ubiquitousStore`.
@@ -177,7 +176,6 @@ public protocol PersistentKeyValueRepresentation<Value>: Sendable {
     /// - Parameter ubiquitousStoreKey: The key to update.
     /// - Parameter value: The value to encode.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` instance to update at `ubiquitousStoreKey`.
-    @available(watchOS 9.0, *)
     func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore)
 }
 
@@ -297,7 +295,6 @@ extension PersistentKeyValueRepresentation {
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
     /// Decodes the object returned by `object(forKey:)`, returning `nil` when it is absent or fails to decode.
-    @available(watchOS 9.0, *)
     public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
         ubiquitousStore.object(forKey: ubiquitousStoreKey).flatMap {
             decodedValue(from: $0, format: .ubiquitousKeyValueStore)
@@ -306,7 +303,6 @@ extension PersistentKeyValueRepresentation {
 
     /// Writes the encoded object, removes the key when `encode` returns `nil`, and leaves `ubiquitousStore` unchanged
     /// when `encode` throws or returns an object that is not a property list.
-    @available(watchOS 9.0, *)
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         guard let encoding = storageEncoding(of: value, format: .ubiquitousKeyValueStore) else {
             return

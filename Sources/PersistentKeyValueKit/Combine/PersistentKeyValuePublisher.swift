@@ -273,10 +273,7 @@ extension PersistentKeyValuePublisher {
         /// - SeeAlso: https://forums.swift.org/t/crash-when-running-in-swift-6-language-mode/72431/2
         @objc
         internal nonisolated func didReceive(_ notification: Notification) {
-            guard
-                #available(watchOS 9.0, *),
-                NSUbiquitousKeyValueStore.changeNotification(notification, mayAffectKeyID: keyID)
-            else {
+            guard NSUbiquitousKeyValueStore.changeNotification(notification, mayAffectKeyID: keyID) else {
                 return
             }
 

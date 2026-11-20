@@ -5,11 +5,11 @@ import PackageDescription
 let package = Package(
     name: "PersistentKeyValueKit",
     platforms: [
-        .iOS(.v15),
+        .iOS(.v16),
         .macOS(.v13),
-        .tvOS(.v15),
+        .tvOS(.v16),
         .visionOS(.v1),
-        .watchOS(.v8),
+        .watchOS(.v9),
     ],
     products: [
         .library(

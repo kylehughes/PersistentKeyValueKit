@@ -13,7 +13,6 @@ import XCTest
 final class MigrationBackendTests: XCTestCase {
     // MARK: Tests
 
-    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func test_representations_codableAndURL() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -250,7 +249,6 @@ final class MigrationBackendTests: XCTestCase {
         XCTAssertTrue(try defaults.migrationSnapshotIsCurrent(snapshot, for: key.id))
     }
 
-    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func test_nonEquatableValue_roundTripsInMemory() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -315,7 +313,6 @@ final class MigrationBackendTests: XCTestCase {
         XCTAssertThrowsError(try first.migrationSnapshotIsCurrent(snapshot, for: "other"))
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitous_keyLengthBoundary() throws {
         let raw = StrictMigrationUbiquitousStore()
         let store = UbiquitousKeyValueMigrationBackend(
@@ -329,7 +326,6 @@ final class MigrationBackendTests: XCTestCase {
         XCTAssertTrue(store.migrationKeyIDExceedsLimit(String(repeating: "\u{1F600}", count: 65)))
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousQuota_isRejectedBeforeWrite() throws {
         let raw = StrictMigrationUbiquitousStore()
         let store = UbiquitousKeyValueMigrationBackend(
@@ -342,7 +338,6 @@ final class MigrationBackendTests: XCTestCase {
         XCTAssertNil(raw.storedValue(for: key.id))
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousRejectedWrite_preservesDestination() throws {
         let raw = StrictMigrationUbiquitousStore()
 
@@ -365,7 +360,6 @@ final class MigrationBackendTests: XCTestCase {
         XCTAssertEqual(raw.storedValue(for: key.id) as? Int64, 8)
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousStore_doesNotSynchronize() throws {
         let raw = StrictMigrationUbiquitousStore()
         let store = UbiquitousKeyValueMigrationBackend(
@@ -381,7 +375,6 @@ final class MigrationBackendTests: XCTestCase {
         XCTAssertEqual(raw.synchronizeCount, 0)
     }
 
-    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func test_userDefaultsCodableCodec_crossSuite() throws {
         let source = try defaults("codec.source")
         let destination = try defaults("codec.destination")

@@ -11,7 +11,6 @@ import XCTest
 @testable import PersistentKeyValueKit
 
 /// Covers items that map a key to its own identifier within one store, which every store rejects during setup.
-@available(watchOS 9.0, *)
 final class MigrationSameKeyTests: XCTestCase {
     // MARK: Tests
 

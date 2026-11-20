@@ -13,7 +13,6 @@ import XCTest
 final class MigrationCoverageEdgeTests: XCTestCase {
     // MARK: Tests
 
-    @available(watchOS 9.0, *)
     func test_cloudDestinationRace_preservesNewValue() throws {
         let raw = StrictMigrationUbiquitousStore()
         let destination = UbiquitousKeyValueMigrationBackend(

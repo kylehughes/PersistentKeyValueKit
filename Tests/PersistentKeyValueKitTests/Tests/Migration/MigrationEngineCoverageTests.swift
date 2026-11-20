@@ -253,16 +253,13 @@ final class MigrationEngineCoverageTests: XCTestCase {
             func set(to: Int, in: UserDefaults) {
             }
 
-            @available(watchOS 9.0, *)
             func get(from: NSUbiquitousKeyValueStore) -> Int {
                 0
             }
 
-            @available(watchOS 9.0, *)
             func remove(from: NSUbiquitousKeyValueStore) {
             }
 
-            @available(watchOS 9.0, *)
             func set(to: Int, in: NSUbiquitousKeyValueStore) {
             }
         }

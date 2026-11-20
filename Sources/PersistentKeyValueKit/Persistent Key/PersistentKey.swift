@@ -116,19 +116,16 @@ extension PersistentKey: PersistentKeyProtocol {
 
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         representation.get(id, from: ubiquitousStore) ?? defaultValue
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func remove(from ubiquitousStore: NSUbiquitousKeyValueStore) {
         ubiquitousStore.removeObject(forKey: id)
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         representation.set(id, to: newValue, in: ubiquitousStore)

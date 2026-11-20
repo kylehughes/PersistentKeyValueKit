@@ -36,7 +36,6 @@ final class MigrationNilEncodingTests: XCTestCase {
         )
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousDestination_failsAtPrepare() throws {
         let raw = StrictMigrationUbiquitousStore()
         let destination = UbiquitousKeyValueMigrationBackend(
@@ -255,21 +254,19 @@ final class MigrationNilEncodingTests: XCTestCase {
 
         defaults.set(5, forKey: destinationKey.id)
 
-        if #available(watchOS 9.0, *) {
-            let raw = StrictMigrationUbiquitousStore()
+        let raw = StrictMigrationUbiquitousStore()
 
-            raw.set(Int64(5), forKey: destinationKey.id)
-            destinations.append(
-                (
-                    "NSUbiquitousKeyValueStore",
-                    UbiquitousKeyValueMigrationBackend(
-                        store: raw,
-                        identity: .init(namespace: "nil-encoding", identifier: UUID().uuidString)
-                    ),
-                    { raw.storedValue(for: destinationKey.id) }
-                )
+        raw.set(Int64(5), forKey: destinationKey.id)
+        destinations.append(
+            (
+                "NSUbiquitousKeyValueStore",
+                UbiquitousKeyValueMigrationBackend(
+                    store: raw,
+                    identity: .init(namespace: "nil-encoding", identifier: UUID().uuidString)
+                ),
+                { raw.storedValue(for: destinationKey.id) }
             )
-        }
+        )
 
         for (name, destination, read) in destinations {
             let source = InMemoryPersistentKeyValueStore()
@@ -337,7 +334,6 @@ extension NilEncodingKeyProtocol {
         representation.get(id, from: defaults) ?? defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func get(from store: NSUbiquitousKeyValueStore) -> Value {
         representation.get(id, from: store) ?? defaultValue
     }
@@ -346,7 +342,6 @@ extension NilEncodingKeyProtocol {
         defaults.removeObject(forKey: id)
     }
 
-    @available(watchOS 9.0, *)
     func remove(from store: NSUbiquitousKeyValueStore) {
         store.removeObject(forKey: id)
     }
@@ -355,7 +350,6 @@ extension NilEncodingKeyProtocol {
         representation.set(id, to: value, in: defaults)
     }
 
-    @available(watchOS 9.0, *)
     func set(to value: Value, in store: NSUbiquitousKeyValueStore) {
         representation.set(id, to: value, in: store)
     }

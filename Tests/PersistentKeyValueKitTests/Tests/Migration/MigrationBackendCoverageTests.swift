@@ -191,7 +191,6 @@ final class MigrationBackendCoverageTests: XCTestCase {
         XCTAssertTrue(called)
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousLegacyURLSnapshot_decodesAsURL() throws {
         let url = URL(string: "https://example.com/legacy")!
         let store = UbiquitousKeyValueMigrationBackend(
@@ -206,7 +205,6 @@ final class MigrationBackendCoverageTests: XCTestCase {
         XCTAssertEqual(try store.migrationValue(for: key, in: snapshot), url)
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousPublicConstructor_usesCanonicalIdentity() {
         let store = UbiquitousKeyValueMigrationBackend(StrictMigrationUbiquitousStore())
 
@@ -214,7 +212,6 @@ final class MigrationBackendCoverageTests: XCTestCase {
         XCTAssertEqual(store.migrationIdentity.identifier, "default")
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousRefusingRemoval_reportsFailureAndPreservesValue() throws {
         let raw = StrictMigrationUbiquitousStore()
         let store = UbiquitousKeyValueMigrationBackend(
@@ -235,7 +232,6 @@ final class MigrationBackendCoverageTests: XCTestCase {
         XCTAssertNotNil(raw.storedValue(for: intKey.id))
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousStaleAndWrongStoreTokens_areRejected() throws {
         let firstRaw = StrictMigrationUbiquitousStore()
         let secondRaw = StrictMigrationUbiquitousStore()
@@ -271,7 +267,6 @@ final class MigrationBackendCoverageTests: XCTestCase {
         }
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitous_wrongTokensAndNilRemoval() throws {
         let raw = StrictMigrationUbiquitousStore()
         let store = UbiquitousKeyValueMigrationBackend(
@@ -439,7 +434,6 @@ private final class CallbackObserver: NSObject {
 // MARK: - LegacyURLUbiquitousStore Definition
 
 /// An iCloud store that returns a top-level `URL` object, as 1.x wrote, for every key.
-@available(watchOS 9.0, *)
 private final class LegacyURLUbiquitousStore: NSUbiquitousKeyValueStore {
     private let url: URL
 

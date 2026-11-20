@@ -103,7 +103,6 @@ extension CodablePersistentKeyValueRepresentation: BuiltInProxyConversion {
 
 // MARK: - Extension for Data Coders
 
-@available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
 extension CodablePersistentKeyValueRepresentation where Encoder == JSONEncoder, Decoder == JSONDecoder {
     // MARK: Public Initialization
     

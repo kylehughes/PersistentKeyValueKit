@@ -40,7 +40,6 @@ extension FailingPrimitive: PrimitiveKeyValuePersistible {
         nil
     }
 
-    @available(watchOS 9.0, *)
     static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
@@ -63,7 +62,6 @@ extension FailingPrimitive: PrimitiveKeyValuePersistible {
     static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
     }
 
-    @available(watchOS 9.0, *)
     static func set(
         _ ubiquitousStoreKey: String,
         to value: Self,

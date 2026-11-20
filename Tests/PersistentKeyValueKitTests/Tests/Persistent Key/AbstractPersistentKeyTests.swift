@@ -140,7 +140,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         }
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_get_defaultValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -148,7 +147,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         XCTAssertEqual(target.get(from: ubiquitousKeyValueStore), defaultValue)
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_get_storedValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -162,7 +160,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         }
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_remove_noValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -172,7 +169,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         XCTAssertNil(ubiquitousKeyValueStore.dictionaryRepresentation[id])
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_remove_storedValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -188,7 +184,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         }
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_set() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -245,19 +240,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
             XCTAssertEqual(userDefaults.dictionaryRepresentation()[id] as? Key.Value, storedValue)
         } else {
             XCTAssertNil(userDefaults.dictionaryRepresentation()[id])
-        }
-    }
-    
-    // MARK: Internal Instance Interface
-    
-    /// Skip the test if the environment is not iOS 16, or later, or equivalent.
-    ///
-    /// There is an issue with the implementation of tryCast across the Objective-C bridge when testing on
-    /// iOS 15 from Xcode 16. Additionally, marking test cases as available <= iOS 16 is not working in the
-    /// same environment.
-    func skipIfNotiOS16OrLaterOrEquivalent() throws {
-        guard #available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *) else {
-            throw XCTSkip(">= iOS 16 is required for this test.")
         }
     }
 }

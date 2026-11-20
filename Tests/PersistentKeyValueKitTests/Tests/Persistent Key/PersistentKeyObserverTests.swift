@@ -42,7 +42,6 @@ extension PersistentKeyObserverTests {
         XCTAssertEqual(observer.value, "defaultValue")
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_init_ubiquitousKeyValueStore() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -111,7 +110,6 @@ extension PersistentKeyObserverTests {
 extension PersistentKeyObserverTests {
     // MARK: Tests
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_store_changeUpdatesValueAndObservation() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()

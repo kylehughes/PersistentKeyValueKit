@@ -31,7 +31,6 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
         ]
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_relativeReference_roundTrips() throws {
         let representation = URL.persistentKeyValueRepresentation
@@ -55,7 +54,6 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
         XCTAssertEqual(store.get(arrayKey), [value])
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_ubiquitousStore_readsLegacyURLObject() {
         let store = MockUbiquitousKeyValueStore()
@@ -65,7 +63,6 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
         XCTAssertEqual(URL.get("url", from: store), value)
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_ubiquitousStoreSet_storesAbsoluteString() {
         let store = MockUbiquitousKeyValueStore()

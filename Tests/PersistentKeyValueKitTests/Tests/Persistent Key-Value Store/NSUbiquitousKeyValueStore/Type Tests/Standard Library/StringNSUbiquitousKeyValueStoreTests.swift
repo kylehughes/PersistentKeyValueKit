@@ -9,7 +9,6 @@ import Foundation
 import PersistentKeyValueKit
 import XCTest
 
-@available(watchOS 9.0, *)
 final class StringNSUbiquitousKeyValueStoreTests: AbstractNSUbiquitousKeyValueStoreTypeTests<String> {
     // MARK: AbstractPersistentKeyValueStoreTypeTests Implementation
 
@@ -82,7 +81,6 @@ final class StringNSUbiquitousKeyValueStoreTests: AbstractNSUbiquitousKeyValueSt
 
 /// An `NSUbiquitousKeyValueStore` with local storage that inherits Foundation's typed getters, such as
 /// `string(forKey:)`, which read through `object(forKey:)`.
-@available(watchOS 9.0, *)
 private final class FoundationGetterUbiquitousStore: NSUbiquitousKeyValueStore {
     private var values: [String: Any] = [:]
 

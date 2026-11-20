@@ -250,7 +250,6 @@ extension StorablePropertyListTests {
         XCTAssertEqual(userDefaults.dictionary(forKey: dictionaryKey.id) as? [String: String], ["entry": "previous"])
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousStoreWrite_ofArchivePropertyList_leavesPreviousValue() {
         let store = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: ArchivedText("fallback"))
@@ -328,7 +327,6 @@ extension StorablePropertyListTests {
         )
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousStoreCollectionWrites_ofCustomArchivePropertyLists_leavePreviousValues() {
         let store = MockUbiquitousKeyValueStore()
         let arrayKey = PersistentKey("key:\(#function).array", defaultValue: [HookArchivedText]())
@@ -425,7 +423,6 @@ extension StorablePropertyListTests {
         }
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousStoreCollectionWrites_ofEncoderThatChangesEarlierOutput_storeEachEncodingAsReturned() throws {
         let store = MockUbiquitousKeyValueStore()
         let dictionaryKey = PersistentKey("key:\(#function).dictionary", defaultValue: [String: BufferedText]())
@@ -467,7 +464,6 @@ extension StorablePropertyListTests {
         assertUserDefaultsWritesStoreEachReusedBufferEncoding("key:\(#function)", through: WrappedReusedData.self)
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousStoreCollectionWrites_ofEncoderThatReusesBuffer_storeEachEncoding() {
         let store = MockUbiquitousKeyValueStore()
         let arrayKey = PersistentKey("key:\(#function).array", defaultValue: [ReusedBufferText<ReusedData>]())
@@ -527,7 +523,6 @@ extension StorablePropertyListTests {
         )
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousStoreDictionaryWrite_ofHookThatAddsArchiveToEarlierEntry_leavesPreviousValue() {
         let store = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: [String: SchemaText]())
@@ -1007,7 +1002,6 @@ extension StorablePropertyListTests {
         )
     }
 
-    @available(watchOS 9.0, *)
     func test_migrationToUbiquitousStore_ofArchivePropertyList_failsAtPrepare() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = StrictMigrationUbiquitousStore()
@@ -1095,7 +1089,6 @@ private struct ArchiveDictionaryKey: PersistentKeyProtocol {
         representation.get(id, from: defaults) ?? defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func get(from store: NSUbiquitousKeyValueStore) -> NSDictionary {
         representation.get(id, from: store) ?? defaultValue
     }
@@ -1104,7 +1097,6 @@ private struct ArchiveDictionaryKey: PersistentKeyProtocol {
         defaults.removeObject(forKey: id)
     }
 
-    @available(watchOS 9.0, *)
     func remove(from store: NSUbiquitousKeyValueStore) {
         store.removeObject(forKey: id)
     }
@@ -1113,7 +1105,6 @@ private struct ArchiveDictionaryKey: PersistentKeyProtocol {
         representation.set(id, to: value, in: defaults)
     }
 
-    @available(watchOS 9.0, *)
     func set(to value: NSDictionary, in store: NSUbiquitousKeyValueStore) {
         representation.set(id, to: value, in: store)
     }

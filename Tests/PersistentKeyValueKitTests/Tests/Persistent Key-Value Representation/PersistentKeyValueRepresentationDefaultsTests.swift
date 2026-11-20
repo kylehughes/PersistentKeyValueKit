@@ -146,7 +146,6 @@ extension PersistentKeyValueRepresentationDefaultsTests {
 
 // MARK: - Ubiquitous Key-Value Store Tests
 
-@available(watchOS 9.0, *)
 extension PersistentKeyValueRepresentationDefaultsTests {
     func test_getFromUbiquitousStore() {
         let store = MockUbiquitousKeyValueStore()

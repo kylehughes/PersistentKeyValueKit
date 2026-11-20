@@ -9,7 +9,6 @@ import Foundation
 
 // MARK: - PersistentKeyValueStore Extension
 
-@available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
     /// The notification that is posted when the value of a key changes internally.
     ///
@@ -141,7 +140,6 @@ extension NSUbiquitousKeyValueStore: PersistentKeyValueStore {
 /// - Important: This type is manually `Sendable` because notifications are delivered on the posting thread. Access to
 ///   `isInvalidated` is protected by `lock`, its other stored properties are immutable after initialization, and
 ///   `observer` is a weak reference.
-@available(watchOS 9.0, *)
 private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObservation, @unchecked Sendable {
     let context: UnsafeMutableRawPointer?
     let keyID: String
@@ -230,7 +228,6 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
 
 // MARK: - Static Accessors
 
-@available(watchOS 9.0, *)
 extension PersistentKeyValueStore where Self == NSUbiquitousKeyValueStore {
     // MARK: Public Static Interface
     

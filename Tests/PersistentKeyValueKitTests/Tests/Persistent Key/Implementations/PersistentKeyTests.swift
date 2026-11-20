@@ -30,9 +30,7 @@ final class PersistentKeyTests: AbstractPersistentKeyTests<PersistentKey<String>
     // MARK: Initialization Tests
 
     @MainActor
-    func test_init_otherRepresentation() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
+    func test_init_otherRepresentation() {
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -50,8 +48,6 @@ final class PersistentKeyTests: AbstractPersistentKeyTests<PersistentKey<String>
     
     @MainActor
     func test_init_otherRepresentation_optional() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self

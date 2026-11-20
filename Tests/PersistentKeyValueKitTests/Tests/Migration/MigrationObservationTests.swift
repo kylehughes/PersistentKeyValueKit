@@ -14,7 +14,6 @@ import XCTest
 final class MigrationObservationTests: XCTestCase {
     // MARK: Tests
 
-    @available(watchOS 9.0, *)
     func test_cloudCopy_publishesOneRelatedNotification() throws {
         let source = InMemoryPersistentKeyValueStore()
         let raw = StrictMigrationUbiquitousStore()
@@ -42,7 +41,6 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertTrue(unrelated.isEmpty)
     }
 
-    @available(watchOS 9.0, *)
     func test_cloudDestinationObserver_causesWriteFailure() throws {
         let source = InMemoryPersistentKeyValueStore()
         let raw = StrictMigrationUbiquitousStore()
@@ -72,7 +70,6 @@ final class MigrationObservationTests: XCTestCase {
         XCTAssertEqual(source.get(key), 1)
     }
 
-    @available(watchOS 9.0, *)
     func test_cloudSourceObserverRefill_causesRemovalFailure() throws {
         let raw = StrictMigrationUbiquitousStore()
         let source = UbiquitousKeyValueMigrationBackend(
@@ -1187,7 +1184,6 @@ extension PublishedRowsKey: PersistentKeyProtocol {
         representation.get(id, from: defaults) ?? defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func get(from store: NSUbiquitousKeyValueStore) -> NSArray {
         representation.get(id, from: store) ?? defaultValue
     }
@@ -1196,7 +1192,6 @@ extension PublishedRowsKey: PersistentKeyProtocol {
         defaults.removeObject(forKey: id)
     }
 
-    @available(watchOS 9.0, *)
     func remove(from store: NSUbiquitousKeyValueStore) {
         store.removeObject(forKey: id)
     }
@@ -1205,7 +1200,6 @@ extension PublishedRowsKey: PersistentKeyProtocol {
         representation.set(id, to: value, in: defaults)
     }
 
-    @available(watchOS 9.0, *)
     func set(to value: NSArray, in store: NSUbiquitousKeyValueStore) {
         representation.set(id, to: value, in: store)
     }

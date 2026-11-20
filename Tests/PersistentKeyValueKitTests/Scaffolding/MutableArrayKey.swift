@@ -38,7 +38,6 @@ extension MutableArrayKey: PersistentKeyProtocol {
         representation.get(id, from: defaults) ?? defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func get(from store: NSUbiquitousKeyValueStore) -> NSMutableArray {
         representation.get(id, from: store) ?? defaultValue
     }
@@ -47,7 +46,6 @@ extension MutableArrayKey: PersistentKeyProtocol {
         defaults.removeObject(forKey: id)
     }
 
-    @available(watchOS 9.0, *)
     func remove(from store: NSUbiquitousKeyValueStore) {
         store.removeObject(forKey: id)
     }
@@ -56,7 +54,6 @@ extension MutableArrayKey: PersistentKeyProtocol {
         representation.set(id, to: value, in: defaults)
     }
 
-    @available(watchOS 9.0, *)
     func set(to value: NSMutableArray, in store: NSUbiquitousKeyValueStore) {
         representation.set(id, to: value, in: store)
     }

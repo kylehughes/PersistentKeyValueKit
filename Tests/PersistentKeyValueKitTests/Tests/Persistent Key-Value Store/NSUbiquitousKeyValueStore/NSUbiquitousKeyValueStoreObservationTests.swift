@@ -9,14 +9,12 @@ import Foundation
 import PersistentKeyValueKit
 import XCTest
 
-@available(watchOS 9.0, *)
 final class NSUbiquitousKeyValueStoreObservationTests: XCTestCase {
     private let storage: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
 }
 
 // MARK: - Registration Tests
 
-@available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStoreObservationTests {
     // MARK: Tests
 
@@ -63,7 +61,6 @@ extension NSUbiquitousKeyValueStoreObservationTests {
 
 // MARK: - Key Identity Tests
 
-@available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStoreObservationTests {
     // MARK: Tests
 
@@ -145,7 +142,6 @@ extension NSUbiquitousKeyValueStoreObservationTests {
 
 // MARK: - Lock Reentrancy Tests
 
-@available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStoreObservationTests {
     // MARK: Tests
 
@@ -195,7 +191,6 @@ extension NSUbiquitousKeyValueStoreObservationTests {
 
 // MARK: - Test Utilities
 
-@available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStoreObservationTests {
     /// The `userInfo` key for the test phase in which a notification was posted.
     fileprivate static let phaseKey = "PersistentKeyValueKitTestPhase"
@@ -223,7 +218,6 @@ extension NSUbiquitousKeyValueStoreObservationTests {
 // MARK: - DeregisteringNotificationObserver Definition
 
 /// An observer that deregisters itself when it receives its first notification.
-@available(watchOS 9.0, *)
 private final class DeregisteringNotificationObserver: NSObject {
     /// The test phase of each notification received, or `"unknown"` for one posted without a phase.
     private(set) var receivedPhases: [String] = []

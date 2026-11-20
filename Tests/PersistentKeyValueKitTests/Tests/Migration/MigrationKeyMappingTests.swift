@@ -10,7 +10,6 @@ import XCTest
 
 @testable import PersistentKeyValueKit
 
-@available(watchOS 9.0, *)
 final class MigrationKeyMappingTests: XCTestCase {
     // MARK: Tests
 
@@ -417,7 +416,6 @@ extension DisabledKey: PersistentKeyProtocol {
         false
     }
 
-    @available(watchOS 9.0, *)
     func get(from store: NSUbiquitousKeyValueStore) -> Int {
         defaultValue
     }
@@ -426,14 +424,12 @@ extension DisabledKey: PersistentKeyProtocol {
         defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func remove(from store: NSUbiquitousKeyValueStore) {
     }
 
     func remove(from userDefaults: UserDefaults) {
     }
 
-    @available(watchOS 9.0, *)
     func set(to newValue: Int, in store: NSUbiquitousKeyValueStore) {
     }
 

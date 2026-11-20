@@ -10,7 +10,6 @@ import XCTest
 
 @testable import PersistentKeyValueKit
 
-@available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
 final class MigrationStoreMatrixTests: XCTestCase {
     private let boolKey = PersistentKey("matrix.bool", defaultValue: false)
     private let codableKey = PersistentKey(
@@ -30,7 +29,6 @@ final class MigrationStoreMatrixTests: XCTestCase {
 
     // MARK: Tests
 
-    @available(watchOS 9.0, *)
     func test_migration_allStorePairs() throws {
         try runPair(InMemoryPersistentKeyValueStore(), InMemoryPersistentKeyValueStore())
         try runPair(InMemoryPersistentKeyValueStore(), makeDefaults("d1"))
@@ -70,7 +68,6 @@ final class MigrationStoreMatrixTests: XCTestCase {
         try store.migrationValue(for: key, in: XCTUnwrap(store.migrationSnapshot(for: key.id)))
     }
 
-    @available(watchOS 9.0, *)
     private func makeCloud() -> UbiquitousKeyValueMigrationBackend {
         UbiquitousKeyValueMigrationBackend(
             store: StrictMigrationUbiquitousStore(),
@@ -161,7 +158,6 @@ final class MigrationStoreMatrixTests: XCTestCase {
 
 // MARK: - Codable Value Definition
 
-@available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
 extension MigrationStoreMatrixTests {
     private struct CodableValue: Codable, Equatable, Sendable {
         let name: String

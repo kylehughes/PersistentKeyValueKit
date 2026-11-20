@@ -882,6 +882,28 @@ principles:
   dictionary key as a completion marker. Setup rejects a same-store mapping of
   a key to itself before it checks the prefix, so a reserved identifier mapped
   to itself within one store throws `sameStore`.
+- **Platform minimums (iOS 16, tvOS 16, watchOS 9) and built-in dispatch**:
+  2.0.0 raises the iOS and tvOS minimums from 15 to 16 and the watchOS minimum
+  from 8 to 9; macOS 13 and visionOS 1 are unchanged.
+  - Every API is now available on every supported OS version. The raise removed
+    189 availability annotations and checks: `NSUbiquitousKeyValueStore` APIs
+    were gated to watchOS 9, and `some PersistentKeyValueRepresentation<Self>`
+    properties and `CodablePersistentKeyValueRepresentation()` to iOS 16.
+  - The Xcode 27.2 watchOS SDK declares 9.0 as its minimum deployment target
+    (`MinimumDeploymentTarget` in its `SDKSettings.json`), so it no longer
+    supports the earlier watchOS 8 minimum. Its iOS and tvOS SDKs still accept
+    15.0.
+  - The raise also permits casting to a constrained existential
+    (`self as? any BuiltInContainerConversion<Value>`, with `Value` declared
+    as the protocol's primary associated type), which the iOS 15 runtime does
+    not support. Container conversion still detects built-in
+    representations with an unconstrained cast and restores the static type
+    with `as!` or, on ordinary writes, `unsafeBitCast` after a type-identity
+    `precondition`. A Release benchmark on Apple Swift 6.4.2 measured the
+    constrained cast 20% to 210% slower on ordinary collection writes (a
+    one-element `[Int?]` dictionary-entry write went from 0.65 to 2.06
+    microseconds) and 5% to 68% slower on checked collection conversion. The
+    benchmark was run during design and is not committed.
 
 ## Consequences
 

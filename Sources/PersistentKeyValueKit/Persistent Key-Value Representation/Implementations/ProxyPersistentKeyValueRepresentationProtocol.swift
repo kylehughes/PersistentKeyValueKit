@@ -167,7 +167,6 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
     
     // MARK: Interface with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
         guard
@@ -179,7 +178,6 @@ extension ProxyPersistentKeyValueRepresentationProtocol {
         return from(proxyValue)
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         guard let serialization = to(value) else {

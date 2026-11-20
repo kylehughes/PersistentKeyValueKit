@@ -208,7 +208,6 @@ extension LiteralKeyIdentityTests {
 
 // MARK: - Observation Tests
 
-@available(watchOS 9.0, *)
 extension LiteralKeyIdentityTests {
     // MARK: Tests
 

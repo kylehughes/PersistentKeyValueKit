@@ -190,7 +190,6 @@ extension ProxyPersistentKeyValueRepresentationTests {
         XCTAssertEqual(propertyListDictionary["key"] as? String, "existing")
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_protocol_failedSerializationLeavesUbiquitousStoreUnchanged() {
         let representation = ProxyPersistentKeyValueRepresentation<Int, String>(

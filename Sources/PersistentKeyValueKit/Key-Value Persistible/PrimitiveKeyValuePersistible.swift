@@ -154,7 +154,6 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` instance to read from.
     /// - Returns: The decoded value at `ubiquitousStoreKey` in `ubiquitousStore`, or `nil` if it is absent or cannot
     ///   be decoded as `Self`.
-    @available(watchOS 9.0, *)
     static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self?
     
     /// Sets the value at `ubiquitousStoreKey` in `ubiquitousStore`.
@@ -164,7 +163,6 @@ public protocol PrimitiveKeyValuePersistible: KeyValuePersistible {
     /// - Parameter ubiquitousStoreKey: The key to update.
     /// - Parameter value: The value to encode.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` instance to update at `ubiquitousStoreKey`.
-    @available(watchOS 9.0, *)
     static func set(_ ubiquitousStoreKey: String, to value: Self, in ubiquitousStore: NSUbiquitousKeyValueStore)
 }
 
@@ -271,7 +269,6 @@ extension PrimitiveKeyValuePersistible {
 
     /// Decodes the object stored at `ubiquitousStoreKey` with ``decode(storageObject:format:)``, returning `nil` when
     /// the key is absent or decoding fails.
-    @available(watchOS 9.0, *)
     public static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self? {
         ubiquitousStore.object(forKey: ubiquitousStoreKey).flatMap {
             try? decode(storageObject: $0, format: .ubiquitousKeyValueStore)
@@ -280,7 +277,6 @@ extension PrimitiveKeyValuePersistible {
 
     /// Writes the object returned by ``encode(format:)``, removes the key when it returns `nil`, and leaves
     /// `ubiquitousStore` unchanged when it throws or returns an object that is not a property list.
-    @available(watchOS 9.0, *)
     public static func set(
         _ ubiquitousStoreKey: String,
         to value: Self,

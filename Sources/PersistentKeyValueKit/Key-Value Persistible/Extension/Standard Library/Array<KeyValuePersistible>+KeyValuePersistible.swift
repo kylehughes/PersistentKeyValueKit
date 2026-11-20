@@ -162,7 +162,6 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
 
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func get(
         _ ubiquitousStoreKey: String,
@@ -176,7 +175,6 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
     }
     
     /// Writes the encoded array, leaving `ubiquitousStore` unchanged if any element fails to encode.
-    @available(watchOS 9.0, *)
     @inlinable
     public static func set(
         _ ubiquitousStoreKey: String,

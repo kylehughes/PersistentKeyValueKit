@@ -106,20 +106,17 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from.
     /// - Returns: The value of the key in the given `NSUbiquitousKeyValueStore`, or the default value if the key has 
     ///   not been set.
-    @available(watchOS 9.0, *)
     func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value
 
     /// Removes the value of the key from the given `NSUbiquitousKeyValueStore`.
     ///
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to remove the value from.
-    @available(watchOS 9.0, *)
     func remove(from ubiquitousStore: NSUbiquitousKeyValueStore)
 
     /// Sets the value of the key to the given value in the given `NSUbiquitousKeyValueStore`.
     ///
     /// - Parameter newValue: The new value for the key.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in.
-    @available(watchOS 9.0, *)
     func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore)
 
     // MARK: Interfacing with In-Memory Store

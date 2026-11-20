@@ -103,13 +103,11 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertEqual(defaults.object(forKey: arrayKey.id) as? [String], ["3", "4"])
         XCTAssertEqual(defaults.object(forKey: dictionaryKey.id) as? [String: String], ["main": "5"])
 
-        if #available(watchOS 9.0, *) {
-            let ubiquitousStore = PublicMockUbiquitousKeyValueStore()
+        let ubiquitousStore = PublicMockUbiquitousKeyValueStore()
 
-            exercise(ubiquitousStore)
+        exercise(ubiquitousStore)
 
-            XCTAssertEqual(ubiquitousStore.object(forKey: arrayKey.id) as? [String], ["3", "4"])
-        }
+        XCTAssertEqual(ubiquitousStore.object(forKey: arrayKey.id) as? [String], ["3", "4"])
 
         let keys: [any PersistentKeyProtocol] = [scalarKey, arrayKey, dictionaryKey, primitiveKey]
         let destination = InMemoryPersistentKeyValueStore()
@@ -445,7 +443,6 @@ final class PublicAPIClientTests: XCTestCase {
         XCTAssertFalse(source.get(.isMigrationCompleted(id: "incomplete")))
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousNativeStore_forwardsOrdinaryAccessAndMigration() throws {
         let store = PublicMockUbiquitousKeyValueStore()
         let destination = InMemoryPersistentKeyValueStore()
@@ -705,7 +702,6 @@ extension PublicPrimitive: PrimitiveKeyValuePersistible {
         }
     }
 
-    @available(watchOS 9.0, *)
     static func get(_ key: String, from store: NSUbiquitousKeyValueStore) -> Self? {
         store.object(forKey: key).flatMap {
             try? decode(storageObject: $0, format: .ubiquitousKeyValueStore)
@@ -716,7 +712,6 @@ extension PublicPrimitive: PrimitiveKeyValuePersistible {
         defaults.set(value.rawValue, forKey: key)
     }
 
-    @available(watchOS 9.0, *)
     static func set(_ key: String, to value: Self, in store: NSUbiquitousKeyValueStore) {
         store.set(value.rawValue, forKey: key)
     }
@@ -728,7 +723,6 @@ extension PublicPrimitive: PrimitiveKeyValuePersistible {
 
 // MARK: - Public Mock Ubiquitous Key-Value Store Definition
 
-@available(watchOS 9.0, *)
 private final class PublicMockUbiquitousKeyValueStore: NSUbiquitousKeyValueStore {
     private var values: [String: Any] = [:]
 
@@ -881,17 +875,14 @@ extension PublicClampedKey: PersistentKeyProtocol {
 
     // MARK: Interfacing with Ubiquitous Key-Value Store
 
-    @available(watchOS 9.0, *)
     func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Int {
         representation.get(id, from: ubiquitousStore).map(clamped) ?? defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func remove(from ubiquitousStore: NSUbiquitousKeyValueStore) {
         ubiquitousStore.removeObject(forKey: id)
     }
 
-    @available(watchOS 9.0, *)
     func set(to newValue: Int, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         representation.set(id, to: clamped(newValue), in: ubiquitousStore)
     }

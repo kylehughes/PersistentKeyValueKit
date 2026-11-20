@@ -457,7 +457,6 @@ private struct StoreReadingKey: PersistentKeyProtocol {
         representation.get(id, from: userDefaults) ?? defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Int {
         representation.get(id, from: ubiquitousStore) ?? defaultValue
     }
@@ -466,7 +465,6 @@ private struct StoreReadingKey: PersistentKeyProtocol {
         userDefaults.removeObject(forKey: id)
     }
 
-    @available(watchOS 9.0, *)
     func remove(from ubiquitousStore: NSUbiquitousKeyValueStore) {
         ubiquitousStore.removeObject(forKey: id)
     }
@@ -475,7 +473,6 @@ private struct StoreReadingKey: PersistentKeyProtocol {
         representation.set(id, to: newValue, in: userDefaults)
     }
 
-    @available(watchOS 9.0, *)
     func set(to newValue: Int, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         representation.set(id, to: newValue, in: ubiquitousStore)
     }

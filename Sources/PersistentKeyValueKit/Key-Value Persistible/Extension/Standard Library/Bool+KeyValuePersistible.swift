@@ -91,7 +91,6 @@ extension Bool: PrimitiveKeyValuePersistible {
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func get(
         _ ubiquitousStoreKey: String,
@@ -101,7 +100,6 @@ extension Bool: PrimitiveKeyValuePersistible {
         ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Self
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func set(
         _ ubiquitousStoreKey: String,

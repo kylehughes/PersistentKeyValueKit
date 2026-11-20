@@ -75,13 +75,11 @@ extension PrimitivePersistentKeyValueRepresentation: PersistentKeyValueRepresent
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
         Value.get(ubiquitousStoreKey, from: ubiquitousStore)
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         Value.set(ubiquitousStoreKey, to: value, in: ubiquitousStore)

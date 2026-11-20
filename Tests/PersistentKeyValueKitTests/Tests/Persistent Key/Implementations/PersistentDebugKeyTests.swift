@@ -38,9 +38,7 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
     // MARK: Initialization Tests
 
     @MainActor
-    func test_init_otherRepresentation() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
+    func test_init_otherRepresentation() {
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -58,8 +56,6 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
     
     @MainActor
     func test_init_otherRepresentation_optional() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -81,7 +77,6 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
 
     @MainActor
     func test_init_debugAndReleaseDefaultValues_optionalOtherRepresentation() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -107,8 +102,7 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
     }
 
     @MainActor
-    func test_init_debugAndReleaseDefaultValues_otherRepresentation() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
+    func test_init_debugAndReleaseDefaultValues_otherRepresentation() {
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self

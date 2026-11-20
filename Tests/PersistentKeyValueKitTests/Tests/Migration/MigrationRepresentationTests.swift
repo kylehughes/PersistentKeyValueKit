@@ -72,7 +72,6 @@ extension MigrationThrowingEncoder: TopLevelEncoder {
 final class MigrationRepresentationTests: XCTestCase {
     // MARK: Tests
 
-    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func test_codableDecode_preservesUnderlyingError() throws {
         let representation = CodablePersistentKeyValueRepresentation<MigrationPayload, JSONEncoder, JSONDecoder>()
 
@@ -85,7 +84,6 @@ final class MigrationRepresentationTests: XCTestCase {
         }
     }
 
-    @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
     func test_codableEncode_preservesUnderlyingError() {
         let representation = CodablePersistentKeyValueRepresentation<
             MigrationPayload, MigrationThrowingEncoder, JSONDecoder
@@ -101,7 +99,6 @@ final class MigrationRepresentationTests: XCTestCase {
         }
     }
 
-    @available(watchOS 9.0, *)
     func test_legacyCloudURLObject_decodes() throws {
         let representation = PrimitivePersistentKeyValueRepresentation<URL>()
         let value = URL(string: "https://example.com/legacy")!

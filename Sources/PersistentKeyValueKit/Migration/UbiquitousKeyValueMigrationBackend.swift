@@ -15,7 +15,6 @@ import Foundation
 /// The wrapped store and identity are immutable after initialization. Subclasses and test doubles must preserve the
 /// thread-safety expected from NSUbiquitousKeyValueStore. A successful local write does not establish cloud delivery
 /// or durability.
-@available(watchOS 9.0, *)
 final class UbiquitousKeyValueMigrationBackend: @unchecked Sendable {
     let migrationIdentity: PersistentKeyValueMigrationStoreIdentity
 
@@ -43,7 +42,6 @@ final class UbiquitousKeyValueMigrationBackend: @unchecked Sendable {
 
 // MARK: - FoundationMigrationBackend Extension
 
-@available(watchOS 9.0, *)
 extension UbiquitousKeyValueMigrationBackend: FoundationMigrationBackend {
     // MARK: Internal Instance Interface
 

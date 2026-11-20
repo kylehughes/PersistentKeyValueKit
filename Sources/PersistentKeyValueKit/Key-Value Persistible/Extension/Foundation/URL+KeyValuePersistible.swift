@@ -196,7 +196,6 @@ extension URL: PrimitiveKeyValuePersistible {
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func get(
         _ ubiquitousStoreKey: String,
@@ -212,7 +211,6 @@ extension URL: PrimitiveKeyValuePersistible {
         return URL(string: string)
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func set(
         _ ubiquitousStoreKey: String,

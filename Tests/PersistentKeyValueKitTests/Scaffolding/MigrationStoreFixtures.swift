@@ -9,7 +9,6 @@ import Foundation
 
 @testable import PersistentKeyValueKit
 
-@available(watchOS 9.0, *)
 final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecked Sendable {
     // `lock` protects the stored values, rejection flags, and synchronization count.
     // Reference-valued payloads are retained, so tests must keep them immutable during concurrent access.
@@ -185,7 +184,6 @@ extension UserDefaultsMigrationBackend: PersistentKeyValueStore {
 
 // MARK: - UbiquitousKeyValueMigrationBackend PersistentKeyValueStore Extension
 
-@available(watchOS 9.0, *)
 extension UbiquitousKeyValueMigrationBackend: PersistentKeyValueStore {
     public var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
         .init(backend: self)

@@ -260,7 +260,6 @@ extension PersistentDebugKey {
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from.
     /// - Returns: In debug builds, the value of the key in the given `NSUbiquitousKeyValueStore`, or the default value
     ///   if the key has not been set. In production builds, the default value.
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         #if DEBUG
@@ -275,7 +274,6 @@ extension PersistentDebugKey {
     /// In production builds, this method has no effect.
     ///
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to remove the value from.
-    @available(watchOS 9.0, *)
     @inlinable
     public func remove(from ubiquitousStore: NSUbiquitousKeyValueStore) {
         #if DEBUG
@@ -291,7 +289,6 @@ extension PersistentDebugKey {
     ///
     /// - Parameter newValue: The new value for the key.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in.
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         #if DEBUG

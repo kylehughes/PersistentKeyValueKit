@@ -184,7 +184,6 @@ final class MigrationCoreTests: XCTestCase {
         XCTAssertEqual(d.get(k), "edited")
     }
 
-    @available(watchOS 9.0, *)
     func test_longCompletionID_isRecordedInUbiquitousStore() throws {
         let source = InMemoryPersistentKeyValueStore()
         let destination = StrictMigrationUbiquitousStore()

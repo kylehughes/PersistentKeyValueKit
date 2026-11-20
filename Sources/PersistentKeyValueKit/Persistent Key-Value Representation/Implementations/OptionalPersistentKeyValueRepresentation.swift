@@ -110,7 +110,6 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(
         _ ubiquitousStoreKey: String,
@@ -123,7 +122,6 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
         return value
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         guard let value else {

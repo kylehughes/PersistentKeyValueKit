@@ -588,7 +588,6 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["defaultValue"])
     }
 
-    @available(watchOS 9.0, *)
     func test_publisher_ubiquitousKeyValueStoreIgnoresUnrelatedNotifications() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -610,7 +609,6 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["changedValue"])
     }
 
-    @available(watchOS 9.0, *)
     func test_publisher_ubiquitousKeyValueStoreRefreshesForAccountChange() {
         let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -629,7 +627,6 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["accountValue"])
     }
 
-    @available(watchOS 9.0, *)
     func test_publisher_ubiquitousKeyValueStoreRefreshesWithoutChangedKeys() {
         let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -656,7 +653,6 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["firstExternalValue", "secondExternalValue"])
     }
 
-    @available(watchOS 9.0, *)
     func test_publisher_ubiquitousKeyValueStoreObservesChanges() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -846,7 +842,6 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertTrue(subscriptionBox.didCancelInDeinit)
     }
 
-    @available(watchOS 9.0, *)
     func test_publisher_decoderCancellingSubscriptionPreventsDelivery() {
         let subscriber = DemandControlledSubscriber<Int>()
         // The in-memory store does not decode values, so use a store that does.

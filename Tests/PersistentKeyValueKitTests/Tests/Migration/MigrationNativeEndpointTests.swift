@@ -214,7 +214,6 @@ final class MigrationNativeEndpointTests: XCTestCase {
         }
     }
 
-    @available(watchOS 9.0, *)
     func test_nativeCloudAndMemoryStores_useOrdinaryGenericAndExistentialContracts() throws {
         var nativeStoreCount = 0
         let factories: [() throws -> any PersistentKeyValueStore] = [
@@ -502,7 +501,6 @@ extension DisabledMigrationKey: PersistentKeyProtocol {
         false
     }
 
-    @available(watchOS 9.0, *)
     func get(from store: NSUbiquitousKeyValueStore) -> Int {
         defaultValue
     }
@@ -511,14 +509,12 @@ extension DisabledMigrationKey: PersistentKeyProtocol {
         defaultValue
     }
 
-    @available(watchOS 9.0, *)
     func remove(from store: NSUbiquitousKeyValueStore) {
     }
 
     func remove(from userDefaults: UserDefaults) {
     }
 
-    @available(watchOS 9.0, *)
     func set(to newValue: Int, in store: NSUbiquitousKeyValueStore) {
     }
 

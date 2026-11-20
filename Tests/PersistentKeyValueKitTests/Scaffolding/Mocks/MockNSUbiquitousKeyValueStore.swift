@@ -15,7 +15,6 @@ import Foundation
 /// We prefer to test actual implementations but `NSUbiquitousKeyValueStore` requires iCloud entitlements and we
 /// cannot instrument that for unit tests. We make a best-effort attempt to reflect the important details of the
 /// underlying implementation.
-@available(watchOS 9.0, *)
 public class MockUbiquitousKeyValueStore: NSUbiquitousKeyValueStore {
     public var storage: [String: Any]
     public var synchronizeReturnValue: Bool

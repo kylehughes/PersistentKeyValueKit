@@ -689,12 +689,10 @@ final class MigrationNativeFidelityTests: XCTestCase {
         XCTAssertEqual(finished.wait(timeout: .now() + 10), .success)
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousDestination_commitsEncodingThatValidationCannotConsume() throws {
         try assertEncodingThatValidationCannotConsumeIsCommitted(to: StrictMigrationUbiquitousStore())
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousDestination_rejectsNumberThatStorageWouldChange() throws {
         let destination = StrictMigrationUbiquitousStore()
 
@@ -703,7 +701,6 @@ final class MigrationNativeFidelityTests: XCTestCase {
         }
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousIntegerWidth_matchesOrdinaryAccess() throws {
         try assertIntegerWidthMatchesOrdinaryAccess(
             from: StrictMigrationUbiquitousStore(),
@@ -711,24 +708,20 @@ final class MigrationNativeFidelityTests: XCTestCase {
         )
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousOverwrite_replacesFoundationEqualValueOfAnotherType() throws {
         let destination = StrictMigrationUbiquitousStore()
 
         try assertOverwriteReplacesFoundationEqualValueOfAnotherType(in: destination, rawValue: destination.storedValue(for:))
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousSnapshot_rejectsBooleanReplacedByEqualNumber() throws {
         try assertTypeChangeIsDetected(in: StrictMigrationUbiquitousStore())
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousSnapshot_rejectsSingleReplacedByEqualDouble() throws {
         try assertWidthChangeIsDetected(in: StrictMigrationUbiquitousStore())
     }
 
-    @available(watchOS 9.0, *)
     func test_ubiquitousSnapshot_verifiesIntegerReplacedByEqualWiderInteger() throws {
         try assertIntegerWidthReplacementVerifiesByValue(in: StrictMigrationUbiquitousStore())
     }

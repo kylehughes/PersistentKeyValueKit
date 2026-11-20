@@ -9,7 +9,6 @@ import Foundation
 import PersistentKeyValueKit
 import XCTest
 
-@available(watchOS 9.0, *)
 final class NSUbiquitousKeyValueStoreTests: AbstractPersistentKeyValueStoreTests<NSUbiquitousKeyValueStore> {
     private let storage: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
     
@@ -51,7 +50,6 @@ final class NSUbiquitousKeyValueStoreTests: AbstractPersistentKeyValueStoreTests
 
 // MARK: - Observation Tests
 
-@available(watchOS 9.0, *)
 extension NSUbiquitousKeyValueStoreTests {
     // MARK: Tests
 

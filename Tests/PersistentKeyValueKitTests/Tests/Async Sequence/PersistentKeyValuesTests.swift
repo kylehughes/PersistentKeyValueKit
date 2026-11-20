@@ -400,7 +400,6 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(values, [1, 2])
     }
 
-    @available(watchOS 9.0, *)
     func test_values_ubiquitousKeyValueStoreObservesChanges() async {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -413,7 +412,6 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(value, "changedValue")
     }
 
-    @available(watchOS 9.0, *)
     func test_values_ubiquitousKeyValueStoreRefreshesForAccountChange() async {
         let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -437,7 +435,6 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(values, ["accountValue"])
     }
 
-    @available(watchOS 9.0, *)
     func test_values_ubiquitousKeyValueStoreRefreshesWithoutChangedKeys() async {
         let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -465,7 +462,6 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(values, ["firstExternalValue", "secondExternalValue"])
     }
 
-    @available(watchOS 9.0, *)
     func test_values_ubiquitousKeyValueStoreIgnoresUnrelatedNotifications() async {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")

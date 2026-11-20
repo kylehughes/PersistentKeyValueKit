@@ -208,7 +208,6 @@ where
     /// Entries that fail to decode, and all but one of any entries with keys that Swift treats as equal, are omitted
     /// from the result but stay in storage. Writing the result back replaces the whole stored dictionary and deletes them,
     /// and that deletion can propagate to the user's other devices.
-    @available(watchOS 9.0, *)
     @inlinable
     public static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self? {
         guard let propertyListDictionary = ubiquitousStore.dictionary(forKey: ubiquitousStoreKey) else {
@@ -223,7 +222,6 @@ where
     /// Leaves `ubiquitousStore` unchanged if any entry fails to encode, including an entry that the
     /// ``PersistentKeyValueRepresentation/set(_:to:in:)-91w4n`` of a value representation defined outside this package
     /// leaves absent, as the default implementation does for a value that encodes to `nil`.
-    @available(watchOS 9.0, *)
     @inlinable
     public static func set(
         _ ubiquitousStoreKey: String,

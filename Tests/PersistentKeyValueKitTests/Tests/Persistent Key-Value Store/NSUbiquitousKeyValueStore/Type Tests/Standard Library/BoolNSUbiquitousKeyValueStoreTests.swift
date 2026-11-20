@@ -7,7 +7,6 @@
 
 import PersistentKeyValueKit
 
-@available(watchOS 9.0, *)
 final class BoolNSUbiquitousKeyValueStoreTests: AbstractNSUbiquitousKeyValueStoreTypeTests<Bool> {
     // MARK: AbstractPersistentKeyValueStoreTypeTests Implementation
     

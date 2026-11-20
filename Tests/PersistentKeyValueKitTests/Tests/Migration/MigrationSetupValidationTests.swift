@@ -123,7 +123,6 @@ final class MigrationSetupValidationTests: XCTestCase {
         )
     }
 
-    @available(watchOS 9.0, *)
     func test_keyIdentifierLimit_isCheckedAgainstTheStoreThatHoldsTheKey() throws {
         let memory = MigrationFaultStore()
         let cloud = UbiquitousKeyValueMigrationBackend(
@@ -334,7 +333,6 @@ final class MigrationSetupValidationTests: XCTestCase {
         )
     }
 
-    @available(watchOS 9.0, *)
     func test_reservedPrefixSpellings_areRejectedBeforeMutationInEveryStore() throws {
         let prefix = "PersistentKeyValueKit_MigrationCompleted_"
         let sourceSuiteName = stableSuiteName("MigrationSetupValidationTests.ReservedPrefix.Source")
