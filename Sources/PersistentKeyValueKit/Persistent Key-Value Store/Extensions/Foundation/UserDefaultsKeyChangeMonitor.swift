@@ -183,7 +183,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     internal func add(_ observation: UserDefaultsKeyChangeObservation) {
         let thread = pthread_self()
 
-        let read: PendingRead? = lock.withLockHeld {
+        let read: PendingRead? = lock.withLock {
             guard !observation.isInvalidated else {
                 return nil
             }
@@ -208,7 +208,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
         // Read without the lock held: an overridden getter can write the store, report a change, or register.
         let object = userDefaults?.object(forKey: read.keyID) as AnyObject?
 
-        let isChangedDuringRead = lock.withLockHeld {
+        let isChangedDuringRead = lock.withLock {
             pendingReads.removeAll {
                 $0 === read
             }
@@ -259,7 +259,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     /// Stops delivering changes to `observation`.
     internal func remove(_ observation: UserDefaultsKeyChangeObservation) {
-        let removedKey: ObservedKey? = lock.withLockHeld {
+        let removedKey: ObservedKey? = lock.withLock {
             observation.isInvalidated = true
 
             guard let index = observedKeys.firstIndex(where: { $0.observations.contains { $0 === observation } }) else {
@@ -373,7 +373,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
             guard
                 isChanged,
                 let observer = observation.observer,
-                !lock.withLockHeld({ observation.isInvalidated })
+                !lock.withLock({ observation.isInvalidated })
             else {
                 continue
             }
@@ -389,7 +389,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     /// Returns the reconciliation the caller became responsible for, or `nil` if another caller is reconciling.
     private func beginReconciling() -> Int? {
-        lock.withLockHeld {
+        lock.withLock {
             guard !isReconciling else {
                 return nil
             }
@@ -407,7 +407,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
     /// A key is read even when its observers have been deallocated, so its comparison values stay current until its
     /// registrations are removed.
     private func takePendingKeys() -> (observedKeys: [ObservedKey], changeCount: Int)? {
-        lock.withLockHeld {
+        lock.withLock {
             guard hasPendingChange else {
                 // Release reconciliation while holding the lock so a concurrent change cannot be recorded between the
                 // final check and the release.
@@ -424,7 +424,7 @@ internal final class UserDefaultsKeyChangeMonitor: NSObject, @unchecked Sendable
 
     @objc
     private func userDefaultsDidChange(_ notification: Notification) {
-        lock.withLockHeld {
+        lock.withLock {
             changeCount &+= 1
             hasPendingChange = true
         }

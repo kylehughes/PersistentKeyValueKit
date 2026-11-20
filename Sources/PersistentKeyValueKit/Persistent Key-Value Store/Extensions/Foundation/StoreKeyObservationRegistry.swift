@@ -75,7 +75,7 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     /// The observation is registered before it is activated, so a callback delivered during activation can deregister
     /// it.
     internal func insert(_ observation: any StoreKeyObservation) {
-        let (removed, liveObservers) = lock.withLockHeld {
+        let (removed, liveObservers) = lock.withLock {
             let removed = removeObservations { _, _ in
                 false
             }
@@ -102,7 +102,7 @@ internal final class StoreKeyObservationRegistry: @unchecked Sendable {
     internal func remove(_ observer: NSObject, keyID: String, context: UnsafeMutableRawPointer?) {
         let literalKeyID = LiteralKeyID.codeUnits(of: keyID)
 
-        let (removed, liveObservers) = lock.withLockHeld {
+        let (removed, liveObservers) = lock.withLock {
             removeObservations { registeredObserver, observation in
                 registeredObserver === observer
                     && observation.literalKeyID == literalKeyID

@@ -19,12 +19,12 @@ final class LockedFlag: @unchecked Sendable {
 
     var value: Bool {
         get {
-            lock.withLockHeld {
+            lock.withLock {
                 storedValue
             }
         }
         set {
-            lock.withLockHeld {
+            lock.withLock {
                 storedValue = newValue
             }
         }

@@ -20,7 +20,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
 
     /// The number of reads of the instrumented key since it was set.
     var readCount: Int {
-        lock.withLockHeld {
+        lock.withLock {
             reads
         }
     }
@@ -29,7 +29,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
 
     /// Counts reads of `keyID` from now on.
     func instrument(_ keyID: String) {
-        lock.withLockHeld {
+        lock.withLock {
             observedKeyID = keyID
             reads = 0
         }
@@ -37,7 +37,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
 
     /// Runs `action` once, after the next read of the instrumented key.
     func afterNextRead(_ action: @escaping () -> Void) {
-        lock.withLockHeld {
+        lock.withLock {
             nextReadAction = action
         }
     }
@@ -47,7 +47,7 @@ final class InstrumentedUserDefaults: UserDefaults, @unchecked Sendable {
     override func object(forKey defaultName: String) -> Any? {
         let object = super.object(forKey: defaultName)
 
-        let action: (() -> Void)? = lock.withLockHeld {
+        let action: (() -> Void)? = lock.withLock {
             guard let observedKeyID, observedKeyID.utf16.elementsEqual(defaultName.utf16) else {
                 return nil
             }

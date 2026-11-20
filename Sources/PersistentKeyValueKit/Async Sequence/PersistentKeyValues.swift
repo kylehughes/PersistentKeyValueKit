@@ -365,7 +365,7 @@ extension Observer {
 
         /// Discards changes reported before the initial value is read.
         func discardPendingChange() {
-            lock.withLockHeld {
+            lock.withLock {
                 hasPendingChange = false
             }
         }
@@ -374,7 +374,7 @@ extension Observer {
         ///
         /// The caller releases the continuation after the lock is unlocked.
         func markDeregistered() -> (isFirstDeregistration: Bool, released: AsyncStream<Key.Value>.Continuation?) {
-            lock.withLockHeld {
+            lock.withLock {
                 guard !isDeregistered else {
                     return (false, nil)
                 }
@@ -390,7 +390,7 @@ extension Observer {
 
         /// Records a change and returns whether the caller became responsible for emitting it.
         func markPendingChange() -> Bool {
-            lock.withLockHeld {
+            lock.withLock {
                 guard continuation != nil else {
                     return false
                 }
@@ -408,7 +408,7 @@ extension Observer {
         }
 
         func setContinuation(_ continuation: AsyncStream<Key.Value>.Continuation, isEmitting: Bool) {
-            lock.withLockHeld {
+            lock.withLock {
                 self.continuation = continuation
                 self.isEmitting = isEmitting
             }
@@ -416,7 +416,7 @@ extension Observer {
 
         /// Consumes the pending change for the emitting caller, or releases emission when none remains.
         func takePendingChange() -> AsyncStream<Key.Value>.Continuation? {
-            lock.withLockHeld {
+            lock.withLock {
                 guard hasPendingChange, let continuation else {
                     // Release emission while holding the lock so a concurrent change cannot be recorded between the
                     // final check and the release.

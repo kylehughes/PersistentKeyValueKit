@@ -46,7 +46,7 @@ enum NotificationObserverInstallationHook {
         )!
         let hook = Hook(action: action, center: center, name: name, object: object)
 
-        lock.withLockHeld {
+        lock.withLock {
             pendingHook = hook
         }
 
@@ -55,14 +55,14 @@ enum NotificationObserverInstallationHook {
         defer {
             method_exchangeImplementations(original, replacement)
 
-            lock.withLockHeld {
+            lock.withLock {
                 pendingHook = nil
             }
         }
 
         body()
 
-        return lock.withLockHeld {
+        return lock.withLock {
             hook.hasRun
         }
     }
@@ -75,7 +75,7 @@ enum NotificationObserverInstallationHook {
         name: Notification.Name?,
         object: Any?
     ) -> (() -> Void)? {
-        lock.withLockHeld {
+        lock.withLock {
             guard
                 let hook = pendingHook,
                 hook.center === center,

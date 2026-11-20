@@ -92,7 +92,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// - Returns: The stored value, or `nil` if the store has no entry for the key.
     public func object(forKey key: String) -> Any? {
         Self.withStorageKey(for: key) { storageKey in
-            lock.withLockHeld {
+            lock.withLock {
                 storage[storageKey]?.object
             }
         }
@@ -107,7 +107,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// - Parameter key: The identifier of the entry.
     public func removeObject(forKey key: String) {
         let (removedEntry, observations) = Self.withStorageKey(for: key) { storageKey in
-            lock.withLockHeld {
+            lock.withLock {
                 (removeEntry(forKey: storageKey), registeredObservations(for: storageKey))
             }
         }
@@ -138,7 +138,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
         let storedValue = Self.normalizedValue(value)
 
         let (replacedValue, observations) = Self.withStorageKey(for: key) { storageKey in
-            lock.withLockHeld {
+            lock.withLock {
                 nextRevision &+= 1
 
                 return (
@@ -264,7 +264,7 @@ public final class InMemoryPersistentKeyValueStore: @unchecked Sendable {
     /// before it is called. The observer is retained by that read and released after the lock is unlocked.
     private func notify(_ observations: [Observation], keyPath: String?) {
         for observation in observations {
-            let observer = lock.withLockHeld {
+            let observer = lock.withLock {
                 observation.isActive ? observation.observer : nil
             }
 
@@ -306,7 +306,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
         let storageKey = Self.storageKey(for: write.keyID)
 
-        let result: (UInt64, [Observation], StoredValue?) = try lock.withLockHeld {
+        let result: (UInt64, [Observation], StoredValue?) = try lock.withLock {
             if let snapshot, storage[storageKey]?.revision != snapshot.revision {
                 throw PersistentKeyMigrationError.destinationChanged
             }
@@ -348,7 +348,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
     func migrationSnapshot(for keyID: String) throws -> MigrationSnapshot? {
         let storageKey = Self.storageKey(for: keyID)
 
-        let storedValue = lock.withLockHeld {
+        let storedValue = lock.withLock {
             storage[storageKey]
         }
 
@@ -373,7 +373,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
         let storageKey = Self.storageKey(for: keyID)
 
-        return lock.withLockHeld {
+        return lock.withLock {
             storage[storageKey]?.revision == snapshot.revision
         }
     }
@@ -413,7 +413,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueMigrationBackend {
 
         let storageKey = Self.storageKey(for: keyID)
 
-        let (removedEntry, observations) = try lock.withLockHeld {
+        let (removedEntry, observations) = try lock.withLock {
             () -> ((key: String, value: StoredValue)?, [Observation]) in
             guard storage[storageKey]?.revision == snapshot.revision else {
                 throw PersistentKeyMigrationError.sourceChanged
@@ -465,7 +465,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     ) where Key: PersistentKeyProtocol {
         let keyID = Self.storageKey(for: key.id)
 
-        let references = lock.withLockHeld {
+        let references = lock.withLock {
             removeObservations { registeredObserver, observation in
                 registeredObserver === observer && observation.keyID == keyID && observation.context == context
             }
@@ -483,7 +483,7 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
     ) where Key: PersistentKeyProtocol {
         let keyID = Self.storageKey(for: key.id)
 
-        let references = lock.withLockHeld {
+        let references = lock.withLock {
             let references = removeObservations { _, _ in
                 false
             }

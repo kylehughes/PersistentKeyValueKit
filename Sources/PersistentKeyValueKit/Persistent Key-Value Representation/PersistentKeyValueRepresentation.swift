@@ -904,12 +904,12 @@ public enum PersistentKeyValueConversionError: Error, Equatable, Sendable {
 /// accepts.
 ///
 /// Foundation stores raise an Objective-C exception for non-property-list objects, so the default write paths treat
-/// such an object as a failed encoding. An encoding of `nil` removes the key. Any other object is stored as `object`
-/// itself if it is a Swift `String`, `Int`, `Double`, `Bool`, `Data`, or `Date` value, which validation need not
-/// bridge, and otherwise as the snapshot that ``storablePropertyList(_:)`` returns, so a store, or a later validation
-/// of a collection that holds it, does not bridge it again. Either way, a later conversion that changes a mutable
-/// object that `object` is or holds does not change what is stored, except a mutable dictionary key, which the
-/// snapshot may share.
+/// such an object as a failed encoding. An encoding of `nil` removes the key or omits the element. Any other object is
+/// stored as `object` itself if it is a Swift `String`, `Int`, `Double`, `Bool`, `Data`, or `Date` value, which
+/// validation need not bridge, and otherwise as the snapshot that ``storablePropertyList(_:)`` returns, so a store, or
+/// a later validation of a collection that holds it, does not bridge it again. Either way, a later conversion that
+/// changes a mutable object that `object` is or holds does not change what is stored, except a mutable dictionary key,
+/// which the snapshot may share.
 internal func storableEncoding(_ object: Any?) -> StorableEncoding? {
     guard let object else {
         return .remove

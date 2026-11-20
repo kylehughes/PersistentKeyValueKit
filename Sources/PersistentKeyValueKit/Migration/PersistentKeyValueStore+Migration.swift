@@ -22,7 +22,7 @@ private final class PersistentKeyMigrationRegistry: @unchecked Sendable {
     // MARK: Internal Instance Interface
 
     func claim(_ values: Set<Resource>) -> Bool {
-        lock.withLockHeld {
+        lock.withLock {
             guard values.isDisjoint(with: resources) else {
                 return false
             }
@@ -33,7 +33,7 @@ private final class PersistentKeyMigrationRegistry: @unchecked Sendable {
     }
 
     func release(_ values: Set<Resource>) {
-        lock.withLockHeld {
+        lock.withLock {
             resources.subtract(values)
         }
     }

@@ -999,13 +999,13 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     var values: [Input] {
-        lock.withLockHeld {
+        lock.withLock {
             receivedValues
         }
     }
 
     func cancel() {
-        let subscription = lock.withLockHeld {
+        let subscription = lock.withLock {
             self.subscription
         }
 
@@ -1013,7 +1013,7 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     func receive(_ input: Input) -> Subscribers.Demand {
-        lock.withLockHeld {
+        lock.withLock {
             receivedValues.append(input)
         }
 
@@ -1024,13 +1024,13 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     func receive(subscription: Subscription) {
-        lock.withLockHeld {
+        lock.withLock {
             self.subscription = subscription
         }
     }
 
     func request(_ demand: Subscribers.Demand) {
-        let subscription = lock.withLockHeld {
+        let subscription = lock.withLock {
             self.subscription
         }
 
@@ -1259,19 +1259,19 @@ private final class SubscriptionHookSubscriber<Input>: @unchecked Sendable {
 
     /// Whether every value was delivered on the thread that delivered the subscription.
     var receivedEveryValueOnSubscribingThread: Bool {
-        lock.withLockHeld {
+        lock.withLock {
             !receivedOnOtherThread
         }
     }
 
     var values: [Input] {
-        lock.withLockHeld {
+        lock.withLock {
             receivedValues
         }
     }
 
     func cancel() {
-        let subscription = lock.withLockHeld {
+        let subscription = lock.withLock {
             self.subscription
         }
 
@@ -1285,7 +1285,7 @@ extension SubscriptionHookSubscriber: Subscriber {
     typealias Failure = Never
 
     func receive(_ input: Input) -> Subscribers.Demand {
-        lock.withLockHeld {
+        lock.withLock {
             receivedValues.append(input)
 
             if let subscribingThread, pthread_equal(subscribingThread, pthread_self()) == 0 {
@@ -1301,7 +1301,7 @@ extension SubscriptionHookSubscriber: Subscriber {
 
     func receive(subscription: Subscription) {
         // The hook runs once and is released afterward, so captures of this subscriber do not keep it alive.
-        let onReceiveSubscription = lock.withLockHeld {
+        let onReceiveSubscription = lock.withLock {
             subscribingThread = pthread_self()
             self.subscription = subscription
 

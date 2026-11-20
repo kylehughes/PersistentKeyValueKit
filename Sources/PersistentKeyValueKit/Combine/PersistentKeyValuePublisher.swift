@@ -245,7 +245,7 @@ extension PersistentKeyValuePublisher {
 
         /// Ends subscription delivery and delivers the values that other threads queued while it was in progress.
         internal func finishSubscribing() {
-            let deliversQueuedValues = lock.withLockHeld {
+            let deliversQueuedValues = lock.withLock {
                 subscribingThread = nil
 
                 guard !isEmitting, canEmit() else {
@@ -361,13 +361,13 @@ extension PersistentKeyValuePublisher {
             }
 
             // Decoding runs consumer code that can cancel this subscription.
-            guard !lock.withLockHeld({ isCancelled }) else {
+            guard !lock.withLock({ isCancelled }) else {
                 return
             }
 
             let additionalDemand = emission.downstream.receive(value)
 
-            lock.withLockHeld {
+            lock.withLock {
                 if !isCancelled {
                     demand += additionalDemand
                 }
@@ -380,7 +380,7 @@ extension PersistentKeyValuePublisher {
         /// The caller releases the returned references after the lock is unlocked, because their deinitializers can
         /// run consumer code.
         private nonisolated func markCancelled() -> (Downstream?, Key.Value?)? {
-            lock.withLockHeld {
+            lock.withLock {
                 guard !isCancelled else {
                     return nil
                 }

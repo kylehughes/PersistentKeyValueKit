@@ -24,14 +24,14 @@ final class RecordingKeyObserver: NSObject, @unchecked Sendable {
 
     /// The notifications delivered through ``didReceive(_:)``.
     var notifications: [Notification] {
-        lock.withLockHeld {
+        lock.withLock {
             recordedNotifications
         }
     }
 
     /// The callbacks delivered through `observeValue(forKeyPath:of:change:context:)`.
     var observations: [Observation] {
-        lock.withLockHeld {
+        lock.withLock {
             recordedObservations
         }
     }
@@ -40,13 +40,13 @@ final class RecordingKeyObserver: NSObject, @unchecked Sendable {
 
     @objc
     func didReceive(_ notification: Notification) {
-        lock.withLockHeld {
+        lock.withLock {
             recordedNotifications.append(notification)
         }
     }
 
     func reset() {
-        lock.withLockHeld {
+        lock.withLock {
             recordedNotifications.removeAll()
             recordedObservations.removeAll()
         }
@@ -60,7 +60,7 @@ final class RecordingKeyObserver: NSObject, @unchecked Sendable {
         change: [NSKeyValueChangeKey: Any]?,
         context: UnsafeMutableRawPointer?
     ) {
-        lock.withLockHeld {
+        lock.withLock {
             recordedObservations.append(
                 Observation(context: context, keyPath: keyPath, object: object as AnyObject?)
             )

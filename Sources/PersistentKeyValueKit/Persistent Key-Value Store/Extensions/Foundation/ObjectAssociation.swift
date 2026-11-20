@@ -33,7 +33,7 @@ internal final class ObjectAssociation<Value>: Sendable where Value: AnyObject {
     /// Creation is serialized per association, so concurrent first requests for the same object return the same value.
     /// Each association has its own lock, so creating one association's value never waits on another's.
     internal func value(for object: AnyObject, creatingWith makeValue: () -> Value) -> Value {
-        creationLock.withLockHeld {
+        creationLock.withLock {
             if let existingValue = value(for: object) {
                 return existingValue
             }

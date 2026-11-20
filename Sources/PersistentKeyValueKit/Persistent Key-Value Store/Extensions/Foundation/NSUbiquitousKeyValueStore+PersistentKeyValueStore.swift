@@ -199,7 +199,7 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
     }
 
     func invalidate() {
-        lock.withLockHeld {
+        lock.withLock {
             isInvalidated = true
         }
 
@@ -222,7 +222,7 @@ private final class UbiquitousKeyValueStoreKeyObservation: NSObject, StoreKeyObs
     }
 
     private func isInvalidatedWithLock() -> Bool {
-        lock.withLockHeld {
+        lock.withLock {
             isInvalidated
         }
     }

@@ -23,12 +23,12 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
 
     var rejectRemovals: Bool {
         get {
-            lock.withLockHeld {
+            lock.withLock {
                 shouldRejectRemovals
             }
         }
         set {
-            lock.withLockHeld {
+            lock.withLock {
                 shouldRejectRemovals = newValue
             }
         }
@@ -36,19 +36,19 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
 
     var rejectWrites: Bool {
         get {
-            lock.withLockHeld {
+            lock.withLock {
                 shouldRejectWrites
             }
         }
         set {
-            lock.withLockHeld {
+            lock.withLock {
                 shouldRejectWrites = newValue
             }
         }
     }
 
     var synchronizeCount: Int {
-        lock.withLockHeld {
+        lock.withLock {
             synchronizationCount
         }
     }
@@ -78,13 +78,13 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
     }
 
     override func object(forKey key: String) -> Any? {
-        lock.withLockHeld {
+        lock.withLock {
             values[key]
         }
     }
 
     override func removeObject(forKey key: String) {
-        lock.withLockHeld {
+        lock.withLock {
             if !shouldRejectRemovals {
                 values.removeValue(forKey: key)
             }
@@ -92,7 +92,7 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
     }
 
     override func set(_ object: Any?, forKey key: String) {
-        lock.withLockHeld {
+        lock.withLock {
             if !shouldRejectWrites, let object, PropertyListSerialization.propertyList(object, isValidFor: .binary) {
                 values[key] = object
             }
@@ -136,7 +136,7 @@ final class StrictMigrationUbiquitousStore: NSUbiquitousKeyValueStore, @unchecke
     }
 
     override func synchronize() -> Bool {
-        lock.withLockHeld {
+        lock.withLock {
             synchronizationCount += 1
 
             return true
