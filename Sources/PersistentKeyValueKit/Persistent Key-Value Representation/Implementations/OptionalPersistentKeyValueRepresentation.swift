@@ -38,12 +38,14 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     public typealias Value = Optional<Base.Value>
 
     /// Decodes a stored object using the wrapped `base` representation.
+    @inlinable
     public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
         try base.decode(storageObject: storageObject, format: format)
     }
 
     /// Encodes a non-`nil` value using the wrapped `base` representation, or returns `nil` when `value` is `nil` so
     /// the key is removed from the store (or omitted from a property-list collection).
+    @inlinable
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
         guard let value else {
             return nil

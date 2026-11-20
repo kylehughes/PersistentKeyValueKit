@@ -440,18 +440,21 @@ extension InMemoryPersistentKeyValueStore: PersistentKeyValueStore {
 
     // MARK: Getting Values
 
+    @inlinable
     public func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
         key.get(from: self)
     }
 
     // MARK: Setting Values
 
+    @inlinable
     public func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
         key.set(to: value, in: self)
     }
 
     // MARK: Removing Values
 
+    @inlinable
     public func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
         key.remove(from: self)
     }

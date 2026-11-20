@@ -173,6 +173,7 @@ extension PrimitiveKeyValuePersistible {
 
     /// Decodes every element of `propertyListArray` with ``decode(storageObject:format:)``, returning `nil` if any
     /// element fails to decode.
+    @inlinable
     public static func get(from propertyListArray: [Any]) -> [Self]? {
         var values: [Self] = []
 
@@ -216,6 +217,7 @@ extension PrimitiveKeyValuePersistible {
 
     /// Decodes the object at `dictionaryKey` with ``decode(storageObject:format:)``, returning `nil` when it is absent
     /// or fails to decode.
+    @inlinable
     public static func get(_ dictionaryKey: String, from propertyListDictionary: [String: Any]) -> Self? {
         propertyListDictionary[dictionaryKey].flatMap {
             try? decode(storageObject: $0, format: .propertyList)
@@ -244,6 +246,7 @@ extension PrimitiveKeyValuePersistible {
     ///
     /// This default does not inspect `UserDefaults.argumentDomain`, so it does not coerce string launch arguments into
     /// typed values. Built-in primitive types implement this method themselves and keep that coercion.
+    @inlinable
     public static func get(_ userDefaultsKey: String, from userDefaults: UserDefaults) -> Self? {
         userDefaults.object(forKey: userDefaultsKey).flatMap {
             try? decode(storageObject: $0, format: .userDefaults)
@@ -269,6 +272,7 @@ extension PrimitiveKeyValuePersistible {
 
     /// Decodes the object stored at `ubiquitousStoreKey` with ``decode(storageObject:format:)``, returning `nil` when
     /// the key is absent or decoding fails.
+    @inlinable
     public static func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Self? {
         ubiquitousStore.object(forKey: ubiquitousStoreKey).flatMap {
             try? decode(storageObject: $0, format: .ubiquitousKeyValueStore)

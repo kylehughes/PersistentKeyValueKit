@@ -29,10 +29,12 @@ where
 extension PrimitivePersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
     // MARK: Checked Conversion
 
+    @inlinable
     public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
         try Value.decode(storageObject: storageObject, format: format)
     }
 
+    @inlinable
     public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
         try value.encode(format: format)
     }
