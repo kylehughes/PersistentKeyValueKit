@@ -7,7 +7,6 @@
 
 import Foundation
 import ObjectiveC
-@testable import PersistentKeyValueKit
 
 /// Runs an action once, immediately after a notification center installs an observer for one notification name and
 /// observed object.

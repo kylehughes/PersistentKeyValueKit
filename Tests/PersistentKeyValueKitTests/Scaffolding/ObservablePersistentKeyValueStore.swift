@@ -6,7 +6,7 @@
 //
 
 import Foundation
-@testable import PersistentKeyValueKit
+import PersistentKeyValueKit
 
 final class ObservablePersistentKeyValueStore: PersistentKeyValueStore, @unchecked Sendable {
     private var deregistrationHandler: (() -> Void)?

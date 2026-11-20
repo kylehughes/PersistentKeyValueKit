@@ -20,7 +20,17 @@ extension PropertyListStorage {
         return try PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0).count
     }
 
-    /// Returns ``exactCopy(_:allowingLegacyURL:)`` of an encoded object, throwing
+    /// Returns `object` normalized through a binary property list, as a Foundation store persists it.
+    static func freeze(_ object: Any) throws -> Any {
+        guard PropertyListSerialization.propertyList(object, isValidFor: .binary) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        let data = try PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0)
+        return try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+    }
+
+    /// Returns ``exactCopy(_:)`` of an encoded object, throwing
     /// ``PersistentKeyValueConversionError/encodingFailed`` when the property list a Foundation store persists would
     /// differ from it as ``equal(_:_:)`` compares them.
     ///

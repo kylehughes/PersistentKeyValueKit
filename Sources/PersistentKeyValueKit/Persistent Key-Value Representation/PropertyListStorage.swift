@@ -7,7 +7,8 @@
 
 import Foundation
 
-/// The rules by which Foundation stores keep property-list objects, which encoding, observation, and migration share.
+/// The rules by which Foundation stores keep property-list objects. Encoding, observation, and migration share these
+/// rules.
 internal enum PropertyListStorage {
     // MARK: Internal Static Interface
 
@@ -61,28 +62,13 @@ internal enum PropertyListStorage {
     /// Unlike ``freeze(_:)``, the copy keeps each number's Core Foundation type, including an integer's width and an
     /// `NSDecimalNumber`, which a serialized property list stores as a 64-bit integer and a double-precision real. A
     /// migration snapshot is such a copy of the stored object, so a representation decodes the value that an ordinary
-    /// read returns. `allowingLegacyURL` also accepts a top-level `URL`, which the `URL` representation decodes as a
-    /// legacy `NSUbiquitousKeyValueStore` value.
-    static func exactCopy(_ object: Any, allowingLegacyURL: Bool = false) throws -> Any {
-        if allowingLegacyURL, object is URL {
-            return object
-        }
-
+    /// read returns.
+    static func exactCopy(_ object: Any) throws -> Any {
         guard PropertyListSerialization.propertyList(object, isValidFor: .binary) else {
             throw PersistentKeyValueConversionError.invalidStorageValue
         }
 
         return immutableCopy(of: object)
-    }
-
-    /// Returns `object` normalized through a binary property list, as a Foundation store persists it.
-    static func freeze(_ object: Any) throws -> Any {
-        guard PropertyListSerialization.propertyList(object, isValidFor: .binary) else {
-            throw PersistentKeyValueConversionError.invalidStorageValue
-        }
-
-        let data = try PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0)
-        return try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
     }
 
     // MARK: Private Static Interface
@@ -93,7 +79,7 @@ internal enum PropertyListStorage {
     /// The copy holds the Foundation objects that a store returns, so a Swift value such as a `Double` is bridged to
     /// its `NSNumber`. Numbers, including decimals, and dates are immutable, so the copy shares them.
     ///
-    /// `object` must be a valid property list, as ``exactCopy(_:allowingLegacyURL:)`` checks before calling this. A
+    /// `object` must be a valid property list, as ``exactCopy(_:)`` checks before calling this. A
     /// property list cannot contain itself, so the recursion ends; a container that does contain itself would recurse
     /// forever.
     private static func immutableCopy(of object: Any) -> Any {

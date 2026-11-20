@@ -6,7 +6,6 @@
 //
 
 import Foundation
-@testable import PersistentKeyValueKit
 
 /// A Boolean that can be read and written from any thread, such as a flag that stops a stress test's threads.
 final class LockedFlag: @unchecked Sendable {

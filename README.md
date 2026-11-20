@@ -359,7 +359,7 @@ extension PersistentKeyProtocol where Self == PersistentKey<Date?> {
 }
 ```
 
-To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)` to convert between Swift values and storage objects. Do not mutate an object after returning it from `encode` or writing it with `set`. These two methods throw and are the checked conversion. Ordinary reads and writes stay non-throwing; Foundation migration endpoints use checked conversions, and `UserDefaults` registration uses checked encoding. See `PersistentKeyValueRepresentation` for the full contract, including collection writes.
+To implement a representation directly, provide `decode(storageObject:format:)` and `encode(_:format:)` to convert between Swift values and storage objects. Both methods throw; together they are the checked conversion. Ordinary reads and writes stay non-throwing; Foundation migration endpoints use checked conversions, and `UserDefaults` registration uses checked encoding. Do not mutate an object after returning it from `encode` or writing it with `set`. See `PersistentKeyValueRepresentation` for the full contract, including collection writes.
 
 ### Collections
 
@@ -378,7 +378,7 @@ Collection writes are all or nothing. With built-in element readers, an array re
 
 Use `copy` or `move` to transfer persisted values between stores or to rename and transform keys within one store. Both require `onConflict:` and `tracking:` and return a `PersistentKeyMigrationReport`. Migration is not transactional and does not roll back completed writes. Coordinate other writers in this or any other process before migrating.
 
-Create any named `UserDefaults` suite that takes part in a migration with `UserDefaults.migratable(suiteName:)`. `NSUbiquitousKeyValueStore` requires the Key-value storage service. This example moves two keys from standard defaults into an App Group suite; sharing preferences requires the same App Group on each target (replace `group.example.app` with its identifier):
+`NSUbiquitousKeyValueStore` requires the Key-value storage service. Create any named `UserDefaults` suite that takes part in a migration with `UserDefaults.migratable(suiteName:)`. This example moves two keys from standard defaults into an App Group suite; sharing preferences requires the same App Group on each target (replace `group.example.app` with its identifier):
 
 ```swift
 func makeAppGroupDefaults() throws -> UserDefaults? {
@@ -398,7 +398,7 @@ func makeAppGroupDefaults() throws -> UserDefaults? {
 }
 ```
 
-Call this helper only from the target that owns the legacy defaults. A target with nothing to move still attempts to record the shared marker. If that recording succeeds, the owning target's later call returns `.alreadyRecorded` and skips migration even though `throwIfIncomplete()` succeeds. Other targets can open the suite directly.
+Call this helper only from the target that owns the legacy defaults. A target with nothing to move still attempts to record the shared marker. If that recording succeeds, the owning target's later call returns `.alreadyRecorded` and skips migration, and `throwIfIncomplete()` still succeeds. Other targets can open the suite directly.
 
 Pass `PersistentKeyMigrationItem` values when keys change name or value type:
 

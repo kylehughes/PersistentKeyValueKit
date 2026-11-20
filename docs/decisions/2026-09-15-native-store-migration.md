@@ -110,15 +110,15 @@ remain internal. Migration does not intercept a wrapper's ordinary `get` or
   Group destination) must use distinct identifiers or recording stores;
   otherwise the second migration reads the first one's marker, returns
   `.alreadyRecorded` with no outcomes, and never transfers its keys.
-  `.once(id:recordedIn: UserDefaults.standard)` scopes completion to the local
+- `.once(id:recordedIn: UserDefaults.standard)` scopes completion to the local
   defaults domain of the process's main bundle, not to the device as a whole,
   and that marker survives an Apple Account change, which replaces the iCloud
   data, so a later seed of the new account's store returns `.alreadyRecorded`
-  unless the identifier is scoped to the account. Every call validates its setup
-  and claims its keys before it reads the marker, so a call whose marker is
-  already `true` can still throw (`.overlappingMigration` while another
-  migration holds one of its keys); once those steps succeed, the `true` marker
-  returns `.alreadyRecorded`.
+  unless the identifier is scoped to the account.
+- Every call validates its setup and claims its keys before it reads the marker,
+  so a call whose marker is already `true` can still throw
+  (`.overlappingMigration` while another migration holds one of its keys); once
+  those steps succeed, the `true` marker returns `.alreadyRecorded`.
 - Completion marker keys (`PersistentKey.isMigrationCompleted(id:)`) normalize
   `id` to Unicode Normalization Form C (NFC) before hashing with SHA-256 and
   unpadded base64url encoding under the dotless prefix
@@ -447,8 +447,8 @@ principles:
       one key in both storage and migration validation, and, because converting
       a bridged identifier to contiguous Swift UTF-8 repairs unpaired UTF-16
       surrogates, also merges identifiers that differ only in such surrogates (a
-      test that needs them distinct needs a Foundation store); and
-    - bridging a stored Foundation dictionary to `[String: Value]` collapses
+      test that needs them distinct needs a Foundation store).
+    - Bridging a stored Foundation dictionary to `[String: Value]` collapses
       `NSString` keys that compare equal as Swift strings (canonically
       equivalent spellings, and keys that differ only in unpaired UTF-16
       surrogates, which Swift repairs) into one Swift key, so checked conversion

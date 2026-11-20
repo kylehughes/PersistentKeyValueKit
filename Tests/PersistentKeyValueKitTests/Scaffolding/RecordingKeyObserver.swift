@@ -6,7 +6,6 @@
 //
 
 import Foundation
-@testable import PersistentKeyValueKit
 
 /// An observer for ``PersistentKeyValueStore/register(observer:for:with:and:)`` that records every callback it
 /// receives, from either key-value observation or notification selectors.

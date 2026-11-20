@@ -187,7 +187,7 @@ final class MigrationCodecCoverageTests: XCTestCase {
     func test_propertyListStorage_freezeEqualityAndByteCount() throws {
         let url = URL(string: "https://example.com")!
 
-        XCTAssertNoThrow(try PropertyListStorage.exactCopy(url, allowingLegacyURL: true))
+        XCTAssertThrowsError(try PropertyListStorage.exactCopy(url))
         XCTAssertThrowsError(try PropertyListStorage.freeze(NSObject()))
         XCTAssertTrue(PropertyListStorage.equal(nil, nil))
         XCTAssertTrue(PropertyListStorage.equal(Double.nan, Double.nan))

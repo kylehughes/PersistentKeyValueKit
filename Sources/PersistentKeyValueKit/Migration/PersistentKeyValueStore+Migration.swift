@@ -426,8 +426,8 @@ extension PersistentKeyValueStore {
     /// temporarily remove the old entry before storing the new object, as
     /// ``PersistentKeyMigrationError/destinationChanged`` describes.
     ///
-    /// Migration verifies the commit and then releases its references to the prepared write and to a replaced
-    /// destination value and verifies the destination again, and releases its reference to the source value before
+    /// Migration verifies the commit. It then releases its references to the prepared write and to a replaced
+    /// destination value, verifies the destination again, and releases its reference to the source value before
     /// verifying it once more. Under ``PersistentKeyCopyConflictPolicy/keepDestination``, it releases the source value
     /// before verifying the kept destination value. Verification guards against the changes it can observe, including
     /// those these releases cause, but code that writes to a migrating store as a side effect of reading, encoding, or
@@ -557,9 +557,9 @@ extension PersistentKeyValueStore {
     /// transform made through a reference to the stored value remain even if it throws. Migrations do not roll back
     /// completed items, and a move that fails during ``PersistentKeyMigrationReport/FailureStage/cleanup`` does not
     /// roll back its destination write (though another writer or observer may have modified or removed the value in
-    /// either store). An empty batch is valid; with completion tracking, it returns
-    /// ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` if the marker is already `true` and otherwise
-    /// attempts to record the marker.
+    /// either store). A move item can fail at a stage after its destination write or source removal. An empty batch is
+    /// valid; with completion tracking, it returns ``PersistentKeyMigrationReport/Completion/alreadyRecorded`` if the
+    /// marker is already `true` and otherwise attempts to record the marker.
     ///
     /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, a
     /// successful write leaves the destination entry absent only when the destination key's top-level encoding is `nil`
@@ -571,13 +571,12 @@ extension PersistentKeyValueStore {
     /// representation that encodes `nil` as an object, such as a marker string, writes that object, so a `nil` value
     /// does not always remove the entry. A type-changing `UserDefaults` replacement, such as `1` over `true`, can
     /// temporarily remove the old entry before storing the new object, as
-    /// ``PersistentKeyMigrationError/destinationChanged`` describes. A move item can fail at a stage after its
-    /// destination write or source removal.
+    /// ``PersistentKeyMigrationError/destinationChanged`` describes.
     ///
-    /// Migration verifies the commit and then releases its references to the prepared write and to a replaced
-    /// destination value and verifies the destination again, and releases its reference to the removed source value
-    /// before verifying the removal. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, it releases the source value
-    /// before verifying the kept destination value. After removing the source, the move checks that the destination is
+    /// Migration verifies the commit. It then releases its references to the prepared write and to a replaced
+    /// destination value, verifies the destination again, and releases its reference to the removed source value before
+    /// verifying the removal. Under ``PersistentKeyMoveConflictPolicy/keepBoth``, it releases the source value before
+    /// verifying the kept destination value. After removing the source, the move checks that the destination is
     /// unchanged and then that the source is still absent, because observers notified of the removal, the removed
     /// value's `deinit`, or the destination value's code run by that comparison can change either store. Verification
     /// guards against the changes it can observe, including those these releases cause, but code that writes to a

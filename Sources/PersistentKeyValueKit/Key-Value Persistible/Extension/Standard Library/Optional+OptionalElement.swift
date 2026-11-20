@@ -5,8 +5,6 @@
 //  Created by Kyle Hughes on 11/19/26.
 //
 
-import Foundation
-
 // MARK: - OptionalElement Definition
 
 /// An `Optional`, used to constrain conformances to collections of optionals and to find a `nil` value at any level of

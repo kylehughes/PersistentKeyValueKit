@@ -6,7 +6,6 @@
 //
 
 import Foundation
-@testable import PersistentKeyValueKit
 
 /// A `UserDefaults` subclass that counts reads of one key and can run an action after the next read of it.
 ///

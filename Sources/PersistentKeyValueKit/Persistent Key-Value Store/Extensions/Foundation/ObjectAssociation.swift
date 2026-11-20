@@ -8,7 +8,7 @@
 import Foundation
 import ObjectiveC
 
-/// A key for an object that an Objective-C association attaches to, and that is retained by, a Foundation object.
+/// A key for an Objective-C association that attaches a `Value` to a Foundation object, which retains it.
 ///
 /// A stable object address gives Objective-C associations an immutable process-local key without a mutable global, so
 /// each association is a constant instance of this class.
@@ -27,8 +27,7 @@ internal final class ObjectAssociation<Value>: Sendable where Value: AnyObject {
         objc_getAssociatedObject(object, address) as? Value
     }
 
-    /// Returns the value associated with `object`, associating the one `makeValue` creates the first time it is
-    /// requested.
+    /// Returns the value associated with `object`. The first request associates the value that `makeValue` creates.
     ///
     /// Creation is serialized per association, so concurrent first requests for the same object return the same value.
     /// Each association has its own lock, so creating one association's value never waits on another's.

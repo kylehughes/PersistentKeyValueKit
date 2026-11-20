@@ -87,7 +87,8 @@ extension UbiquitousKeyValueMigrationBackend: FoundationMigrationBackend {
             return nil
         }
 
-        let copy = try PropertyListStorage.exactCopy(object, allowingLegacyURL: true)
+        // A top-level URL is a legacy value that the URL representation decodes.
+        let copy = object is URL ? object : try PropertyListStorage.exactCopy(object)
         return MigrationSnapshot(identity: migrationIdentity, keyID: keyID, object: copy)
     }
 
