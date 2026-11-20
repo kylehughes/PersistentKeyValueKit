@@ -192,6 +192,21 @@ final class MigrationBackendCoverageTests: XCTestCase {
     }
 
     @available(watchOS 9.0, *)
+    func test_ubiquitousLegacyURLSnapshot_decodesAsURL() throws {
+        let url = URL(string: "https://example.com/legacy")!
+        let store = UbiquitousKeyValueMigrationBackend(
+            store: LegacyURLUbiquitousStore(url: url),
+            identity: .init(namespace: "legacy-url", identifier: UUID().uuidString)
+        )
+        let key = PersistentKey("key:\(#function)", defaultValue: URL(string: "https://example.com/default")!)
+
+        let snapshot = try XCTUnwrap(try store.migrationSnapshot(for: key.id))
+
+        XCTAssertEqual(snapshot.object as? URL, url)
+        XCTAssertEqual(try store.migrationValue(for: key, in: snapshot), url)
+    }
+
+    @available(watchOS 9.0, *)
     func test_ubiquitousPublicConstructor_usesCanonicalIdentity() {
         let store = UbiquitousKeyValueMigrationBackend(StrictMigrationUbiquitousStore())
 
@@ -418,5 +433,23 @@ private final class CallbackObserver: NSObject {
         context: UnsafeMutableRawPointer?
     ) {
         observeValue()
+    }
+}
+
+// MARK: - LegacyURLUbiquitousStore Definition
+
+/// An iCloud store that returns a top-level `URL` object, as 1.x wrote, for every key.
+@available(watchOS 9.0, *)
+private final class LegacyURLUbiquitousStore: NSUbiquitousKeyValueStore {
+    private let url: URL
+
+    init(url: URL) {
+        self.url = url
+
+        super.init()
+    }
+
+    override func object(forKey key: String) -> Any? {
+        url
     }
 }
