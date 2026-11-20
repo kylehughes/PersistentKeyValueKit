@@ -9,22 +9,18 @@ import Foundation
 
 /// A key for a value in a ``PersistentKeyValueStore``.
 ///
-/// It is recommended to use the static accessor pattern to define and access keys. This pattern allows you to define
-/// keys in common locations and access them anywhere in a type-safe manner. The APIs are designed to be as ergonomic
-/// as possible for this pattern.
-///
-/// e.g.
+/// Define reusable keys as static members on ``PersistentKeyProtocol`` so call sites can use leading-dot syntax across
+/// stores, property wrappers, observation APIs, and migrations:
 ///
 /// ```swift
-/// extension PersistentKeyProtocol where Self == PersistentKey<Date> {
-///     static var mostRecentLaunchDate: Self {
-///         Self("MostRecentLaunchDate", defaultValue: .distantPast)
+/// extension PersistentKeyProtocol where Self == PersistentKey<Int> {
+///     static var launchCount: Self {
+///         Self("LaunchCount", defaultValue: 0)
 ///     }
 /// }
-/// …
-/// userDefaults.set(.mostRecentLaunchDate, to: .now)
-/// …
-/// guard userDefaults.get(.mostRecentLaunchDate) < firstOfMonth else …
+///
+/// let launchCount = userDefaults.get(.launchCount)
+/// userDefaults.set(.launchCount, to: launchCount + 1)
 /// ```
 public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     /// The default value for the key.
@@ -44,7 +40,7 @@ public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     
     /// Creates a new key with the given identifier and default value.
     ///
-    /// The key-value pair is represented by the default representation for ``Value``.
+    /// The key-value pair is represented by the default representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -62,7 +58,7 @@ public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     /// Creates a new key with the given identifier, default value, and representation.
     /// 
     /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value``.
+    /// representation for `Value`.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -80,8 +76,8 @@ public struct PersistentKey<Value>: Identifiable where Value: Sendable {
     
     /// Creates a new key with the given identifier, default value, and representation.
     ///
-    /// Use this initializer to supply a custom representation for this specific key instead of using the default
-    /// representation for ``Value?``.
+    /// Use this initializer to supply a custom representation of the wrapped value for this specific key. The
+    /// initializer wraps it in ``OptionalPersistentKeyValueRepresentation`` to represent the key's optional value.
     ///
     /// - Parameter id: The unique identifier for the key.
     /// - Parameter defaultValue: The default value for the key.
@@ -120,19 +116,16 @@ extension PersistentKey: PersistentKeyProtocol {
 
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value {
         representation.get(id, from: ubiquitousStore) ?? defaultValue
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func remove(from ubiquitousStore: NSUbiquitousKeyValueStore) {
         ubiquitousStore.removeObject(forKey: id)
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         representation.set(id, to: newValue, in: ubiquitousStore)
@@ -144,9 +137,17 @@ extension PersistentKey: PersistentKeyProtocol {
 extension PersistentKey: Equatable where Value: Equatable {
     // MARK: Public Static Interface
     
+    /// Returns whether two keys have equal default values and literally identical identifiers.
+    ///
+    /// Identifiers are compared by their UTF-16 code units, as Foundation stores compare keys, so canonically
+    /// equivalent spellings, such as composed and decomposed "café", are different keys even though they are equal as
+    /// Swift strings. Identifiers that differ only in unpaired UTF-16 surrogates, such as a truncated emoji from
+    /// `NSString.substring(to:)`, are also different keys. ``InMemoryPersistentKeyValueStore`` stores such spellings in
+    /// one entry, because it keys a Swift dictionary and Swift repairs unpaired surrogates, so a test that needs them
+    /// distinct needs a Foundation store.
     @inlinable
     public static func == (lhs: PersistentKey<Value>, rhs: PersistentKey<Value>) -> Bool {
-        lhs.defaultValue == rhs.defaultValue && lhs.id == rhs.id
+        lhs.defaultValue == rhs.defaultValue && LiteralKeyID.match(lhs.id, rhs.id)
     }
 }
 
@@ -155,9 +156,11 @@ extension PersistentKey: Equatable where Value: Equatable {
 extension PersistentKey: Hashable where Value: Hashable {
     // MARK: Public Instance Interface
     
+    /// Hashes the default value and the UTF-16 code units of the identifier, so keys that are equal hash equally.
     @inlinable
     public func hash(into hasher: inout Hasher) {
         hasher.combine(defaultValue)
-        hasher.combine(id)
+
+        LiteralKeyID.hash(id, into: &hasher)
     }
 }

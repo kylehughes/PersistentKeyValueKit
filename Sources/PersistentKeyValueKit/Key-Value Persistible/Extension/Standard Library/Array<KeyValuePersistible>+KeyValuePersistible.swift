@@ -12,15 +12,75 @@ import Foundation
 extension Array: KeyValuePersistible where Element: KeyValuePersistible {
     // MARK: Public Static Interface
 
+    /// The representation of an array in a ``PersistentKeyValueStore``.
+    ///
+    /// Writes are all or nothing: if any element fails to encode, the store or container is left unchanged, so a
+    /// failed write never partially overwrites a stored array. Elements that encode to `nil`, such as `nil` optionals,
+    /// are omitted at every nesting level. An element representation defined outside this package writes the array
+    /// with its ``PersistentKeyValueRepresentation/set(_:to:)``, which fails when it leaves a nonempty input's output
+    /// empty, as the default writer does when the element's `encode` returns `nil` for every element. A custom writer
+    /// can supply a valid array encoding independently of the element's scalar `encode`. Reads are also all or nothing:
+    /// if any element fails to decode, the read returns `nil` and a key falls back to its default value, because an
+    /// element's position can carry meaning. The stored array is unchanged by the read, but saving an edit to that
+    /// default array replaces the array in the writable defaults domain or iCloud store, including the elements that
+    /// could decode. If an added suite supplied the original array, the replacement hides it and the suite keeps every
+    /// element. If a higher-priority domain such as a launch argument supplies the array, saving an edit still replaces
+    /// the writable-domain array while the override keeps supplying the visible value. An external array reader can
+    /// filter elements during ordinary and checked reads, including through an optional, proxy, or nested collection
+    /// that reaches it.
     @inlinable
     public static var persistentKeyValueRepresentation: some PersistentKeyValueRepresentation<Self> {
         PrimitivePersistentKeyValueRepresentation()
     }
 }
 
+// MARK: - BuiltInContainerPrimitive Extension
+
+extension Array: BuiltInContainerPrimitive where Element: KeyValuePersistible {}
+
+// MARK: - BuiltInPrimitive Extension
+
+extension Array: BuiltInPrimitive where Element: KeyValuePersistible {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible {
+    /// Decodes an array of elements from a stored `[Any]` array.
+    ///
+    /// Throws if the array cannot be decoded. This checked conversion is stricter than ordinary reads: a nested
+    /// dictionary fails instead of omitting an entry that fails to decode or merging canonically equivalent keys.
+    /// When every representation in the element's conversion chain is built in and converts only built-in primitive
+    /// types, each element finishes decoding with its own checked conversion, including a proxy representation's
+    /// conversion of the decoded proxy, before the next is read, and the first error in input order is rethrown. A
+    /// representation defined outside this package, or ``PrimitivePersistentKeyValueRepresentation`` for a
+    /// ``PrimitiveKeyValuePersistible`` type defined outside it, decodes the array with its
+    /// ``PersistentKeyValueRepresentation/get(from:)`` exactly as it is implemented, so a custom array format
+    /// round-trips, and throws ``PersistentKeyValueConversionError/invalidStorageValue`` when it returns `nil`. A
+    /// built-in proxy representation over it converts the decoded proxies only after that read succeeds, so the read's
+    /// error is thrown even when an earlier element's proxy conversion would fail.
+    public static func decode(
+        storageObject: Any,
+        format: PersistentKeyValueStorageFormat
+    ) throws -> [Element] {
+        guard let objects = storageObject as? [Any] else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+
+        return try Element.persistentKeyValueRepresentation.checkedValues(decoding: objects)
+    }
+
+    /// Encodes the elements into a `[Any]` array, omitting elements whose encoding returns `nil`.
+    ///
+    /// Throws if any element fails to encode. Built-in element representations encode each element with their own
+    /// checked conversion (converting outer proxy layers before encoding the resulting proxies) and rethrow the
+    /// thrown error. Other element representations encode the array with their
+    /// ``PersistentKeyValueRepresentation/set(_:to:)`` exactly as it is implemented and throw
+    /// ``PersistentKeyValueConversionError/encodingFailed`` when it leaves the array empty for nonempty values or
+    /// writes an object that is not a property list that `UserDefaults` and `NSUbiquitousKeyValueStore` accept.
+    public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
+        try Element.persistentKeyValueRepresentation.checkedPropertyListArray(encoding: self)
+    }
+
     // MARK: Interfacing with Property List Array
     
     public static func get(from propertyListArray: [Any]) -> [Self]? {
@@ -44,22 +104,19 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return originalArray
     }
     
+    /// Replaces `propertyListArray` with the encoded child arrays.
+    ///
+    /// Leaves `propertyListArray` unchanged if any element of any child array fails to encode.
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
         let representation = Element.persistentKeyValueRepresentation
 
-        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
-        
-        for value in values {
-            var childPropertyListArray: [Any] = []
-            
-            childPropertyListArray.reserveCapacity(value.count)
-            
-            representation.set(value, to: &childPropertyListArray)
-            
-            propertyListArray.append(childPropertyListArray)
+        guard let childPropertyListArrays = representation.propertyListArrays(encoding: values) else {
+            return
         }
+
+        propertyListArray = childPropertyListArrays
     }
-    
+
     // MARK: Interfacing with Property List Dictionary
     
     @inlinable
@@ -71,17 +128,17 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return Element.persistentKeyValueRepresentation.get(from: propertyListArray)
     }
     
+    /// Sets the encoded array at `dictionaryKey`, leaving `propertyListDictionary` unchanged if any element fails to
+    /// encode.
     @inlinable
     public static func set(_ dictionaryKey: String, to value: Self, in propertyListDictionary: inout [String: Any]) {
-        var propertyListArray: [Any] = []
-        
-        propertyListArray.reserveCapacity(value.count)
-        
-        Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
-        
+        guard let propertyListArray = Element.persistentKeyValueRepresentation.propertyListArray(encoding: value) else {
+            return
+        }
+
         propertyListDictionary[dictionaryKey] = propertyListArray
     }
-    
+
     // MARK: Interfacing with User Defaults
     
     @inlinable
@@ -93,20 +150,18 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return Element.persistentKeyValueRepresentation.get(from: propertyListArray)
     }
     
+    /// Writes the encoded array, leaving `userDefaults` unchanged if any element fails to encode.
     @inlinable
     public static func set(_ userDefaultsKey: String, to value: Self, in userDefaults: UserDefaults) {
-        var propertyListArray: [Any] = []
-        
-        propertyListArray.reserveCapacity(value.count)
-        
-        Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
-        
+        guard let propertyListArray = Element.persistentKeyValueRepresentation.propertyListArray(encoding: value) else {
+            return
+        }
+
         userDefaults.set(propertyListArray, forKey: userDefaultsKey)
     }
-    
+
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func get(
         _ ubiquitousStoreKey: String,
@@ -119,19 +174,17 @@ extension Array: PrimitiveKeyValuePersistible where Element: KeyValuePersistible
         return Element.persistentKeyValueRepresentation.get(from: propertyListArray)
     }
     
-    @available(watchOS 9.0, *)
+    /// Writes the encoded array, leaving `ubiquitousStore` unchanged if any element fails to encode.
     @inlinable
     public static func set(
         _ ubiquitousStoreKey: String,
         to value: Self,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        var propertyListArray: [Any] = []
-        
-        propertyListArray.reserveCapacity(value.count)
-        
-        Element.persistentKeyValueRepresentation.set(value, to: &propertyListArray)
-        
+        guard let propertyListArray = Element.persistentKeyValueRepresentation.propertyListArray(encoding: value) else {
+            return
+        }
+
         ubiquitousStore.set(propertyListArray, forKey: ubiquitousStoreKey)
     }
 }

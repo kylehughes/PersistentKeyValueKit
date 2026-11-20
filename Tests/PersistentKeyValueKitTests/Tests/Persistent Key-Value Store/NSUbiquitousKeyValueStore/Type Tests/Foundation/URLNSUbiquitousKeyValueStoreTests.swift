@@ -6,8 +6,8 @@
 //
 
 import Foundation
+import PersistentKeyValueKit
 
-@available(watchOS 9.0, *)
 final class URLNSUbiquitousKeyValueStoreTests: AbstractNSUbiquitousKeyValueStoreTypeTests<URL> {
     // MARK: AbstractPersistentKeyValueStoreTypeTests Implementation
     

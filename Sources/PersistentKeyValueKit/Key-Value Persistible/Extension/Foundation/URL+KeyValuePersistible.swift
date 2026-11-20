@@ -18,9 +18,112 @@ extension URL {
     }
 }
 
+// MARK: - BuiltInScalarPrimitive Extension
+
+extension URL: BuiltInScalarPrimitive {}
+
 // MARK: - PrimitiveKeyValuePersistible Extension
 
 extension URL: PrimitiveKeyValuePersistible {
+    /// Decodes a `URL` from a stored object for the given storage format.
+    ///
+    /// - For ``PersistentKeyValueStorageFormat/propertyList``, expects a `String` that `URL(string:)` accepts.
+    /// - For ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``, accepts a `String` that `URL(string:)`
+    ///   accepts, or a legacy `URL` object.
+    ///
+    /// These strings are not required to be absolute. ``encode(format:)`` writes `absoluteString`, which is a relative
+    /// reference for a URL without a scheme or base URL, and decoding accepts it so such values read back.
+    /// - For ``PersistentKeyValueStorageFormat/userDefaults``, accepts `NSKeyedArchiver` `Data`, a tilde-abbreviated
+    ///   file path `String`, or a `URL` object, matching `UserDefaults.url(forKey:)`. A path decodes to the file URL
+    ///   that `url(forKey:)` returns, and a path it reads as `nil`, such as an empty string, throws
+    ///   ``PersistentKeyValueConversionError/invalidStorageValue``.
+    public static func decode(
+        storageObject: Any,
+        format: PersistentKeyValueStorageFormat
+    ) throws -> URL {
+        if format == .ubiquitousKeyValueStore, let value = storageObject as? URL {
+            return value
+        }
+        if format == .userDefaults {
+            if let value = storageObject as? URL {
+                return value
+            }
+            if let data = storageObject as? Data {
+                let unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
+                unarchiver.decodingFailurePolicy = .setErrorAndReturn
+                defer {
+                    unarchiver.finishDecoding()
+                }
+                guard let value = unarchiver.decodeObject(of: NSURL.self, forKey: NSKeyedArchiveRootObjectKey)
+                else {
+                    throw PersistentKeyValueConversionError.invalidStorageValue
+                }
+                return value as URL
+            }
+            // `UserDefaults.url(forKey:)` reads a path through `NSURL.fileURL(withPath:)`, which differs from
+            // `URL(fileURLWithPath:)` and returns `nil`, despite its non-optional signature, for a path it rejects, such
+            // as an empty one. `perform(_:with:)` returns that result as an optional.
+            guard
+                let path = storageObject as? String,
+                let value = NSURL.perform(
+                    #selector(NSURL.fileURL(withPath:)),
+                    with: (path as NSString).expandingTildeInPath
+                )?.takeUnretainedValue() as? NSURL
+            else {
+                throw PersistentKeyValueConversionError.invalidStorageValue
+            }
+            return value as URL
+        }
+        guard let string = storageObject as? String, let value = URL(string: string) else {
+            throw PersistentKeyValueConversionError.invalidStorageValue
+        }
+        return value
+    }
+
+    /// Encodes the `URL` for the given storage format.
+    ///
+    /// Encodes as `absoluteString` for ``PersistentKeyValueStorageFormat/propertyList`` and
+    /// ``PersistentKeyValueStorageFormat/ubiquitousKeyValueStore``; a relative URL without a base URL encodes as its
+    /// relative reference, and a relative URL with a base URL encodes as its resolved address, so it decodes without
+    /// its original relative reference or base URL. For
+    /// ``PersistentKeyValueStorageFormat/userDefaults``, encodes file URLs as tilde-abbreviated paths and non-file
+    /// URLs as secure-coded `NSKeyedArchiver` data, matching `UserDefaults.set(_:forKey:)`.
+    ///
+    /// A file URL whose path cannot reproduce its `absoluteString`, such as one with a host or a non-existent
+    /// directory's trailing slash, throws ``PersistentKeyValueConversionError/encodingFailed`` for
+    /// ``PersistentKeyValueStorageFormat/userDefaults``. This applies wherever the URL is encoded for `UserDefaults`,
+    /// including through `Optional` and proxy representations, so migration to `UserDefaults` fails at
+    /// ``PersistentKeyMigrationReport/FailureStage/prepare`` before that item modifies either store, and
+    /// `UserDefaults.register(_:)` skips such a default value. Ordinary `UserDefaults` writes use Foundation's URL
+    /// setter and keep its behavior, which stores the path of a file URL. That setter can remove the existing entry
+    /// for a file URL with no path, such as `file:`, and stores an unreadable empty path for `file://localhost`, so
+    /// the typed read then returns the key's default when that empty path is the effective value, even when a
+    /// lower-priority domain such as a registered default supplies a valid URL, while a higher-priority domain such as a
+    /// launch argument still wins. Only `absoluteString` is compared, so a relative file URL's original
+    /// reference and `baseURL` can be lost. The comparison runs at encoding time, and each later read rebuilds the URL
+    /// from the stored path, so deleting a directory can change its trailing slash and how relative URLs resolve.
+    public func encode(format: PersistentKeyValueStorageFormat) throws -> Any? {
+        switch format {
+        case .propertyList, .ubiquitousKeyValueStore:
+            return absoluteString
+        case .userDefaults:
+            if isFileURL {
+                let path = (path as NSString).abbreviatingWithTildeInPath
+                // The path drops a host and a trailing slash that later relative resolution depends on, and
+                // `url(forKey:)` reads an empty path as `nil`.
+                guard
+                    let storedURL = try? Self.decode(storageObject: path, format: .userDefaults),
+                    storedURL.absoluteString == absoluteString
+                else {
+                    throw PersistentKeyValueConversionError.encodingFailed
+                }
+
+                return path
+            }
+            return try NSKeyedArchiver.archivedData(withRootObject: self, requiringSecureCoding: true)
+        }
+    }
+
     // MARK: Interfacing with Property List Array
     
     public static func get(from propertyListArray: [Any]) -> [Self]? {
@@ -41,11 +144,7 @@ extension URL: PrimitiveKeyValuePersistible {
     
     @inlinable
     public static func set(_ values: [Self], to propertyListArray: inout [Any]) {
-        propertyListArray.reserveCapacity(propertyListArray.count + values.count)
-
-        for value in values {
-            propertyListArray.append(value.absoluteString)
-        }
+        propertyListArray = values.map(\.absoluteString)
     }
     
     // MARK: Interfacing with Property List Dictionary
@@ -97,22 +196,27 @@ extension URL: PrimitiveKeyValuePersistible {
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func get(
         _ ubiquitousStoreKey: String,
         from ubiquitousStore: NSUbiquitousKeyValueStore
     ) -> Self? {
-        ubiquitousStore.object(forKey: ubiquitousStoreKey) as? Self
+        let object = ubiquitousStore.object(forKey: ubiquitousStoreKey)
+        if let value = object as? Self {
+            return value
+        }
+        guard let string = object as? String else {
+            return nil
+        }
+        return URL(string: string)
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public static func set(
         _ ubiquitousStoreKey: String,
         to value: Self,
         in ubiquitousStore: NSUbiquitousKeyValueStore
     ) {
-        ubiquitousStore.set(value, forKey: ubiquitousStoreKey)
+        ubiquitousStore.set(value.absoluteString, forKey: ubiquitousStoreKey)
     }
 }

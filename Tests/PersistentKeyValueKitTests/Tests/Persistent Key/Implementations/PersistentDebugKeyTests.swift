@@ -38,9 +38,7 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
     // MARK: Initialization Tests
 
     @MainActor
-    func test_init_otherRepresentation() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
+    func test_init_otherRepresentation() {
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -58,8 +56,6 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
     
     @MainActor
     func test_init_otherRepresentation_optional() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -78,6 +74,53 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
         
         XCTAssert(baseRepresentation.base === representation)
     }
+
+    @MainActor
+    func test_init_debugAndReleaseDefaultValues_optionalOtherRepresentation() throws {
+        let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
+            serializing: \.self,
+            deserializing: \.self
+        )
+        let key = PersistentDebugKey<String?>(
+            id,
+            debugDefaultValue: "debug",
+            releaseDefaultValue: "release",
+            representation: representation
+        )
+
+        #if DEBUG
+        XCTAssertEqual(key.defaultValue, "debug")
+        #else
+        XCTAssertEqual(key.defaultValue, "release")
+        #endif
+        let optionalRepresentation = try XCTUnwrap(
+            key.representation as? OptionalPersistentKeyValueRepresentation<
+                ReferenceProxyPersistentKeyValueRepresentation<String, String>
+            >
+        )
+        XCTAssert(optionalRepresentation.base === representation)
+    }
+
+    @MainActor
+    func test_init_debugAndReleaseDefaultValues_otherRepresentation() {
+        let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
+            serializing: \.self,
+            deserializing: \.self
+        )
+        let key = PersistentDebugKey(
+            id,
+            debugDefaultValue: "debug",
+            releaseDefaultValue: "release",
+            representation: representation
+        )
+
+        #if DEBUG
+        XCTAssertEqual(key.defaultValue, "debug")
+        #else
+        XCTAssertEqual(key.defaultValue, "release")
+        #endif
+        XCTAssert(key.representation as? ReferenceProxyPersistentKeyValueRepresentation<String, String> === representation)
+    }
     
     // MARK: Equatable Tests
     
@@ -87,6 +130,16 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
         
         XCTAssertEqual(target, other)
     }
+
+    func test_persistentKey_equatable_comparesIdentifiersLiterally() {
+        let composed = PersistentDebugKey("caf\u{E9}", defaultValue: 0)
+        let decomposed = PersistentDebugKey("cafe\u{301}", defaultValue: 0)
+
+        XCTAssertEqual(composed.id, decomposed.id)
+        XCTAssertNotEqual(composed, decomposed)
+        XCTAssertEqual(composed, PersistentDebugKey("caf\u{E9}", defaultValue: 0))
+        XCTAssertNotEqual(composed, PersistentDebugKey("caf\u{E9}", defaultValue: 1))
+    }
     
     // MARK: Hashable Tests
     
@@ -95,5 +148,13 @@ final class PersistentDebugKeyTests: AbstractPersistentKeyTests<PersistentDebugK
         let other = target
         
         XCTAssertEqual(target.hashValue, other.hashValue)
+    }
+
+    func test_persistentKey_hashable_keepsLiterallyDifferentIdentifiersSeparate() {
+        let composed = PersistentDebugKey("caf\u{E9}", defaultValue: 0)
+        let decomposed = PersistentDebugKey("cafe\u{301}", defaultValue: 0)
+
+        XCTAssertEqual(Set([composed, decomposed, PersistentDebugKey("caf\u{E9}", defaultValue: 0)]).count, 2)
+        XCTAssertEqual(composed.hashValue, PersistentDebugKey("caf\u{E9}", defaultValue: 0).hashValue)
     }
 }

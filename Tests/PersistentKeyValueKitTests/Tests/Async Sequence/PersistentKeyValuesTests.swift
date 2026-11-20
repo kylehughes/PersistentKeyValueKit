@@ -98,6 +98,35 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(value, "changedValue")
     }
 
+    func test_changes_ignoresNotificationDeliveredAfterCancellation() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let registered = expectation(description: "registered")
+
+        store.retainsObservers = true
+        store.onNextRegistration {
+            registered.fulfill()
+        }
+
+        let task = Task {
+            var iterator = key.changes(in: store).makeAsyncIterator()
+
+            return await iterator.next()
+        }
+
+        await fulfillment(of: [registered], timeout: 5)
+        task.cancel()
+
+        let value = await task.value
+
+        XCTAssertNil(value)
+        XCTAssertEqual(store.deregistrationCount, 1)
+
+        store.notifyRetainedObservers(keyPath: key.id)
+
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
     func test_changes_keyConvenienceSkipsInitialValue() async {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -236,13 +265,64 @@ extension PersistentKeyValuesTests {
 
         XCTAssertEqual(value, "changedValue")
     }
+
+    func test_values_ignoresNotificationsForUnrelatedKeys() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = await receivedValues(1, from: key.changes(in: store, bufferingPolicy: .unbounded)) {
+            store.postToObservers(
+                Notification(
+                    name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                    object: store,
+                    userInfo: [
+                        NSUbiquitousKeyValueStoreChangedKeysKey: [
+                            "unrelatedKey:\(#function)",
+                        ],
+                    ]
+                )
+            )
+            store.set(key, to: "changedValue")
+        }
+
+        XCTAssertEqual(values, ["changedValue"])
+    }
+
+    func test_values_initialValueIsNotFollowedByChangesReportedBeforeIt() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        store.onNextRegistration {
+            store.set(key, to: "firstChangedValue")
+            store.set(key, to: "secondChangedValue")
+        }
+
+        let values = await receivedValues(2, from: key.values(in: store, bufferingPolicy: .unbounded)) {
+            store.set(key, to: "laterValue")
+        }
+
+        XCTAssertEqual(values, ["secondChangedValue", "laterValue"])
+    }
+
+    func test_changes_deliversChangesReportedDuringRegistration() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        store.onNextRegistration {
+            store.set(key, to: "changedValue")
+        }
+
+        let values = await receivedValues(1, from: key.changes(in: store, bufferingPolicy: .unbounded)) {}
+
+        XCTAssertEqual(values, ["changedValue"])
+    }
 }
 
 // MARK: - Store Integration Tests
 
 extension PersistentKeyValuesTests {
     func test_values_userDefaultsObservesChanges() async throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
@@ -256,7 +336,70 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(value, "changedValue")
     }
 
-    @available(watchOS 9.0, *)
+    func test_values_userDefaultsObservesKeyWithPeriods() async throws {
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: false)
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let values = await receivedValues(3, from: key.values(in: userDefaults, bufferingPolicy: .unbounded)) {
+            userDefaults.set(key, to: true)
+            userDefaults.remove(key)
+        }
+
+        XCTAssertEqual(values, [false, true, false])
+    }
+
+    func test_values_userDefaultsObservesKeyPathIncompatibleKeys() async throws {
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        for keyID in keyPathIncompatibleKeyIDs() {
+            let key = PersistentKey(keyID, defaultValue: false)
+
+            let values = await receivedValues(3, from: key.values(in: userDefaults, bufferingPolicy: .unbounded)) {
+                userDefaults.set(key, to: true)
+                userDefaults.remove(key)
+            }
+
+            XCTAssertEqual(values, [false, true, false], "\(keyID.unicodeScalars.map(\.value))")
+        }
+    }
+
+    func test_values_userDefaultsDecoderWritingObservedKeyEmitsInReadOrder() async throws {
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuesTests")
+        let keyID = "key:\(#function)"
+        // `UserDefaults` is thread-safe but not declared `Sendable`.
+        nonisolated(unsafe) let decoderUserDefaults = userDefaults
+        let key = PersistentKey(
+            keyID,
+            defaultValue: 0,
+            representation: ProxyPersistentKeyValueRepresentation<Int, Int>(
+                to: { $0 },
+                from: { value in
+                    // Canonicalize a legacy value by writing the observed key while it is being decoded.
+                    if value == 1 {
+                        decoderUserDefaults.set(2, forKey: keyID)
+                    }
+
+                    return value
+                }
+            )
+        )
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let values = await receivedValues(2, from: key.changes(in: userDefaults, bufferingPolicy: .unbounded)) {
+            userDefaults.set(1, forKey: keyID)
+        }
+
+        XCTAssertEqual(values, [1, 2])
+    }
+
     func test_values_ubiquitousKeyValueStoreObservesChanges() async {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -269,26 +412,65 @@ extension PersistentKeyValuesTests {
         XCTAssertEqual(value, "changedValue")
     }
 
-    @available(watchOS 9.0, *)
-    func test_values_ubiquitousKeyValueStoreIgnoresMalformedAndUnrelatedNotifications() async {
+    func test_values_ubiquitousKeyValueStoreRefreshesForAccountChange() async {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let changes = key.changes(in: ubiquitousKeyValueStore, bufferingPolicy: .unbounded)
+
+        let values = await receivedValues(1, from: changes) {
+            ubiquitousKeyValueStore.storage[key.id] = "accountValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangeReasonKey: NSUbiquitousKeyValueStoreAccountChange,
+                    NSUbiquitousKeyValueStoreChangedKeysKey: [
+                        "unrelatedKey:\(#function)",
+                    ],
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["accountValue"])
+    }
+
+    func test_values_ubiquitousKeyValueStoreRefreshesWithoutChangedKeys() async {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let changes = key.changes(in: ubiquitousKeyValueStore, bufferingPolicy: .unbounded)
+
+        let values = await receivedValues(2, from: changes) {
+            ubiquitousKeyValueStore.storage[key.id] = "firstExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: nil
+            )
+
+            ubiquitousKeyValueStore.storage[key.id] = "secondExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["firstExternalValue", "secondExternalValue"])
+    }
+
+    func test_values_ubiquitousKeyValueStoreIgnoresUnrelatedNotifications() async {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
 
-        var iterator = key.values(in: ubiquitousKeyValueStore, emitsInitialValue: false).makeAsyncIterator()
-
-        NotificationCenter.default.post(
-            name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-            object: ubiquitousKeyValueStore,
-            userInfo: nil
-        )
-
-        NotificationCenter.default.post(
-            name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-            object: ubiquitousKeyValueStore,
-            userInfo: [
-                NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
-            ]
-        )
+        var iterator = key.values(
+            in: ubiquitousKeyValueStore,
+            emitsInitialValue: false,
+            bufferingPolicy: .unbounded
+        ).makeAsyncIterator()
 
         NotificationCenter.default.post(
             name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
@@ -348,6 +530,55 @@ extension PersistentKeyValuesTests {
 // MARK: - Lifecycle Tests
 
 extension PersistentKeyValuesTests {
+    func test_values_releasingIteratorsWhileInMemoryStoreIsWrittenDoesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let isWriting = LockedFlag(true)
+        let writersFinished = expectation(description: "Writers finished")
+        let iteratorsFinished = expectation(description: "Iterators finished")
+
+        writersFinished.expectedFulfillmentCount = 4
+        iteratorsFinished.expectedFulfillmentCount = 4
+
+        // Each write checks every registered observer on the writing thread, while the iterating threads release
+        // theirs, so a write can hold the last reference to one.
+        for writer in 0 ..< 4 {
+            let key = PersistentKey("writer\(writer):\(#function)", defaultValue: 0)
+
+            Thread.detachNewThread {
+                var value = 0
+
+                while isWriting.value {
+                    value += 1
+                    store.set(key, to: value)
+                }
+
+                writersFinished.fulfill()
+            }
+        }
+
+        for iterator in 0 ..< 4 {
+            let key = PersistentKey("iterator\(iterator):\(#function)", defaultValue: 0)
+
+            Thread.detachNewThread {
+                let deadline = Date(timeIntervalSinceNow: 2)
+
+                while Date() < deadline {
+                    let iterator = key.values(in: store).makeAsyncIterator()
+                    withExtendedLifetime(iterator) {}
+                }
+
+                iteratorsFinished.fulfill()
+            }
+        }
+
+        // A deadlock fails the waits instead of blocking the test process.
+        let result = XCTWaiter.wait(for: [iteratorsFinished], timeout: 30)
+        isWriting.value = false
+
+        XCTAssertEqual(result, .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [writersFinished], timeout: 30), .completed)
+    }
+
     func test_values_concurrentCancellationAndChangeDeregistersOnce() async {
         for iteration in 0 ..< 100 {
             let store = ObservablePersistentKeyValueStore()
@@ -364,7 +595,7 @@ extension PersistentKeyValuesTests {
                 return await iterator.next()
             }
 
-            await fulfillment(of: [registered], timeout: 1)
+            await fulfillment(of: [registered], timeout: 5)
 
             await withTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -381,6 +612,120 @@ extension PersistentKeyValuesTests {
             XCTAssertTrue(value == nil || value == "changedValue")
             XCTAssertEqual(store.deregistrationCount, 1)
         }
+    }
+
+    func test_values_cancelledTaskDoesNotReturnPendingInitialValueAndDeregisters() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = await Task {
+            var iterator = key.values(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            let first = await iterator.next()
+            store.set(key, to: "changedValue")
+            let second = await iterator.next()
+
+            return [first, second]
+        }.value
+
+        XCTAssertEqual(values, [nil, nil])
+        XCTAssertEqual(store.registrationCount, 1)
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_values_cancelledTaskDoesNotReturnBufferedChangesAndDeregisters() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = await Task {
+            var iterator = key.changes(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+            store.set(key, to: "firstChangedValue")
+            store.set(key, to: "secondChangedValue")
+
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            let first = await iterator.next()
+            let second = await iterator.next()
+
+            return [first, second]
+        }.value
+
+        XCTAssertEqual(values, [nil, nil])
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_values_finishedIteratorReleasesBufferedChanges() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey(
+            "key:\(#function)",
+            defaultValue: ReferenceValue(0),
+            representation: ProxyPersistentKeyValueRepresentation<ReferenceValue, Int>(
+                to: { $0.id },
+                from: { ReferenceValue($0) }
+            )
+        )
+
+        let (isBufferedValueReleased, values) = await Task {
+            weak var releasedValue: ReferenceValue?
+            var iterator = key.changes(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+            do {
+                let value = ReferenceValue(1)
+                releasedValue = value
+
+                store.set(key, to: value)
+            }
+
+            store.set(key, to: ReferenceValue(2))
+            store.remove(key)
+
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            let values = [await iterator.next(), await iterator.next()]
+
+            // The finished iterator is still held, but the changes it buffered are not.
+            return withExtendedLifetime(iterator) {
+                (releasedValue == nil, values.map { $0?.id })
+            }
+        }.value
+
+        XCTAssertEqual(values, [nil, nil])
+        XCTAssertTrue(isBufferedValueReleased)
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_values_iteratorReturnsNilInLaterTaskAfterCancellationEndsIteration() async {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        // The iterator is used by one task at a time, but it is not `Sendable`.
+        nonisolated(unsafe) var iterator = key.values(in: store, bufferingPolicy: .unbounded).makeAsyncIterator()
+
+        let cancelledValue = await Task {
+            withUnsafeCurrentTask { task in
+                task?.cancel()
+            }
+
+            return await iterator.next()
+        }.value
+
+        store.set(key, to: "changedValue")
+
+        let laterValue = await Task {
+            await iterator.next()
+        }.value
+
+        XCTAssertNil(cancelledValue)
+        XCTAssertNil(laterValue)
+        XCTAssertEqual(store.deregistrationCount, 1)
     }
 
     func test_values_deregistersWhenIteratorDeinitializes() {
@@ -413,11 +758,11 @@ extension PersistentKeyValuesTests {
             taskCompleted.fulfill()
         }
 
-        await fulfillment(of: [initialValueReceived])
+        await fulfillment(of: [initialValueReceived], timeout: 10)
 
         task.cancel()
 
-        await fulfillment(of: [taskCompleted])
+        await fulfillment(of: [taskCompleted], timeout: 10)
         await task.value
 
         XCTAssertEqual(store.deregistrationCount, 1)
@@ -431,12 +776,48 @@ extension PersistentKeyValuesTests {
         _ sequence: Sequence
     ) where Sequence: AsyncSequence & Sendable, Sequence.Element: Sendable {}
 
-    private func makeUserDefaults() throws -> (userDefaults: UserDefaults, suiteName: String) {
-        let suiteName = "PersistentKeyValuesTests.\(UUID().uuidString)"
-        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    /// Iterates `sequence` until it produces `count` values, performing `action` once the iterator has registered.
+    ///
+    /// Waits are bounded, so a missing value fails the test instead of suspending it forever.
+    private func receivedValues<Sequence>(
+        _ count: Int,
+        from sequence: Sequence,
+        after action: () -> Void
+    ) async -> [Sequence.Element] where Sequence: AsyncSequence & Sendable, Sequence.Element: Sendable {
+        let registered = expectation(description: "Iterator registered")
+        let received = expectation(description: "Received \(count) values")
 
-        userDefaults.removePersistentDomain(forName: suiteName)
+        let task = Task {
+            var iterator = sequence.makeAsyncIterator()
+            var values: [Sequence.Element] = []
 
-        return (userDefaults, suiteName)
+            registered.fulfill()
+
+            while values.count < count, let value = try? await iterator.next() {
+                values.append(value)
+            }
+
+            received.fulfill()
+
+            return values
+        }
+
+        await fulfillment(of: [registered], timeout: 5)
+        action()
+        await fulfillment(of: [received], timeout: 5)
+        task.cancel()
+
+        return await task.value
+    }
+}
+
+// MARK: - ReferenceValue Definition
+
+/// A value with reference identity, so tests can observe when it is released.
+private final class ReferenceValue: Sendable {
+    let id: Int
+
+    init(_ id: Int) {
+        self.id = id
     }
 }

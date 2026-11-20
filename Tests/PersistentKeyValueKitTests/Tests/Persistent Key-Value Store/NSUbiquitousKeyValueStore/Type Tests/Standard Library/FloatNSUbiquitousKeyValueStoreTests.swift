@@ -5,7 +5,8 @@
 //  Created by Kyle Hughes on 11/17/24.
 //
 
-@available(watchOS 9.0, *)
+import PersistentKeyValueKit
+
 final class FloatNSUbiquitousKeyValueStoreTests: AbstractNSUbiquitousKeyValueStoreTypeTests<Float> {
     // MARK: AbstractPersistentKeyValueStoreTypeTests Implementation
     

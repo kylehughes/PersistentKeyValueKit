@@ -5,20 +5,31 @@
 //  Created by Kyle Hughes on 4/17/22.
 //
 
+import CryptoKit
 import Foundation
 
-/// A protocol for a key for a value in a ``PersistentKeyValueStore``.
+/// A typed key for a value in a ``PersistentKeyValueStore``.
 ///
-/// This interface is designed around the two persistent key-value stores provided by Apple platforms: `UserDefaults`
-/// and `NSUbiquitousKeyValueStore`. It is not intended to support a generic key-value store implementation.
+/// This protocol models keys backed by `UserDefaults`, `NSUbiquitousKeyValueStore`, or
+/// ``InMemoryPersistentKeyValueStore``. Each store reads, writes, and removes a value by calling the key's
+/// `get(from:)`, `set(to:in:)`, and `remove(from:)` requirements for that store, so a conforming type controls access
+/// to every store it supports. The `UserDefaults` and `NSUbiquitousKeyValueStore` requirements have no default
+/// implementations. The ``InMemoryPersistentKeyValueStore`` requirements default to storing the Swift value directly
+/// through ``InMemoryPersistentKeyValueStore/object(forKey:)``, ``InMemoryPersistentKeyValueStore/set(_:forKey:)``,
+/// and ``InMemoryPersistentKeyValueStore/removeObject(forKey:)``.
+///
+/// - Important: A key's value lives under its ``id`` in every store. Observation watches that identifier for changes,
+///   and migration reads, writes, and removes the value there without calling these requirements. An implementation
+///   can change how a value is read, written, or gated, such as by clamping values or ignoring writes, but must keep
+///   the value under ``id``.
 public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID == String {
     // MARK: Associated Types
     
     /// The type of the value for the key.
     associatedtype Value
-    
+
     // MARK: Instance Interface
-    
+
     /// The default value for the key.
     ///
     /// This value is used when the key has not been set.
@@ -26,10 +37,41 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
 
     /// The unique identifier for the key.
     ///
-    /// This is value used as the key in the underlying stores.
+    /// This is the string key used in the underlying stores, and the store-specific requirements must keep the value
+    /// under it. Resolve a dynamic identifier when constructing the key, and keep it stable for the lifetime of a
+    /// migration or an observation.
     ///
-    /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``.
+    /// `NSUbiquitousKeyValueStore` limits a key identifier, including any generated prefix or suffix, to 128 UTF-16 code
+    /// units, and Foundation can raise an exception when a write exceeds that limit. Migration reports
+    /// ``PersistentKeyMigrationError/keyIdentifierTooLong(_:)`` during setup.
+    ///
+    /// `UserDefaults` and `NSUbiquitousKeyValueStore` compare identifiers literally, so canonically equivalent
+    /// spellings, such as composed and decomposed "café", are different keys. `ID` is `String`, which treats those
+    /// spellings as equal, so `Identifiable` identity merges them: SwiftUI's `ForEach(keys)` gives both the same ID.
+    /// To keep well-formed spellings distinct, identify each key by its identifier's UTF-8 code units:
+    /// `ForEach(keys, id: \.id.utf8CString)`. UTF-8 cannot represent an unpaired UTF-16 surrogate, such as one left by
+    /// truncating an emoji with `NSString.substring(to:)`, so identifiers that differ only in such surrogates still
+    /// share an ID, and `ForEach` does not guarantee distinct rows for repeated IDs. If identifiers can contain unpaired
+    /// surrogates, derive row IDs from their original UTF-16 code units. Key equality is not a substitute: a custom key
+    /// with synthesized equality compares a stored `String` identifier using Swift string equality, and
+    /// ``PersistentKey`` and ``PersistentDebugKey`` compare identifiers literally but include the default value, so
+    /// with `\.self`, changing only a key's default value recreates its row.
+    ///
+    /// - Important: This value must be unique across all keys in a given ``PersistentKeyValueStore``. If it is backed
+    ///   by a Foundation string, reading its characters must not access a store; Foundation may hold its own locks
+    ///   while it reads a key. Migration and observation read this value more than once, so it must return the same
+    ///   identifier for the duration of a migration or an observation. If a custom identifier changes after setup, a
+    ///   move can remove an entry that setup did not validate and still report
+    ///   ``PersistentKeyMigrationReport/Status/moved``.
     var id: ID { get }
+
+    /// Whether this key participates in migration operations.
+    ///
+    /// If the batch runs, an item with a disabled source or destination key reports
+    /// ``PersistentKeyMigrationReport/Status/keyDisabled`` and skips its value reads and writes. Setup validation and
+    /// completion-marker checks still run, so a recorded marker can skip the batch before the item is considered. The
+    /// default implementation returns `true`.
+    var isMigrationEnabled: Bool { get }
     
     /// The representation of the key-value pair in the ``PersistentKeyValueStore``.
     var representation: any PersistentKeyValueRepresentation<Value> { get }
@@ -64,35 +106,174 @@ public protocol PersistentKeyProtocol<Value>: Identifiable, Sendable where ID ==
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to get the value from.
     /// - Returns: The value of the key in the given `NSUbiquitousKeyValueStore`, or the default value if the key has 
     ///   not been set.
-    @available(watchOS 9.0, *)
     func get(from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value
 
     /// Removes the value of the key from the given `NSUbiquitousKeyValueStore`.
     ///
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to remove the value from.
-    @available(watchOS 9.0, *)
     func remove(from ubiquitousStore: NSUbiquitousKeyValueStore)
 
     /// Sets the value of the key to the given value in the given `NSUbiquitousKeyValueStore`.
     ///
     /// - Parameter newValue: The new value for the key.
     /// - Parameter ubiquitousStore: The `NSUbiquitousKeyValueStore` to set the value in.
-    @available(watchOS 9.0, *)
     func set(to newValue: Value, in ubiquitousStore: NSUbiquitousKeyValueStore)
+
+    // MARK: Interfacing with In-Memory Store
+
+    /// Gets the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default value is returned if the key has not been set.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to get the value from.
+    /// - Returns: The value of the key in the given ``InMemoryPersistentKeyValueStore``, or the default value if the
+    ///   key has not been set.
+    func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> Value
+
+    /// Removes the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to remove the value from.
+    func remove(from inMemoryStore: InMemoryPersistentKeyValueStore)
+
+    /// Sets the value of the key to the given value in the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// - Parameter newValue: The new value for the key.
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to set the value in.
+    func set(to newValue: Value, in inMemoryStore: InMemoryPersistentKeyValueStore)
 }
 
 // MARK: - Bespoke Implementation
 
 extension PersistentKeyProtocol {
     // MARK: Public Instance Interface
-    
-    /// Registers the default value for the key in the given property-list-compatible dictionary.
+
+    public var isMigrationEnabled: Bool {
+        true
+    }
+
+    /// Registers the default value for the key in the given registration dictionary for `UserDefaults`.
     ///
-    /// This is intended for use by ``UserDefaults/register(_:)`` to register the default values for the keys.
+    /// Use this method to fill a Swift registration dictionary. `UserDefaults.register(_:)` does not call it: it builds
+    /// a Foundation dictionary directly and uses the key's checked ``PersistentKeyValueStorageFormat/userDefaults``
+    /// encoding. This method fills the dictionary using the same checked encoding. A custom ordinary setter can use a
+    /// different format. When the registered object is visible, the ordinary getter determines the typed value. Leaves
+    /// `propertyListDictionary` unchanged when encoding the default value fails, and removes the entry when it encodes
+    /// to `nil`.
+    ///
+    /// A Swift dictionary treats identifiers that are canonically equivalent but spelled differently, such as composed
+    /// and decomposed "café", as one key. `UserDefaults.register(_:)` keeps such identifiers separate, as
+    /// `UserDefaults` does.
     ///
     /// - Parameter propertyListDictionary: The dictionary to register the default value in.
-    @inlinable
     public func registerDefault(in propertyListDictionary: inout [String: Any]) {
-        representation.set(id, to: defaultValue, in: &propertyListDictionary)
+        guard let encoding = registeredDefaultEncoding() else {
+            return
+        }
+
+        switch encoding {
+        case .store(let object):
+            propertyListDictionary[id] = object
+        case .remove:
+            propertyListDictionary.removeValue(forKey: id)
+        }
+    }
+
+    // MARK: Interfacing with In-Memory Store
+
+    /// Gets the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default implementation returns the stored value when it is a `Value`, including an explicitly stored `nil`
+    /// for an optional key, and returns the default value when the key has not been set or the stored value has
+    /// another type.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to get the value from.
+    /// - Returns: The value of the key in the given ``InMemoryPersistentKeyValueStore``, or the default value if the
+    ///   key has not been set.
+    @inlinable
+    public func get(from inMemoryStore: InMemoryPersistentKeyValueStore) -> Value {
+        guard let object = inMemoryStore.object(forKey: id) else {
+            return defaultValue
+        }
+
+        return object as? Value ?? defaultValue
+    }
+
+    /// Removes the value of the key from the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default implementation calls ``InMemoryPersistentKeyValueStore/removeObject(forKey:)``.
+    ///
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to remove the value from.
+    @inlinable
+    public func remove(from inMemoryStore: InMemoryPersistentKeyValueStore) {
+        inMemoryStore.removeObject(forKey: id)
+    }
+
+    /// Sets the value of the key to the given value in the given ``InMemoryPersistentKeyValueStore``.
+    ///
+    /// The default implementation calls ``InMemoryPersistentKeyValueStore/set(_:forKey:)``, so setting an optional
+    /// key to `nil` records an explicit entry.
+    ///
+    /// - Parameter newValue: The new value for the key.
+    /// - Parameter inMemoryStore: The ``InMemoryPersistentKeyValueStore`` to set the value in.
+    @inlinable
+    public func set(to newValue: Value, in inMemoryStore: InMemoryPersistentKeyValueStore) {
+        inMemoryStore.set(newValue, forKey: id)
+    }
+
+    // MARK: Internal Instance Interface
+
+    /// Registers the default value for the key in the given Foundation registration dictionary, which keys entries by
+    /// their literal identifiers.
+    ///
+    /// Behaves like ``registerDefault(in:)`` otherwise.
+    internal func registerDefault(inLiteralDictionary propertyListDictionary: NSMutableDictionary) {
+        guard let encoding = registeredDefaultEncoding() else {
+            return
+        }
+
+        switch encoding {
+        case .store(let object):
+            propertyListDictionary[id as NSString] = object
+        case .remove:
+            propertyListDictionary.removeObject(forKey: id as NSString)
+        }
+    }
+
+    // MARK: Private Instance Interface
+
+    /// Returns how to register the default value, or `nil` when encoding it fails.
+    private func registeredDefaultEncoding() -> StorableEncoding? {
+        try? storableEncoding(representation.encode(defaultValue, format: .userDefaults))
+    }
+}
+
+extension PersistentKeyProtocol where Self == PersistentKey<Bool> {
+    /// Returns the persistent boolean key used to record completion for a migration identifier with
+    /// ``PersistentKeyMigrationTracking/once(id:)`` or ``PersistentKeyMigrationTracking/once(id:recordedIn:)``.
+    ///
+    /// Remove this key from the recording store (or set it to `false`) to allow a completed migration with the same
+    /// `id` to run again.
+    ///
+    /// Identifiers that are equal as Swift strings, including precomposed and decomposed spellings of the same accented
+    /// character, return the same key. Identifiers that differ in any other way, including case, return different keys.
+    ///
+    /// The generated key has a fixed length of 84 UTF-16 code units, so completion tracking accepts nonempty
+    /// identifiers of any length in any store, including `NSUbiquitousKeyValueStore`. It contains no `.`, so
+    /// `UserDefaults` key-value observation can observe it.
+    ///
+    /// - Parameter id: The migration identifier passed to ``PersistentKeyMigrationTracking/once(id:)`` or
+    ///   ``PersistentKeyMigrationTracking/once(id:recordedIn:)``.
+    /// - Returns: A boolean key whose default value is `false`.
+    public static func isMigrationCompleted(id: String) -> Self {
+        // A digest keeps the marker within `NSUbiquitousKeyValueStore`'s 128-unit key limit for any `id`. Hashing the
+        // NFC form gives canonically equivalent identifiers, which Swift considers equal, the same marker.
+        let digest = Data(SHA256.hash(data: Data(id.precomposedStringWithCanonicalMapping.utf8)))
+        return Self(
+            PersistentKeyMigrationTracking.completionMarkerPrefix
+            + digest.base64EncodedString().replacingOccurrences(of: "+", with: "-")
+                    .replacingOccurrences(of: "/", with: "_")
+                    .replacingOccurrences(of: "=", with: ""),
+            defaultValue: false
+        )
     }
 }

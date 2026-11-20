@@ -7,8 +7,9 @@
 
 import Combine
 import Foundation
-import PersistentKeyValueKit
 import XCTest
+
+@testable import PersistentKeyValueKit
 
 final class PersistentKeyValuePublisherTests: XCTestCase {
     private var cancellables: Set<AnyCancellable> = []
@@ -89,6 +90,175 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["changedValue"])
     }
 
+    func test_publisher_changeOnAnotherThreadDuringSubscriptionIsDeliveredAfterSubscriptionReturns() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        var valuesAfterRequest: [Int] = []
+        var valuesAfterWrite: [Int] = []
+        var writeResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            subscription.request(.unlimited)
+            valuesAfterRequest = subscriber.values
+
+            let written = DispatchSemaphore(value: 0)
+
+            Thread.detachNewThread {
+                store.set(key, to: 1)
+                written.signal()
+            }
+
+            // The write does not wait for its change to be delivered, so this wait cannot deadlock.
+            writeResult = written.wait(timeout: .now() + 5)
+            valuesAfterWrite = subscriber.values
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(writeResult, .success)
+        XCTAssertEqual(valuesAfterRequest, [0])
+        XCTAssertEqual(valuesAfterWrite, [0])
+        XCTAssertEqual(subscriber.values, [0, 1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        store.set(key, to: 2)
+
+        XCTAssertEqual(subscriber.values, [0, 1, 2])
+
+        subscriber.cancel()
+    }
+
+    func test_publisher_changeQueuedDuringSubscriptionIsDeliveredBySubscribingThreadDespiteCompetingDemand() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        let subscriptionBox = SubscriptionBox()
+        var competingRequestResult: DispatchTimeoutResult?
+        var handoffWasObserved = false
+        var valuesAfterCompetingRequest: [Int]?
+        var writeResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            let handoff = subscription as? any PersistentKeyValueSubscriptionHandoffObserving
+
+            subscriptionBox.subscription = subscription
+            // Another thread requests demand after subscription ends but before the subscribing thread delivers the
+            // change queued while it subscribed.
+            handoff?.didFinishSubscribing = {
+                // The handoff runs once. Clearing it releases this closure, which retains the subscription.
+                handoff?.didFinishSubscribing = nil
+
+                let requested = DispatchSemaphore(value: 0)
+
+                Thread.detachNewThread {
+                    subscriptionBox.subscription?.request(.max(1))
+                    requested.signal()
+                }
+
+                // The competing request does not wait for delivery, so this wait cannot deadlock.
+                competingRequestResult = requested.wait(timeout: .now() + 5)
+                valuesAfterCompetingRequest = subscriber.values
+            }
+            handoffWasObserved = handoff != nil
+            subscription.request(.unlimited)
+
+            let written = DispatchSemaphore(value: 0)
+
+            Thread.detachNewThread {
+                store.set(key, to: 1)
+                written.signal()
+            }
+
+            writeResult = written.wait(timeout: .now() + 5)
+        }
+
+        key.changesPublisher(in: store).subscribe(subscriber)
+
+        let handoff = subscriptionBox.subscription as? any PersistentKeyValueSubscriptionHandoffObserving
+
+        XCTAssertTrue(handoffWasObserved)
+        XCTAssertNil(handoff?.didFinishSubscribing)
+        XCTAssertEqual(writeResult, .success)
+        XCTAssertEqual(competingRequestResult, .success)
+        XCTAssertEqual(valuesAfterCompetingRequest, [])
+        XCTAssertEqual(subscriber.values, [1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        subscriber.cancel()
+    }
+
+    func test_publisher_changeQueuedDuringSubscriptionIsDeliveredBySubscribingThreadUnderContention() {
+        let deadline = Date(timeIntervalSinceNow: 0.5)
+        var otherThreadDeliveries = 0
+        var retainedSubscribers = 0
+        var subscriptions = 0
+        var timedOut = false
+
+        // Each subscription queues a change from another thread while it subscribes, and that thread then requests
+        // demand repeatedly until the change is delivered, racing the subscribing thread's delivery after it returns.
+        while Date() < deadline, !timedOut {
+            weak var releasedSubscriber: SubscriptionHookSubscriber<Int>?
+
+            do {
+                let store = InMemoryPersistentKeyValueStore()
+                let key = PersistentKey("key:\(#function)", defaultValue: 0)
+                let subscriber = SubscriptionHookSubscriber<Int>()
+                let subscriptionBox = SubscriptionBox()
+                let finished = DispatchSemaphore(value: 0)
+
+                releasedSubscriber = subscriber
+                subscriber.onReceiveSubscription = { [subscriber] subscription in
+                    let written = DispatchSemaphore(value: 0)
+
+                    subscriptionBox.subscription = subscription
+                    subscription.request(.unlimited)
+                    // GCD can release the worker after this iteration ends, so it does not keep the subscriber alive.
+                    DispatchQueue.global().async { [weak subscriber] in
+                        store.set(key, to: 1)
+                        written.signal()
+
+                        let requestDeadline = Date(timeIntervalSinceNow: 5)
+
+                        while subscriber?.values.isEmpty == true, Date() < requestDeadline {
+                            subscriptionBox.subscription?.request(.max(1))
+                        }
+
+                        finished.signal()
+                    }
+
+                    if written.wait(timeout: .now() + 5) == .timedOut {
+                        timedOut = true
+                    }
+                }
+
+                key.changesPublisher(in: store).subscribe(subscriber)
+
+                if finished.wait(timeout: .now() + 5) == .timedOut {
+                    timedOut = true
+                }
+
+                if !subscriber.receivedEveryValueOnSubscribingThread {
+                    otherThreadDeliveries += 1
+                }
+
+                XCTAssertEqual(subscriber.values, [1])
+
+                subscriber.cancel()
+                subscriptions += 1
+            }
+
+            if releasedSubscriber != nil {
+                retainedSubscribers += 1
+            }
+        }
+
+        XCTAssertFalse(timedOut)
+        XCTAssertGreaterThan(subscriptions, 0)
+        XCTAssertEqual(otherThreadDeliveries, 0, "\(otherThreadDeliveries) of \(subscriptions) subscriptions")
+        XCTAssertEqual(retainedSubscribers, 0, "\(retainedSubscribers) of \(subscriptions) subscribers retained")
+    }
+
     func test_publisher_coalescesChangesUntilDemandIsRequested() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -104,6 +274,78 @@ extension PersistentKeyValuePublisherTests {
         subscriber.request(.max(1))
 
         XCTAssertEqual(subscriber.values, ["secondChangedValue"])
+    }
+
+    func test_publisher_demandRequestedAgainDuringSubscriptionDeliversChangeQueuedOnAnotherThread() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        var valuesAfterSecondRequest: [Int]?
+        var valuesAfterWrite: [Int]?
+        var writeResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            subscription.request(.unlimited)
+
+            let written = DispatchSemaphore(value: 0)
+
+            Thread.detachNewThread {
+                store.set(key, to: 1)
+                written.signal()
+            }
+
+            writeResult = written.wait(timeout: .now() + 5)
+            valuesAfterWrite = subscriber.values
+            // Demand requested on the subscribing thread is met before `receive(subscription:)` returns, including
+            // with the change that the other thread queued.
+            subscription.request(.max(1))
+            valuesAfterSecondRequest = subscriber.values
+        }
+
+        key.changesPublisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(writeResult, .success)
+        XCTAssertEqual(valuesAfterWrite, [])
+        XCTAssertEqual(valuesAfterSecondRequest, [1])
+        XCTAssertEqual(subscriber.values, [1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        store.set(key, to: 2)
+
+        XCTAssertEqual(subscriber.values, [1, 2])
+
+        subscriber.cancel()
+    }
+
+    func test_publisher_demandRequestedOnAnotherThreadDuringSubscriptionIsDeliveredAfterSubscriptionReturns() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        let subscriptionBox = SubscriptionBox()
+        var valuesAfterRequest: [Int]?
+        var requestResult: DispatchTimeoutResult?
+
+        subscriber.onReceiveSubscription = { subscription in
+            let requested = DispatchSemaphore(value: 0)
+
+            subscriptionBox.subscription = subscription
+            Thread.detachNewThread {
+                subscriptionBox.subscription?.request(.unlimited)
+                requested.signal()
+            }
+
+            requestResult = requested.wait(timeout: .now() + 5)
+            valuesAfterRequest = subscriber.values
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(requestResult, .success)
+        XCTAssertEqual(valuesAfterRequest, [])
+        XCTAssertEqual(subscriber.values, [0])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        subscriber.cancel()
     }
 
     func test_publisher_emitsDefaultValueInitially() {
@@ -149,6 +391,28 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["storedValue"])
     }
 
+    func test_publisher_ignoresNotificationsForUnrelatedKeys() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = receivedValues(from: key.changesPublisher(in: store)) {
+            store.postToObservers(
+                Notification(
+                    name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                    object: store,
+                    userInfo: [
+                        NSUbiquitousKeyValueStoreChangedKeysKey: [
+                            "unrelatedKey:\(#function)",
+                        ],
+                    ]
+                )
+            )
+            store.set(key, to: "changedValue")
+        }
+
+        XCTAssertEqual(values, ["changedValue"])
+    }
+
     func test_publisher_ignoresUnrelatedKeyPathCallbacks() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -179,6 +443,74 @@ extension PersistentKeyValuePublisherTests {
         subscriber.request(.max(1))
 
         XCTAssertEqual(subscriber.values, ["defaultValue", "secondChangedValue"])
+    }
+
+    func test_publisher_reentrantDemandAndChangeDoNotNestEmissions() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = ReentrantSubscriber<String>()
+
+        subscriber.onFirstReceive = {
+            store.set(key, to: "reentrantValue")
+            subscriber.request(.max(1))
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        subscriber.request(.max(1))
+
+        XCTAssertEqual(subscriber.values, ["defaultValue", "reentrantValue"])
+        XCTAssertEqual(subscriber.maximumReceiveDepth, 1)
+
+        subscriber.request(.max(1))
+        store.set(key, to: "laterValue")
+
+        XCTAssertEqual(subscriber.values, ["defaultValue", "reentrantValue", "laterValue"])
+        XCTAssertEqual(subscriber.maximumReceiveDepth, 1)
+
+        subscriber.cancel()
+    }
+
+    func test_publisher_storeChangeOnSubscribingThreadDuringSubscriptionDeliversDemandRequestedOnAnotherThread() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let subscriber = SubscriptionHookSubscriber<Int>()
+        let subscriptionBox = SubscriptionBox()
+        var requestResult: DispatchTimeoutResult?
+        var valuesAfterRequest: [Int]?
+        var valuesAfterWrite: [Int]?
+
+        subscriber.onReceiveSubscription = { subscription in
+            let requested = DispatchSemaphore(value: 0)
+
+            subscriptionBox.subscription = subscription
+            Thread.detachNewThread {
+                subscriptionBox.subscription?.request(.max(1))
+                requested.signal()
+            }
+
+            requestResult = requested.wait(timeout: .now() + 5)
+            valuesAfterRequest = subscriber.values
+            // A change reported on the subscribing thread delivers the initial value that the other thread's demand
+            // made deliverable, before `receive(subscription:)` returns. That demand is then exhausted, so the change
+            // stays queued.
+            store.set(key, to: 1)
+            valuesAfterWrite = subscriber.values
+        }
+
+        key.publisher(in: store).subscribe(subscriber)
+
+        XCTAssertEqual(requestResult, .success)
+        XCTAssertEqual(valuesAfterRequest, [])
+        XCTAssertEqual(valuesAfterWrite, [0])
+        XCTAssertEqual(subscriber.values, [0])
+
+        subscriptionBox.subscription?.request(.max(1))
+
+        XCTAssertEqual(subscriber.values, [0, 1])
+        XCTAssertTrue(subscriber.receivedEveryValueOnSubscribingThread)
+
+        subscriber.cancel()
     }
 
     func test_publisher_storeConvenienceEmitsInitialValue() {
@@ -256,26 +588,11 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["defaultValue"])
     }
 
-    @available(watchOS 9.0, *)
-    func test_publisher_ubiquitousKeyValueStoreIgnoresMalformedAndUnrelatedNotifications() {
+    func test_publisher_ubiquitousKeyValueStoreIgnoresUnrelatedNotifications() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
 
         let values = receivedValues(from: key.publisher(in: ubiquitousKeyValueStore, emitsInitialValue: false)) {
-            NotificationCenter.default.post(
-                name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-                object: ubiquitousKeyValueStore,
-                userInfo: nil
-            )
-
-            NotificationCenter.default.post(
-                name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
-                object: ubiquitousKeyValueStore,
-                userInfo: [
-                    NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
-                ]
-            )
-
             NotificationCenter.default.post(
                 name: NSUbiquitousKeyValueStore.didChangeInternallyNotification,
                 object: ubiquitousKeyValueStore,
@@ -292,7 +609,50 @@ extension PersistentKeyValuePublisherTests {
         XCTAssertEqual(values, ["changedValue"])
     }
 
-    @available(watchOS 9.0, *)
+    func test_publisher_ubiquitousKeyValueStoreRefreshesForAccountChange() {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+
+        let values = receivedValues(from: key.publisher(in: ubiquitousKeyValueStore, emitsInitialValue: false)) {
+            ubiquitousKeyValueStore.storage[key.id] = "accountValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangeReasonKey: NSUbiquitousKeyValueStoreAccountChange,
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["accountValue"])
+    }
+
+    func test_publisher_ubiquitousKeyValueStoreRefreshesWithoutChangedKeys() {
+        let ubiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let publisher = key.publisher(in: ubiquitousKeyValueStore, emitsInitialValue: false)
+
+        let values = receivedValues(from: publisher, expectedCount: 2) {
+            ubiquitousKeyValueStore.storage[key.id] = "firstExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: nil
+            )
+
+            ubiquitousKeyValueStore.storage[key.id] = "secondExternalValue"
+            NotificationCenter.default.post(
+                name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: ubiquitousKeyValueStore,
+                userInfo: [
+                    NSUbiquitousKeyValueStoreChangedKeysKey: "notAnArray",
+                ]
+            )
+        }
+
+        XCTAssertEqual(values, ["firstExternalValue", "secondExternalValue"])
+    }
+
     func test_publisher_ubiquitousKeyValueStoreObservesChanges() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
@@ -305,7 +665,7 @@ extension PersistentKeyValuePublisherTests {
     }
 
     func test_publisher_userDefaultsObservesChanges() throws {
-        let (userDefaults, suiteName) = try makeUserDefaults()
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuePublisherTests")
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         defer {
             userDefaults.removePersistentDomain(forName: suiteName)
@@ -316,6 +676,70 @@ extension PersistentKeyValuePublisherTests {
         }
 
         XCTAssertEqual(values, ["changedValue"])
+    }
+
+    func test_publisher_readThatWritesObservedKeyDoesNotDeadlock() {
+        let store = WritingOnReadPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let recorder = ValueRecorder<Int>()
+        let finished = DispatchSemaphore(value: 0)
+
+        // Model a representation that canonicalizes a legacy value by writing the observed key while decoding it. The
+        // write reports a change synchronously, from inside the subscription's read.
+        store.onRead = { [unowned store] in
+            if store.base.get(key) == 1 {
+                store.base.set(key, to: 2)
+            }
+        }
+
+        // A deadlock blocks this thread forever, so run the write elsewhere and bound the wait. The store is private
+        // to this test, so a deadlock cannot block other tests.
+        Thread.detachNewThread {
+            let cancellable = key.changesPublisher(in: store).sink { value in
+                recorder.append(value)
+            }
+
+            store.set(key, to: 1)
+            cancellable.cancel()
+            finished.signal()
+        }
+
+        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success, "The subscription deadlocked.")
+        // The first read observes the canonicalized value; the change it reported is delivered as a later read.
+        XCTAssertEqual(recorder.values, [2, 2])
+    }
+
+    func test_publisher_userDefaultsObservesKeyWithPeriods() throws {
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuePublisherTests")
+        let key = PersistentKey("com.example.key.\(#function)", defaultValue: false)
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let values = receivedValues(from: key.publisher(in: userDefaults), expectedCount: 3) {
+            userDefaults.set(key, to: true)
+            userDefaults.remove(key)
+        }
+
+        XCTAssertEqual(values, [false, true, false])
+    }
+
+    func test_publisher_userDefaultsObservesKeyPathIncompatibleKeys() throws {
+        let (userDefaults, suiteName) = try makeStableUserDefaults("PersistentKeyValuePublisherTests")
+        defer {
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        for keyID in keyPathIncompatibleKeyIDs() {
+            let key = PersistentKey(keyID, defaultValue: false)
+
+            let values = receivedValues(from: key.publisher(in: userDefaults), expectedCount: 3) {
+                userDefaults.set(key, to: true)
+                userDefaults.remove(key)
+            }
+
+            XCTAssertEqual(values, [false, true, false], "\(keyID.unicodeScalars.map(\.value))")
+        }
     }
 }
 
@@ -379,7 +803,7 @@ extension PersistentKeyValuePublisherTests {
 
             key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
 
-            await fulfillment(of: [registered], timeout: 1)
+            await fulfillment(of: [registered], timeout: 5)
 
             subscriber.request(.unlimited)
 
@@ -398,6 +822,104 @@ extension PersistentKeyValuePublisherTests {
             XCTAssertTrue(values.isEmpty || values == ["changedValue"])
             XCTAssertEqual(store.deregistrationCount, 1)
         }
+    }
+
+    func test_publisher_cancellationReleasingSubscriberThatCancelsInDeinitDoesNotDeadlock() {
+        let store = InMemoryPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: 0)
+        let finished = DispatchSemaphore(value: 0)
+        let subscriptionBox = SubscriptionBox()
+
+        // A deadlock blocks this thread forever, so cancel elsewhere and bound the wait. The store is private to this
+        // test, so a deadlock cannot block other tests.
+        Thread.detachNewThread {
+            key.publisher(in: store).subscribe(CancellingOnDeinitSubscriber<Int>(subscriptionBox: subscriptionBox))
+            subscriptionBox.subscription?.cancel()
+            finished.signal()
+        }
+
+        XCTAssertEqual(finished.wait(timeout: .now() + 5), .success, "Cancellation deadlocked.")
+        XCTAssertTrue(subscriptionBox.didCancelInDeinit)
+    }
+
+    func test_publisher_decoderCancellingSubscriptionPreventsDelivery() {
+        let subscriber = DemandControlledSubscriber<Int>()
+        // The in-memory store does not decode values, so use a store that does.
+        let store: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
+        let key = PersistentKey(
+            "key:\(#function)",
+            defaultValue: 0,
+            representation: ProxyPersistentKeyValueRepresentation<Int, Int>(
+                to: { $0 },
+                from: { value in
+                    if value == 6 {
+                        subscriber.cancel()
+                    }
+
+                    return value
+                }
+            )
+        )
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+        subscriber.request(.unlimited)
+
+        store.set(key, to: 5)
+        store.set(key, to: 6)
+        store.set(key, to: 7)
+
+        // The mock reports each write twice, so `5` can be delivered more than once.
+        XCTAssertEqual(Set(subscriber.values), [5])
+    }
+
+    func test_publisher_ignoresCallbackCapturedBeforeCancellation() {
+        let store = CallbackRetainingPersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = DemandControlledSubscriber<String>()
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+
+        XCTAssertTrue(store.hasCapturedObserver)
+
+        subscriber.request(.unlimited)
+        subscriber.cancel()
+        store.notifyCapturedObserver(for: key.id)
+
+        XCTAssertEqual(subscriber.values, [])
+        XCTAssertEqual(store.deregistrationCount, 1)
+        XCTAssertEqual(store.getCount, 0)
+    }
+
+    func test_publisher_ignoresDemandRequestedAfterCancellation() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = DemandControlledSubscriber<String>()
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+
+        subscriber.cancel()
+        subscriber.request(.unlimited)
+        store.set(key, to: "changedValue")
+
+        XCTAssertEqual(subscriber.values, [])
+        XCTAssertEqual(store.deregistrationCount, 1)
+    }
+
+    func test_publisher_ignoresZeroDemandUntilPositiveDemandIsRequested() {
+        let store = ObservablePersistentKeyValueStore()
+        let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
+        let subscriber = DemandControlledSubscriber<String>()
+
+        key.publisher(in: store, emitsInitialValue: false).subscribe(subscriber)
+
+        subscriber.request(.none)
+        store.set(key, to: "changedValue")
+
+        XCTAssertEqual(subscriber.values, [])
+
+        subscriber.request(.max(1))
+
+        XCTAssertEqual(subscriber.values, ["changedValue"])
     }
 
     func test_publisher_releasingCancellableDeregisters() {
@@ -434,15 +956,6 @@ extension PersistentKeyValuePublisherTests {
 // MARK: - Test Utilities
 
 extension PersistentKeyValuePublisherTests {
-    private func makeUserDefaults() throws -> (userDefaults: UserDefaults, suiteName: String) {
-        let suiteName = "PersistentKeyValuePublisherTests.\(UUID().uuidString)"
-        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-
-        userDefaults.removePersistentDomain(forName: suiteName)
-
-        return (userDefaults, suiteName)
-    }
-
     private func receivedValues<P>(
         from publisher: P,
         expectedCount: Int = 1,
@@ -481,13 +994,13 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     var values: [Input] {
-        withLock {
+        lock.withLock {
             receivedValues
         }
     }
 
     func cancel() {
-        let subscription = withLock {
+        let subscription = lock.withLock {
             self.subscription
         }
 
@@ -495,7 +1008,7 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     func receive(_ input: Input) -> Subscribers.Demand {
-        withLock {
+        lock.withLock {
             receivedValues.append(input)
         }
 
@@ -506,25 +1019,294 @@ private final class DemandControlledSubscriber<Input>: Subscriber, @unchecked Se
     }
 
     func receive(subscription: Subscription) {
-        withLock {
+        lock.withLock {
             self.subscription = subscription
         }
     }
 
     func request(_ demand: Subscribers.Demand) {
-        let subscription = withLock {
+        let subscription = lock.withLock {
             self.subscription
         }
 
         subscription?.request(demand)
     }
+}
 
-    private func withLock<Result>(_ body: () -> Result) -> Result {
+// MARK: - Subscription Box Definition
+
+/// Holds a subscription strongly for a subscriber that cancels it from `deinit`.
+private final class SubscriptionBox: @unchecked Sendable {
+    var didCancelInDeinit = false
+    var subscription: Subscription?
+}
+
+// MARK: - Cancelling On Deinit Subscriber Definition
+
+/// A subscriber that cancels its subscription when it is deinitialized, which happens when the subscription releases
+/// it during cancellation.
+private final class CancellingOnDeinitSubscriber<Input>: Subscriber {
+    typealias Failure = Never
+
+    private let subscriptionBox: SubscriptionBox
+
+    init(subscriptionBox: SubscriptionBox) {
+        self.subscriptionBox = subscriptionBox
+    }
+
+    deinit {
+        subscriptionBox.subscription?.cancel()
+        subscriptionBox.didCancelInDeinit = true
+    }
+
+    func receive(_ input: Input) -> Subscribers.Demand {
+        .none
+    }
+
+    func receive(completion: Subscribers.Completion<Never>) {
+    }
+
+    func receive(subscription: Subscription) {
+        subscriptionBox.subscription = subscription
+    }
+}
+
+// MARK: - Writing On Read Persistent Key-Value Store Definition
+
+/// A store that runs ``onRead`` before every read, so a read can write and report a change synchronously.
+private final class WritingOnReadPersistentKeyValueStore: ForwardingPersistentKeyValueStore, @unchecked Sendable {
+    let base = InMemoryPersistentKeyValueStore()
+
+    nonisolated(unsafe) var onRead: (() -> Void)?
+
+    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        onRead?()
+
+        return base.get(key)
+    }
+}
+
+// MARK: - Value Recorder Definition
+
+/// Records values delivered on any thread.
+private final class ValueRecorder<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedValues: [Value] = []
+
+    var values: [Value] {
         lock.lock()
         defer {
             lock.unlock()
         }
 
-        return body()
+        return recordedValues
+    }
+
+    func append(_ value: Value) {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        recordedValues.append(value)
+    }
+}
+
+// MARK: - Reentrant Subscriber Definition
+
+private final class ReentrantSubscriber<Input> where Input: Sendable {
+    private(set) var maximumReceiveDepth = 0
+    var onFirstReceive: (() -> Void)?
+    private(set) var values: [Input] = []
+
+    private var receiveDepth = 0
+    private var subscription: Subscription?
+
+    // MARK: Internal Instance Interface
+
+    func cancel() {
+        let subscription = self.subscription
+        self.subscription = nil
+        subscription?.cancel()
+    }
+
+    func request(_ demand: Subscribers.Demand) {
+        subscription?.request(demand)
+    }
+}
+
+// MARK: - Subscriber Extension
+
+extension ReentrantSubscriber: Subscriber {
+    typealias Failure = Never
+
+    func receive(_ input: Input) -> Subscribers.Demand {
+        receiveDepth += 1
+        maximumReceiveDepth = max(maximumReceiveDepth, receiveDepth)
+        values.append(input)
+
+        if values.count == 1 {
+            let callback = onFirstReceive
+            onFirstReceive = nil
+            callback?()
+        }
+
+        receiveDepth -= 1
+
+        return .none
+    }
+
+    func receive(completion: Subscribers.Completion<Never>) {
+    }
+
+    func receive(subscription: Subscription) {
+        self.subscription = subscription
+    }
+}
+
+// MARK: - Callback Retaining Persistent Key-Value Store Definition
+
+private final class CallbackRetainingPersistentKeyValueStore {
+    private(set) var getCount = 0
+
+    private var capturedObserver: NSObject?
+    private var deregistrations = 0
+    private var storage: [String: Any] = [:]
+
+    // MARK: Internal Instance Interface
+
+    var deregistrationCount: Int {
+        deregistrations
+    }
+
+    var hasCapturedObserver: Bool {
+        capturedObserver != nil
+    }
+
+    func notifyCapturedObserver(for keyID: String) {
+        let observer = capturedObserver
+        capturedObserver = nil
+
+        observer?.observeValue(
+            forKeyPath: keyID,
+            of: self,
+            change: nil,
+            context: nil
+        )
+    }
+}
+
+// MARK: - PersistentKeyValueStore Extension
+
+extension CallbackRetainingPersistentKeyValueStore: PersistentKeyValueStore {
+    var migrationEndpoint: PersistentKeyValueMigrationEndpoint {
+        get throws {
+            throw PersistentKeyMigrationError.missingMigrationDomain
+        }
+    }
+
+    func deregister<Key>(
+        _ observer: NSObject,
+        for key: Key,
+        context: UnsafeMutableRawPointer?
+    ) where Key: PersistentKeyProtocol {
+        deregistrations += 1
+    }
+
+    func get<Key>(_ key: Key) -> Key.Value where Key: PersistentKeyProtocol {
+        getCount += 1
+
+        return storage[key.id] as? Key.Value ?? key.defaultValue
+    }
+
+    func register<Key>(
+        observer: NSObject,
+        for key: Key,
+        with context: UnsafeMutableRawPointer?,
+        and selector: Selector
+    ) where Key: PersistentKeyProtocol {
+        capturedObserver = observer
+    }
+
+    func remove<Key>(_ key: Key) where Key: PersistentKeyProtocol {
+        storage.removeValue(forKey: key.id)
+    }
+
+    func set<Key>(_ key: Key, to value: Key.Value) where Key: PersistentKeyProtocol {
+        storage[key.id] = value
+    }
+}
+
+// MARK: - Subscription Hook Subscriber Definition
+
+/// A subscriber that runs ``onReceiveSubscription`` once from `receive(subscription:)` and records the thread that
+/// delivers each value.
+private final class SubscriptionHookSubscriber<Input>: @unchecked Sendable {
+    var onReceiveSubscription: ((Subscription) -> Void)?
+
+    private let lock = NSLock()
+    private var receivedValues: [Input] = []
+    private var receivedOnOtherThread = false
+    private var subscribingThread: pthread_t?
+    private var subscription: Subscription?
+
+    // MARK: Internal Instance Interface
+
+    /// Whether every value was delivered on the thread that delivered the subscription.
+    var receivedEveryValueOnSubscribingThread: Bool {
+        lock.withLock {
+            !receivedOnOtherThread
+        }
+    }
+
+    var values: [Input] {
+        lock.withLock {
+            receivedValues
+        }
+    }
+
+    func cancel() {
+        let subscription = lock.withLock {
+            self.subscription
+        }
+
+        subscription?.cancel()
+    }
+}
+
+// MARK: - Subscriber Extension
+
+extension SubscriptionHookSubscriber: Subscriber {
+    typealias Failure = Never
+
+    func receive(_ input: Input) -> Subscribers.Demand {
+        lock.withLock {
+            receivedValues.append(input)
+
+            if let subscribingThread, pthread_equal(subscribingThread, pthread_self()) == 0 {
+                receivedOnOtherThread = true
+            }
+        }
+
+        return .none
+    }
+
+    func receive(completion: Subscribers.Completion<Never>) {
+    }
+
+    func receive(subscription: Subscription) {
+        // The hook runs once and is released afterward, so captures of this subscriber do not keep it alive.
+        let onReceiveSubscription = lock.withLock {
+            subscribingThread = pthread_self()
+            self.subscription = subscription
+
+            defer {
+                self.onReceiveSubscription = nil
+            }
+
+            return self.onReceiveSubscription
+        }
+
+        onReceiveSubscription?(subscription)
     }
 }

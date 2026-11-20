@@ -1,0 +1,328 @@
+//
+//  PersistentKeyMigrationReport.swift
+//  PersistentKeyValueKit
+//
+//  Created by Kyle Hughes on 9/15/26.
+//
+
+import Foundation
+
+/// The result of a key migration operation, containing per-item outcomes in input order and the completion-tracking
+/// status.
+///
+/// ``completionError`` is non-`nil` exactly when ``completion`` is ``Completion/failed``. ``outcomes`` is empty when
+/// ``completion`` is ``Completion/alreadyRecorded``, contains a failed outcome when it is
+/// ``Completion/notRecorded``, and contains no failed outcome when it is ``Completion/recorded`` or
+/// ``Completion/failed``. The library produces reports from `copy` and `move`; the public initializers exist so
+/// clients can build fixtures for their own tests, and they enforce the same invariants.
+public struct PersistentKeyMigrationReport: Sendable {
+    /// The result of completion tracking for the migration batch.
+    public let completion: Completion
+
+    /// The error that caused completion tracking to fail, or `nil` unless ``completion`` is ``Completion/failed``.
+    public let completionError: (any Error)?
+
+    /// The per-item migration outcomes in the order the items were supplied, or an empty array when the migration was
+    /// skipped because its completion marker was already recorded.
+    public let outcomes: [Outcome]
+
+    // MARK: Public Initialization
+
+    /// Creates a migration report with the given outcomes and a completion status other than ``Completion/failed``.
+    ///
+    /// - Precondition: `completion` is not ``Completion/failed``. Use ``init(outcomes:completionError:)`` for a report
+    ///   whose completion tracking failed.
+    /// - Precondition: `outcomes` is empty when `completion` is ``Completion/alreadyRecorded``, because a migration
+    ///   whose marker was already recorded is skipped.
+    /// - Precondition: `outcomes` contains a failed outcome when `completion` is ``Completion/notRecorded`` and
+    ///   contains none when `completion` is ``Completion/recorded``, because tracking attempts to record the marker
+    ///   only after every item resolves without failure.
+    /// - Parameter outcomes: The per-item outcomes in input order.
+    /// - Parameter completion: The completion-tracking result for the batch.
+    public init(outcomes: [Outcome], completion: Completion) {
+        let hasFailedOutcome = Self.containsFailure(outcomes)
+        switch completion {
+        case .alreadyRecorded where !outcomes.isEmpty:
+            preconditionFailure("A report whose completion was already recorded cannot have outcomes.")
+        case .failed:
+            preconditionFailure("Use init(outcomes:completionError:) to create a report whose completion failed.")
+        case .notRecorded where !hasFailedOutcome:
+            preconditionFailure("A report whose completion was not recorded must have a failed outcome.")
+        case .recorded where hasFailedOutcome:
+            preconditionFailure("A report whose completion was recorded cannot have a failed outcome.")
+        case .alreadyRecorded, .notRecorded, .recorded, .untracked:
+            break
+        }
+
+        self.outcomes = outcomes
+        self.completion = completion
+        completionError = nil
+    }
+
+    /// Creates a migration report whose completion tracking failed with `completionError`.
+    ///
+    /// The report's ``completion`` is ``Completion/failed``.
+    ///
+    /// - Precondition: `outcomes` contains no failed outcome, because the marker is written only after every item
+    ///   resolves without failure.
+    /// - Parameter outcomes: The per-item outcomes in input order.
+    /// - Parameter completionError: The error that caused writing or verifying the completion marker to fail.
+    public init(outcomes: [Outcome], completionError: any Error) {
+        if Self.containsFailure(outcomes) {
+            preconditionFailure("A report whose completion failed cannot have a failed outcome.")
+        }
+
+        self.outcomes = outcomes
+        self.completionError = completionError
+        completion = .failed
+    }
+
+    // MARK: Public Instance Interface
+
+    /// Whether any outcome failed or completion tracking failed.
+    public var hasFailures: Bool {
+        completion == .failed || Self.containsFailure(outcomes)
+    }
+
+    /// Whether every item resolved without failure and any requested completion marker was recorded or already
+    /// recorded.
+    ///
+    /// This is `false` when ``hasFailures`` is `true` or ``completion`` is ``Completion/notRecorded``.
+    public var isComplete: Bool {
+        guard !hasFailures else {
+            return false
+        }
+
+        return completion != .notRecorded
+    }
+
+    /// Returns the outcome for the item whose source key has the same identifier as `key`.
+    ///
+    /// For an item that maps one key to another, pass the source key. Identifiers match by their UTF-16 code units, as
+    /// Foundation stores compare keys, so composed and decomposed spellings of the same text match different outcomes.
+    /// When key identifiers remain stable, a report returned by `copy` or `move` has at most one matching outcome,
+    /// because a batch cannot contain duplicate source key identifiers. For a manually constructed report, the lookup
+    /// returns the first literal match.
+    ///
+    /// - Parameter key: The source key of the item.
+    /// - Returns: The matching outcome, or `nil` if the batch did not contain `key` or the migration was skipped
+    ///   because its completion marker was already recorded.
+    public func outcome<Key>(for key: Key) -> Outcome? where Key: PersistentKeyProtocol {
+        let id = key.id
+
+        return outcomes.first {
+            LiteralKeyID.match($0.sourceKeyID, id)
+        }
+    }
+
+    /// Throws ``PersistentKeyMigrationIncompleteError`` containing this report when ``isComplete`` is `false`.
+    ///
+    /// Use this after a migration to treat any failed item, failed completion tracking, or unrecorded completion
+    /// marker as an error.
+    ///
+    /// - Throws: ``PersistentKeyMigrationIncompleteError`` if ``isComplete`` is `false`.
+    public func throwIfIncomplete() throws {
+        guard isComplete else {
+            throw PersistentKeyMigrationIncompleteError(report: self)
+        }
+    }
+
+    // MARK: Private Static Interface
+
+    private static func containsFailure(_ outcomes: [Outcome]) -> Bool {
+        outcomes.contains {
+            $0.error != nil
+        }
+    }
+}
+
+// MARK: - Completion Extension
+
+extension PersistentKeyMigrationReport {
+    /// The result of optional completion tracking for a migration batch.
+    public enum Completion: Sendable, Hashable {
+        /// The completion marker was already `true` in the recording store; the migration was skipped and produced no
+        /// outcomes.
+        case alreadyRecorded
+
+        /// Writing or verifying the completion marker failed after every item resolved without failure. The error is
+        /// available in ``PersistentKeyMigrationReport/completionError``, and the outcomes remain available in
+        /// ``PersistentKeyMigrationReport/outcomes``.
+        case failed
+
+        /// The completion marker was not written because at least one item in the batch failed.
+        case notRecorded
+
+        /// The completion marker was written and verified after every item in the batch resolved without failure.
+        case recorded
+
+        /// No completion tracking was requested (``PersistentKeyMigrationTracking/untracked``).
+        case untracked
+    }
+}
+
+// MARK: - FailureStage Extension
+
+extension PersistentKeyMigrationReport {
+    /// The stage at which a per-item migration operation failed.
+    public enum FailureStage: Sendable, Hashable {
+        /// Reading the initial persisted snapshot from the source or destination store failed.
+        case snapshot
+
+        /// Reading a typed value from the source snapshot failed. Foundation sources use the key's representation.
+        /// In-memory sources check the stored Swift type.
+        case decode
+
+        /// The item's transform threw. The migration wrote to neither store for this item, and earlier items retain
+        /// their results.
+        case transform
+
+        /// Encoding or validating the value with the destination key's representation failed before mutating the
+        /// destination. This includes an encoded object that is not a property list, such as an array that contains
+        /// itself, or that the destination store cannot keep exactly, such as an `NSDecimalNumber` that a
+        /// `UserDefaults` or `NSUbiquitousKeyValueStore` store would keep as a `Double`
+        /// (``PersistentKeyValueConversionError/encodingFailed``). An integer's width is not part of the value these
+        /// stores keep, so an encoded `Int32` does not fail. The writable domain can retain the integer's original
+        /// width in the writing process. Ordinary reads use the effective defaults domain, and a later process or
+        /// launch can read a widened integer. It also includes a
+        /// value that is not `nil` at an actual `Optional` layer but whose top-level encoding for the destination key is
+        /// `nil`, because writing it would remove the destination entry; the item writes neither entry and the source
+        /// value stays in place.
+        ///
+        /// For an `NSUbiquitousKeyValueStore` destination it also includes a value whose binary property list exceeds
+        /// 1 MiB (``PersistentKeyValueConversionError/invalidStorageValue``). That store also limits its total size to
+        /// 1 MB and its key count to 1,024, including a completion marker recorded there.
+        ///
+        /// Preparation checks that the encoded object decodes with the destination key's representation and that
+        /// property-list serialization preserves it, comparing integers by value across widths, so a decoder of
+        /// persisted values must accept a widened integer. It discards the decoded value without comparing it with the
+        /// original, so a representation that loses information, such as one that stores a date as an ISO 8601 string
+        /// with whole seconds, migrates the lossy value. `NaN` values of the same width compare equal regardless of
+        /// payload or sign, so a migration can report success for a copy whose `NaN` payload differs.
+        case prepare
+
+        /// Writing to or verifying the destination store failed. A move had not started removing the source value.
+        ///
+        /// Under a policy that keeps the existing destination value, this includes finding that the value changed, in
+        /// which case the migration leaves the source value in place. A destination that appeared, disappeared, or
+        /// differs from its snapshot when checked fails with ``PersistentKeyMigrationError/destinationChanged``, and a
+        /// committed value that fails verification with ``PersistentKeyMigrationError/writeVerificationFailed``. The
+        /// check and the native write are separate calls, so an uncoordinated Foundation writer can change the
+        /// destination between them and have its value overwritten without detection.
+        case write
+
+        /// Removing the value from the source store or verifying its removal failed during a move, or the destination
+        /// no longer held the expected value after the source was removed.
+        case cleanup
+    }
+}
+
+// MARK: - Outcome Extension
+
+extension PersistentKeyMigrationReport {
+    /// The migration result for a single item in a batch.
+    ///
+    /// ``error`` is non-`nil` exactly when ``status`` is ``Status/failed(_:)``.
+    public struct Outcome: Sendable {
+        /// The identifier of the destination key. Equals ``sourceKeyID`` unless the item maps one key to another.
+        public let destinationKeyID: String
+
+        /// The error that caused the item to fail, or `nil` unless ``status`` is ``Status/failed(_:)``.
+        public let error: (any Error)?
+
+        /// The identifier of the source key.
+        public let sourceKeyID: String
+
+        /// The resolution or failure status for the item.
+        public let status: Status
+
+        // MARK: Public Initialization
+
+        /// Creates an outcome with a status other than ``Status/failed(_:)``.
+        ///
+        /// - Precondition: `status` is not ``Status/failed(_:)``. Use
+        ///   ``init(sourceKeyID:destinationKeyID:failedAt:error:)`` for a failed outcome.
+        /// - Parameter sourceKeyID: The identifier of the source key.
+        /// - Parameter destinationKeyID: The identifier of the destination key, or `nil` to use `sourceKeyID`.
+        /// - Parameter status: The migration status for the item.
+        public init(sourceKeyID: String, destinationKeyID: String? = nil, status: Status) {
+            if case .failed = status {
+                preconditionFailure(
+                    "Use init(sourceKeyID:destinationKeyID:failedAt:error:) to create a failed outcome."
+                )
+            }
+
+            self.sourceKeyID = sourceKeyID
+            self.destinationKeyID = destinationKeyID ?? sourceKeyID
+            self.status = status
+            error = nil
+        }
+
+        /// Creates an outcome for an item that failed at `stage` with `error`.
+        ///
+        /// The outcome's ``status`` is ``Status/failed(_:)`` with `stage`.
+        ///
+        /// - Parameter sourceKeyID: The identifier of the source key.
+        /// - Parameter destinationKeyID: The identifier of the destination key, or `nil` to use `sourceKeyID`.
+        /// - Parameter stage: The stage at which the item failed.
+        /// - Parameter error: The error that caused the failure.
+        public init(
+            sourceKeyID: String,
+            destinationKeyID: String? = nil,
+            failedAt stage: FailureStage,
+            error: any Error
+        ) {
+            self.sourceKeyID = sourceKeyID
+            self.destinationKeyID = destinationKeyID ?? sourceKeyID
+            self.error = error
+            status = .failed(stage)
+        }
+    }
+}
+
+// MARK: - Status Extension
+
+extension PersistentKeyMigrationReport {
+    /// The resolution or failure status for a single migrated item.
+    public enum Status: Sendable, Hashable {
+        /// The destination operation succeeded and the source value was left in place. For an optional value encoded as
+        /// `nil`, the operation removes the destination entry instead of writing one.
+        case copied
+
+        /// The existing destination value was kept and the source value was removed under
+        /// ``PersistentKeyMoveConflictPolicy/keepDestinationAndRemoveSource``. The item's transform did not run.
+        case discardedSource
+
+        /// The item failed at the given stage. The error is available in ``Outcome/error``. If failure occurred at
+        /// ``FailureStage/cleanup`` after a move wrote the destination, the move does not roll back its destination
+        /// write. A cleanup failure with ``PersistentKeyMigrationError/sourceChanged`` means the source no longer
+        /// matched its initial snapshot before removal, so the move did not remove it. A cleanup failure with
+        /// ``PersistentKeyMigrationError/destinationChanged`` means the move removed the source value and the
+        /// destination then no longer matched its expected snapshot. A cleanup failure with
+        /// ``PersistentKeyMigrationError/removalVerificationFailed`` means the source key still held a value after the
+        /// move attempted to remove it, which does not establish whether the value was removed and then restored. In
+        /// each case, another writer or observer may have modified or removed the value in either store. Verification
+        /// detects only the changes it can observe, so coordinate writers before migrating, including code that writes
+        /// to a migrating store as a side effect of reading, encoding, or deallocating a value.
+        case failed(FailureStage)
+
+        /// The existing destination value was preserved under ``PersistentKeyCopyConflictPolicy/keepDestination`` or
+        /// ``PersistentKeyMoveConflictPolicy/keepBoth``, and the source value was left in place. The destination is
+        /// verified without decoding either value.
+        case keptDestination
+
+        /// The item did not participate because ``PersistentKeyProtocol/isMigrationEnabled`` was `false` for its
+        /// source or destination key (for example, a ``PersistentDebugKey`` in a Release build).
+        case keyDisabled
+
+        /// The value was written to the destination key and removed from the source key.
+        ///
+        /// When the conflict policy selects a write to a `UserDefaults` or `NSUbiquitousKeyValueStore` destination, the
+        /// value is `nil` at an actual `Optional` layer, and the destination key encodes it as `nil`, the destination
+        /// entry is removed instead of written, so both entries are absent afterward.
+        case moved
+
+        /// No persisted value existed for the source key in the source store.
+        case sourceAbsent
+    }
+}

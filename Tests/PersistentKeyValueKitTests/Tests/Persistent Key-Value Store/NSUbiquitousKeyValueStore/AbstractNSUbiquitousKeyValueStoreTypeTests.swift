@@ -9,7 +9,6 @@ import Foundation
 import PersistentKeyValueKit
 import XCTest
 
-@available(watchOS 9.0, *)
 public class AbstractNSUbiquitousKeyValueStoreTypeTests<Target>:
     AbstractPersistentKeyValueStoreTypeTests<Target, NSUbiquitousKeyValueStore>
 where

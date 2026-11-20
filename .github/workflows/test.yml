@@ -16,8 +16,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
     name: Get Environment Details (Xcode ${{ matrix.xcode }})
     runs-on: ${{ matrix.os }}
     steps:
@@ -37,28 +37,28 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: iOS
-            destination: "name=iPhone 17 Pro"
+            destination: "name=iPhone 18 Pro,OS=27.2"
             sdk: iphonesimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: tvOS
-            destination: "name=Apple TV 4K (3rd generation)"
+            destination: "name=Apple TV 4K (4th generation),OS=27.2"
             sdk: appletvsimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: visionOS
-            destination: "name=Apple Vision Pro"
+            destination: "name=Apple Vision Pro,OS=27.2"
             sdk: xrsimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: watchOS
-            destination: "name=Apple Watch Ultra 3 (49mm)"
+            destination: "name=Apple Watch Ultra 4 (49mm),OS=27.2"
             sdk: watchsimulator
-          - os: macos-26
-            xcode: '26.4'
+          - os: xcode-27
+            xcode: '27.2'
             platform: macOS
     name: Test ${{ matrix.platform }} (Xcode ${{ matrix.xcode }})
     runs-on: ${{ matrix.os }}
@@ -73,8 +73,30 @@ jobs:
         if: matrix.platform != 'macOS'
         run: |
           set -o pipefail
-          xcodebuild clean test -scheme PersistentKeyValueKit -sdk ${{ matrix.sdk }} -destination "${{ matrix.destination }}" -configuration Debug -enableCodeCoverage YES | xcpretty -c
+          # These test bundles have no App Intents metadata to extract.
+          xcodebuild clean test -scheme PersistentKeyValueKit -sdk ${{ matrix.sdk }} -destination "${{ matrix.destination }}" -configuration Debug -enableCodeCoverage YES LM_SKIP_METADATA_EXTRACTION=YES | xcpretty -c
+
+      - name: Check public API diagnostics
+        if: matrix.platform == 'macOS'
+        run: bash Scripts/check-public-api.sh
+
+      - name: Check documentation samples
+        if: matrix.platform == 'macOS'
+        run: ruby Scripts/check-documentation-samples.rb
+
+      - name: Check documentation build
+        if: matrix.platform == 'macOS'
+        run: bash Scripts/check-documentation-build.sh
 
       - name: Run tests (Swift)
         if: matrix.platform == 'macOS'
-        run: swift test
+        run: |
+          swift test --enable-code-coverage
+          swift test -c release --enable-code-coverage
+
+      - name: Check code coverage
+        if: matrix.platform == 'macOS'
+        run: |
+          debug_json="$(swift build --show-bin-path)/codecov/PersistentKeyValueKit.json"
+          release_json="$(swift build -c release --show-bin-path)/codecov/PersistentKeyValueKit.json"
+          ruby Scripts/check-swift-coverage.rb "$debug_json" "$release_json"

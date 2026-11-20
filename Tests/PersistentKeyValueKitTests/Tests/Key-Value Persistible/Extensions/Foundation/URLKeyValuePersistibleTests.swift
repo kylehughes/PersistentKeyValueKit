@@ -9,7 +9,7 @@ import Foundation
 import PersistentKeyValueKit
 import XCTest
 
-final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, String, URL, URL> {
+final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, String, String, URL> {
     // MARK: AbstractKeyValuePersistibleTests Implementation
     
     override public var expectations: [Expectation] {
@@ -17,7 +17,7 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
             Expectation(
                 target: $0,
                 propertyListRepresentation: \.absoluteString,
-                ubiquitousStoreRepresentation: \.self,
+                ubiquitousStoreRepresentation: \.absoluteString,
                 userDefaultsRepresentation: \.self
             )
         }
@@ -29,5 +29,49 @@ final class URLKeyValuePersistibleTests: AbstractKeyValuePersistibleTests<URL, S
         [
             URL(string: "https://kylehugh.es")!
         ]
+    }
+
+    @MainActor
+    func test_relativeReference_roundTrips() throws {
+        let representation = URL.persistentKeyValueRepresentation
+        let value = try XCTUnwrap(URL(string: "relative/path?query=1"))
+
+        for format in [PersistentKeyValueStorageFormat.propertyList, .ubiquitousKeyValueStore] {
+            let object = try XCTUnwrap(try representation.encode(value, format: format))
+
+            XCTAssertEqual(object as? String, "relative/path?query=1")
+            XCTAssertEqual(try representation.decode(storageObject: object, format: format), value)
+        }
+
+        let store = MockUbiquitousKeyValueStore()
+        let key = PersistentKey("url", defaultValue: try XCTUnwrap(URL(string: "https://kylehugh.es")))
+        let arrayKey = PersistentKey("urls", defaultValue: [URL]())
+
+        store.set(key, to: value)
+        store.set(arrayKey, to: [value])
+
+        XCTAssertEqual(store.get(key), value)
+        XCTAssertEqual(store.get(arrayKey), [value])
+    }
+
+    @MainActor
+    func test_ubiquitousStore_readsLegacyURLObject() {
+        let store = MockUbiquitousKeyValueStore()
+        let value = URL(string: "https://kylehugh.es/legacy")!
+        store.set(value, forKey: "url")
+
+        XCTAssertEqual(URL.get("url", from: store), value)
+    }
+
+    @MainActor
+    func test_ubiquitousStoreSet_storesAbsoluteString() {
+        let store = MockUbiquitousKeyValueStore()
+        let webURL = URL(string: "https://kylehugh.es/web")!
+        URL.set("web", to: webURL, in: store)
+        XCTAssertEqual(store.object(forKey: "web") as? String, webURL.absoluteString)
+
+        let fileURL = URL(fileURLWithPath: "/tmp/file")
+        URL.set("file", to: fileURL, in: store)
+        XCTAssertEqual(store.object(forKey: "file") as? String, fileURL.absoluteString)
     }
 }

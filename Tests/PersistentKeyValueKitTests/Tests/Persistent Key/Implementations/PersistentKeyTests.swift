@@ -30,9 +30,7 @@ final class PersistentKeyTests: AbstractPersistentKeyTests<PersistentKey<String>
     // MARK: Initialization Tests
 
     @MainActor
-    func test_init_otherRepresentation() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
+    func test_init_otherRepresentation() {
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -50,8 +48,6 @@ final class PersistentKeyTests: AbstractPersistentKeyTests<PersistentKey<String>
     
     @MainActor
     func test_init_otherRepresentation_optional() throws {
-        try skipIfNotiOS16OrLaterOrEquivalent()
-        
         let representation = ReferenceProxyPersistentKeyValueRepresentation<String, String>(
             serializing: \.self,
             deserializing: \.self
@@ -79,6 +75,16 @@ final class PersistentKeyTests: AbstractPersistentKeyTests<PersistentKey<String>
         
         XCTAssertEqual(target, other)
     }
+
+    func test_persistentKey_equatable_comparesIdentifiersLiterally() {
+        let composed = PersistentKey("caf\u{E9}", defaultValue: 0)
+        let decomposed = PersistentKey("cafe\u{301}", defaultValue: 0)
+
+        XCTAssertEqual(composed.id, decomposed.id)
+        XCTAssertNotEqual(composed, decomposed)
+        XCTAssertEqual(composed, PersistentKey("caf\u{E9}", defaultValue: 0))
+        XCTAssertNotEqual(composed, PersistentKey("caf\u{E9}", defaultValue: 1))
+    }
     
     // MARK: Hashable Tests
     
@@ -87,5 +93,13 @@ final class PersistentKeyTests: AbstractPersistentKeyTests<PersistentKey<String>
         let other = target
         
         XCTAssertEqual(target.hashValue, other.hashValue)
+    }
+
+    func test_persistentKey_hashable_keepsLiterallyDifferentIdentifiersSeparate() {
+        let composed = PersistentKey("caf\u{E9}", defaultValue: 0)
+        let decomposed = PersistentKey("cafe\u{301}", defaultValue: 0)
+
+        XCTAssertEqual(Set([composed, decomposed, PersistentKey("caf\u{E9}", defaultValue: 0)]).count, 2)
+        XCTAssertEqual(composed.hashValue, PersistentKey("caf\u{E9}", defaultValue: 0).hashValue)
     }
 }

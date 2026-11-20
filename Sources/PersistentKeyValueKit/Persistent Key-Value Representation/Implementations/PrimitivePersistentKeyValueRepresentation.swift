@@ -7,12 +7,10 @@
 
 import Foundation
 
-/// A representation of a value in a ``PersistentKeyValueStore`` that is itself a persistible type and defines
-/// explicitly how to interface with `UserDefaults` and `NSUbiquitousKeyValueStore`.
+/// A representation that delegates conversion and store access to a ``PrimitiveKeyValuePersistible`` type.
 ///
-/// ``Value`` is required to conform to ``PrimitiveKeyValuePersistible``. All applicable standard library & Foundation
-/// types already conform. It is unlikely that you need to use this representation, unless you have built an
-/// especially-custom representation for your custom type and made it conform to ``PrimitiveKeyValuePersistible``.
+/// Built-in primitive types (`Bool`, `Int`, `Float`, `Double`, `String`, `Data`, `URL`, `Array`, and `Dictionary`) use
+/// this representation as their default ``KeyValuePersistible/persistentKeyValueRepresentation``.
 ///
 /// - SeeAlso: ``PrimitiveKeyValuePersistible``
 public struct PrimitivePersistentKeyValueRepresentation<Value>
@@ -29,6 +27,18 @@ where
 // MARK: - PersistentKeyValueRepresentation Extension
 
 extension PrimitivePersistentKeyValueRepresentation: PersistentKeyValueRepresentation {
+    // MARK: Checked Conversion
+
+    @inlinable
+    public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
+        try Value.decode(storageObject: storageObject, format: format)
+    }
+
+    @inlinable
+    public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        try value.encode(format: format)
+    }
+
     // MARK: Interfacing with Property List Array
     
     @inlinable
@@ -67,15 +77,74 @@ extension PrimitivePersistentKeyValueRepresentation: PersistentKeyValueRepresent
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(_ ubiquitousStoreKey: String, from ubiquitousStore: NSUbiquitousKeyValueStore) -> Value? {
         Value.get(ubiquitousStoreKey, from: ubiquitousStore)
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         Value.set(ubiquitousStoreKey, to: value, in: ubiquitousStore)
     }
 }
+
+// MARK: - BuiltInContainerConversion Extension
+
+extension PrimitivePersistentKeyValueRepresentation: BuiltInContainerConversion where Value: BuiltInContainerPrimitive {
+    // MARK: Internal Instance Interface
+
+    func builtInPropertyListArray(encoding values: [Value]) throws -> [Any] {
+        try values.compactMap {
+            try $0.encode(format: .propertyList)
+        }
+    }
+
+    func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
+        try values.compactMapValues {
+            try $0.encode(format: .propertyList)
+        }
+    }
+
+    func builtInValues<Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element
+    ) throws -> [Element] {
+        try propertyListArray.map {
+            try convert(Value.decode(storageObject: $0, format: .propertyList))
+        }
+    }
+
+    func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
+        try propertyListDictionary.mapValues {
+            try Value.decode(storageObject: $0, format: .propertyList)
+        }
+    }
+}
+
+// MARK: - BuiltInPrimitiveConversion Extension
+
+extension PrimitivePersistentKeyValueRepresentation: BuiltInPrimitiveConversion where Value: BuiltInPrimitive {}
+
+// MARK: - BuiltInScalarConversion Extension
+
+extension PrimitivePersistentKeyValueRepresentation: BuiltInScalarConversion where Value: BuiltInScalarPrimitive {}
+
+// MARK: - Built-In Primitive Definition
+
+/// A primitive type defined by this package, whose container methods write only property lists that a store accepts.
+internal protocol BuiltInPrimitive: PrimitiveKeyValuePersistible {}
+
+// MARK: - Built-In Container Primitive Definition
+
+/// A built-in primitive container, `Array` or `Dictionary`, whose checked conversion as an element decodes and
+/// encodes each element itself instead of using its ordinary container methods.
+///
+/// Built-in scalar primitives conform to ``BuiltInScalarPrimitive`` instead: their container methods cast or convert
+/// each element exactly as their checked conversion does, so checked conversion calls those methods.
+internal protocol BuiltInContainerPrimitive: BuiltInPrimitive {}
+
+// MARK: - Built-In Scalar Primitive Definition
+
+/// A built-in scalar primitive, such as `Int` or `URL`, whose container methods cast or convert each element exactly
+/// as its checked conversion does.
+internal protocol BuiltInScalarPrimitive: BuiltInPrimitive {}

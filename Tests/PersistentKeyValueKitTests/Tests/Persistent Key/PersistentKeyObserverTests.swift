@@ -9,13 +9,21 @@ import PersistentKeyValueKit
 import XCTest
 
 final class PersistentKeyObserverTests: XCTestCase {
-    private let userDefaults: UserDefaults = .standard
+    private var userDefaults: UserDefaults!
+    private var suiteName: String!
     
     // MARK: XCTestCase Implementation
     
+    override func setUpWithError() throws {
+        suiteName = stableSuiteName("PersistentKeyObserverTests", function: name)
+        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+    
     override func tearDown() {
-        userDefaults.dictionaryRepresentation().keys.forEach(userDefaults.removeObject)
+        userDefaults.removePersistentDomain(forName: suiteName)
         userDefaults.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        userDefaults = nil
+        suiteName = nil
     }
 }
 
@@ -34,7 +42,6 @@ extension PersistentKeyObserverTests {
         XCTAssertEqual(observer.value, "defaultValue")
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_init_ubiquitousKeyValueStore() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -103,7 +110,6 @@ extension PersistentKeyObserverTests {
 extension PersistentKeyObserverTests {
     // MARK: Tests
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_store_changeUpdatesValueAndObservation() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -209,7 +215,7 @@ extension PersistentKeyObserverTests {
     }
 
     @MainActor
-    func test_deinitialization_deregistersCurrentRegistrationAfterStoreChangesToSameStore() {
+    func test_deinitialization_deregistersOriginalRegistrationAfterStoreIsSetToSameStore() {
         let store = ObservablePersistentKeyValueStore()
         let key = PersistentKey("key:\(#function)", defaultValue: "defaultValue")
         var observer: PersistentKeyUIObservableObject? = PersistentKeyUIObservableObject(store: store, key: key)
@@ -218,11 +224,11 @@ extension PersistentKeyObserverTests {
 
         observer?.store = store
 
-        XCTAssertEqual(store.registrationCount, 2)
-        XCTAssertEqual(store.deregistrationCount, 1)
+        XCTAssertEqual(store.registrationCount, 1)
+        XCTAssertEqual(store.deregistrationCount, 0)
 
         observer = nil
 
-        XCTAssertEqual(store.deregistrationCount, 2)
+        XCTAssertEqual(store.deregistrationCount, 1)
     }
 }

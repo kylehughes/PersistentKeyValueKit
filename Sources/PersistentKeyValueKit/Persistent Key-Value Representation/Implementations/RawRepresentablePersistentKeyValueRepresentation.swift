@@ -7,10 +7,10 @@
 
 import Foundation
 
-/// A representation of a value in a ``PersistentKeyValueStore`` for types that can be associated as raw values.
+/// A representation of a value in a ``PersistentKeyValueStore`` for `RawRepresentable` types whose `RawValue` conforms
+/// to ``KeyValuePersistible``.
 ///
-/// This is a proxy representation. The ``Value`` type will be persisted as its `RawValue`, which must itself be
-/// persistible.
+/// This is a proxy representation that persists `Value` as its `RawValue`.
 public struct RawRepresentablePersistentKeyValueRepresentation<Value>
 where
     Value: RawRepresentable,
@@ -42,3 +42,7 @@ extension RawRepresentablePersistentKeyValueRepresentation: ProxyPersistentKeyVa
         value.rawValue
     }
 }
+
+// MARK: - BuiltInProxyConversion Extension
+
+extension RawRepresentablePersistentKeyValueRepresentation: BuiltInProxyConversion {}

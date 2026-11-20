@@ -13,14 +13,21 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
     public let from: @Sendable (Proxy) -> Value?
 
     /// The closure used to serialize a value into its proxy.
+    ///
+    /// The returned proxy is handed over to the package. Do not change it, or any object it contains, after returning
+    /// it.
     public let to: @Sendable (Value) -> Proxy?
     
     // MARK: Public Initialization
     
     /// Creates a new representation that proxies a value through another explicit representation.
     ///
-    /// This is useful for composing representations together. The value of ``Proxy`` is inferred from the
+    /// This is useful for composing representations together. The value of `Proxy` is inferred from the
     /// proxied representation, not vice versa.
+    ///
+    /// This initializer composes the supplied closures with `other.to` and `other.from`. The resulting representation
+    /// uses `Proxy.persistentKeyValueRepresentation` for storage and checked conversion. It bypasses store, container,
+    /// and conversion overrides on `other`.
     ///
     /// - Parameter other: The other representation to proxy through.
     /// - Parameter to: The closure used to serialize a value into the other representation's value.
@@ -29,7 +36,11 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         other: Other,
         to: @Sendable @escaping (Value) -> Other.Value,
         from: @Sendable @escaping (Other.Value) -> Value
-    ) where Other: ProxyPersistentKeyValueRepresentationProtocol & SendableMetatype, Other.Proxy == Proxy, Proxy: SendableMetatype {
+    ) where
+        Other: ProxyPersistentKeyValueRepresentationProtocol & SendableMetatype,
+        Other.Proxy == Proxy,
+        Proxy: SendableMetatype
+    {
         self.to = { @Sendable in
             other.to(to($0))
         }
@@ -43,7 +54,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         }
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// - Parameter to: The closure used to serialize a value into its proxy.
     /// - Parameter from: The closure used to deserialize a value from its proxy.
@@ -56,7 +67,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         self.from = from
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// This specialized initializer is useful for callers using `KeyPath` shorthand with `Optional` values.
     ///
@@ -71,7 +82,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         self.from = from
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// This specialized initializer is useful for callers using `KeyPath` shorthand with `Optional` values.
     ///
@@ -86,7 +97,7 @@ public struct ProxyPersistentKeyValueRepresentation<Value, Proxy> where Proxy: K
         self.from = from
     }
     
-    /// Creates a new representation that proxies a value though another persistible type.
+    /// Creates a new representation that proxies a value through another persistible type.
     ///
     /// This specialized initializer is useful for callers using `KeyPath` shorthand with `Optional` values.
     ///
@@ -117,3 +128,7 @@ extension ProxyPersistentKeyValueRepresentation: ProxyPersistentKeyValueRepresen
         to(value)
     }
 }
+
+// MARK: - BuiltInProxyConversion Extension
+
+extension ProxyPersistentKeyValueRepresentation: BuiltInProxyConversion {}

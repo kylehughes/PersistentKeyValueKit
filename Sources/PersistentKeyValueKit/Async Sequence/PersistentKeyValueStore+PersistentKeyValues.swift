@@ -40,8 +40,9 @@ extension PersistentKeyValueStore {
 
     /// Returns an `AsyncSequence` that produces values for the given key as changes occur.
     ///
-    /// By default, the sequence emits the current value immediately upon iteration, followed by subsequent changes. Slow
-    /// consumers receive the latest pending change rather than every intermediate value.
+    /// Each iterator starts observing when it is created. By default, it reads the current value then and emits it
+    /// first, followed by subsequent changes. Slow consumers receive the latest pending change rather than every
+    /// intermediate value.
     ///
     /// e.g.
     ///
@@ -52,7 +53,7 @@ extension PersistentKeyValueStore {
     /// ```
     ///
     /// - Parameter key: The key to observe.
-    /// - Parameter emitsInitialValue: Whether to emit the current value immediately. Defaults to `true`.
+    /// - Parameter emitsInitialValue: Whether to emit the value read when the iterator is created. Defaults to `true`.
     /// - Parameter bufferingPolicy: The buffering policy to use for pending changes. Defaults to `.bufferingNewest(1)`.
     /// - Returns: A ``PersistentKeyValues`` sequence for the key.
     @inlinable

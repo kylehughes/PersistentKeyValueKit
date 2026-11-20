@@ -7,14 +7,16 @@
 
 import Foundation
 
-/// A persistent key-value representation that can represent the `Optional` variant of another representation's
-/// ``Value``. All non-optional operations are deferred to the base representation.
-/// 
-/// - Important: Consumers of this library should not have to interact with this type directly in happy-path scenarios.
+/// A representation that wraps another ``PersistentKeyValueRepresentation`` to persist `Base.Value?`.
+///
+/// Non-`nil` values delegate to ``base``. Encoding `nil` returns `nil`, removing the key from a store or omitting the
+/// element from a property-list collection. `Optional<Wrapped>` and the optional `PersistentKey` and
+/// `PersistentDebugKey` initializers construct this representation automatically.
 public struct OptionalPersistentKeyValueRepresentation<Base>
 where
     Base: PersistentKeyValueRepresentation
 {
+    /// The underlying representation used for non-`nil` values.
     public let base: Base
     
     // MARK: Public Initialization
@@ -34,6 +36,22 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     // MARK: Public Typealiases
     
     public typealias Value = Optional<Base.Value>
+
+    /// Decodes a stored object using the wrapped `base` representation.
+    @inlinable
+    public func decode(storageObject: Any, format: PersistentKeyValueStorageFormat) throws -> Value {
+        try base.decode(storageObject: storageObject, format: format)
+    }
+
+    /// Encodes a non-`nil` value using the wrapped `base` representation, or returns `nil` when `value` is `nil` so
+    /// the key is removed from the store (or omitted from a property-list collection).
+    @inlinable
+    public func encode(_ value: Value, format: PersistentKeyValueStorageFormat) throws -> Any? {
+        guard let value else {
+            return nil
+        }
+        return try base.encode(value, format: format)
+    }
     
     // MARK: Interfacing with Property List Array
     
@@ -47,19 +65,7 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     }
     
     public func set(_ values: [Value], to propertyListArray: inout [Any]) {
-        var nonOptionalValues: [Base.Value] = []
-        
-        nonOptionalValues.reserveCapacity(values.count)
-        
-        for value in values {
-            guard let value else {
-                continue
-            }
-            
-            nonOptionalValues.append(value)
-        }
-        
-        base.set(nonOptionalValues, to: &propertyListArray)
+        base.set(Self.nonOptionalValues(of: values), to: &propertyListArray)
     }
     
     // MARK: Interfacing with Property List Dictionary
@@ -106,7 +112,6 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     
     // MARK: Interfacing with Ubiquitous Key-Value Store
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func get(
         _ ubiquitousStoreKey: String,
@@ -119,7 +124,6 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
         return value
     }
     
-    @available(watchOS 9.0, *)
     @inlinable
     public func set(_ ubiquitousStoreKey: String, to value: Value, in ubiquitousStore: NSUbiquitousKeyValueStore) {
         guard let value else {
@@ -131,12 +135,123 @@ extension OptionalPersistentKeyValueRepresentation: PersistentKeyValueRepresenta
     }
 }
 
+// MARK: - BuiltInContainerConversion Extension
+
+extension OptionalPersistentKeyValueRepresentation: BuiltInContainerConversion {
+    // MARK: Internal Instance Interface
+
+    func builtInPropertyListArray(encoding values: [Value]) throws -> [Any] {
+        try base.checkedPropertyListArray(encoding: values.compactMap { $0 })
+    }
+
+    func builtInPropertyListDictionary(encoding values: [String: Value]) throws -> [String: Any] {
+        try base.checkedPropertyListDictionary(encoding: values.compactMapValues { $0 })
+    }
+
+    func builtInValues<Element>(
+        decoding propertyListArray: [Any],
+        converting convert: (Value) throws -> Element
+    ) throws -> [Element] {
+        try base.checkedValues(decoding: propertyListArray) {
+            try convert($0)
+        }
+    }
+
+    func builtInDictionary(decoding propertyListDictionary: [String: Any]) throws -> [String: Value] {
+        try base.checkedDictionary(decoding: propertyListDictionary).mapValues(Optional.some)
+    }
+}
+
+// MARK: - BuiltInValueOmission Extension
+
+extension OptionalPersistentKeyValueRepresentation: BuiltInValueOmission {
+    // MARK: Internal Instance Interface
+
+    /// Encodes the non-`nil` values as an ordinary write of `base` does.
+    func builtInOrdinaryPropertyListArray(encoding values: [Value]) -> [Any]? {
+        base.propertyListArray(encoding: Self.nonOptionalValues(of: values))
+    }
+
+    /// Encodes the non-`nil` values as an ordinary write of `base` does.
+    ///
+    /// A `base` that cannot omit values reports a failure by leaving an entry absent, so its entries are written
+    /// directly; an entry that a `base` defined outside this package writes, or changes while writing a later entry,
+    /// also fails unless it is a property list that a store accepts. Otherwise each value is written with
+    /// ``builtInOrdinaryDictionaryEntryWriter()``, which converts it through every layer of `base` before converting
+    /// the next value.
+    func builtInOrdinaryPropertyListDictionary(encoding values: [String: Value]) -> [String: Any]? {
+        guard !(base is any BuiltInValueOmission) else {
+            return propertyListDictionary(encoding: values, with: builtInOrdinaryDictionaryEntryWriter())
+        }
+
+        let validating = !(base is any BuiltInPrimitiveConversion)
+        var objects: [String: Any] = Dictionary(minimumCapacity: values.count)
+
+        for (key, value) in values {
+            guard let value else {
+                continue
+            }
+
+            base.set(key, to: value, in: &objects)
+
+            guard isStorableEntry(at: key, in: &objects, validating: validating) else {
+                return nil
+            }
+        }
+
+        guard !validating || isStorableDictionary(&objects) else {
+            return nil
+        }
+
+        return objects
+    }
+
+    /// Omits a `nil` value, and writes any other value as an ordinary dictionary write of `base` does.
+    func builtInOrdinaryDictionaryEntryWriter() -> OrdinaryDictionaryEntryWriter<Value> {
+        let write = base.ordinaryDictionaryEntryWriter()
+
+        return OrdinaryDictionaryEntryWriter(
+            requiresCompletedDictionaryValidation: write.requiresCompletedDictionaryValidation
+        ) { key, value, objects in
+            guard let value else {
+                return true
+            }
+
+            return write(key, value, &objects)
+        }
+    }
+}
+
+// MARK: - Value Compaction
+
+extension OptionalPersistentKeyValueRepresentation {
+    // MARK: Private Static Interface
+
+    /// Returns the non-`nil` elements of `values`, in order.
+    private static func nonOptionalValues(of values: [Value]) -> [Base.Value] {
+        // Ordinary writes are a hot path, and this loop runs several times faster than an unspecialized `compactMap`.
+        var nonOptionalValues: [Base.Value] = []
+
+        nonOptionalValues.reserveCapacity(values.count)
+
+        for value in values {
+            guard let value else {
+                continue
+            }
+
+            nonOptionalValues.append(value)
+        }
+
+        return nonOptionalValues
+    }
+}
+
 // MARK: - Protocol Conveniences
 
 extension PersistentKeyValueRepresentation {
     // MARK: Public Static Interface
     
-    /// Returns a wrapped representation of the receiver that can represent ``Value?``.
+    /// Returns a wrapped representation of the receiver that can represent `Value?`.
     @inlinable
     public var optionalRepresentation: OptionalPersistentKeyValueRepresentation<Self> {
         OptionalPersistentKeyValueRepresentation(self)

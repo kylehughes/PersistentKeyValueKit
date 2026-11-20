@@ -22,7 +22,8 @@ where
     UbiquitousStoreRepresentation: Equatable,
     UserDefaultsRepresentation: Equatable
 {
-    private let userDefaults = UserDefaults()
+    private var userDefaults: UserDefaults!
+    private var suiteName: String!
     
     // MARK: Public Abstract Interface
     
@@ -46,9 +47,15 @@ where
         return XCTestSuite(name: "Empty Suite for \(Self.self)")
     }
     
+    override public func setUpWithError() throws {
+        (userDefaults, suiteName) = try makeStableUserDefaults("AbstractKeyValuePersistibleTests", function: name)
+    }
+    
     override public func tearDown() {
-        userDefaults.dictionaryRepresentation().keys.forEach(userDefaults.removeObject)
+        userDefaults.removePersistentDomain(forName: suiteName)
         userDefaults.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        userDefaults = nil
+        suiteName = nil
     }
     
     // MARK: Property List Array Tests
@@ -257,7 +264,6 @@ where
     
     // MARK: Ubiquitous Key-Value Store Tests
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKeyValueRepresentation_ubiquitousKeyValueStore_get() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -274,7 +280,6 @@ where
         }
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKeyValueRepresentation_ubiquitousKeyValueStore_get_optional_none() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -284,7 +289,6 @@ where
         XCTAssertEqual(Target?.persistentKeyValueRepresentation.get(key, from: ubiquitousKeyValueStore), nil)
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKeyValueRepresentation_ubiquitousKeyValueStore_get_optional_some() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -301,7 +305,6 @@ where
         }
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKeyValueRepresentation_ubiquitousKeyValueStore_set() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -325,7 +328,6 @@ where
         }
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKeyValueRepresentation_ubiquitousKeyValueStore_set_optional_none() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -341,7 +343,6 @@ where
         }
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKeyValueRepresentation_ubiquitousKeyValueStore_set_optional_some() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()

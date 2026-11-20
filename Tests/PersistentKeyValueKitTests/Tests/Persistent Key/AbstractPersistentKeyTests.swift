@@ -9,7 +9,8 @@ import PersistentKeyValueKit
 import XCTest
 
 public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKeyProtocol, Key.Value: Equatable {
-    public let userDefaults = UserDefaults()
+    public private(set) var userDefaults: UserDefaults!
+    private var suiteName: String!
     
     // MARK: Public Abstract Interface
     
@@ -49,9 +50,16 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         return XCTestSuite(name: "Empty Suite for \(Self.self)")
     }
     
+    override public func setUpWithError() throws {
+        suiteName = stableSuiteName("AbstractPersistentKeyTests", function: name)
+        userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+    
     override public func tearDown() {
-        userDefaults.dictionaryRepresentation().keys.forEach(userDefaults.removeObject)
+        userDefaults.removePersistentDomain(forName: suiteName)
         userDefaults.setVolatileDomain([:], forName: UserDefaults.registrationDomain)
+        userDefaults = nil
+        suiteName = nil
     }
 
     // MARK: Initialization Tests
@@ -63,8 +71,75 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
     }
     
     // MARK: PersistentKeyProtocol Tests
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_get_defaultValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        XCTAssertEqual(target.get(from: inMemoryStore), defaultValue)
+        XCTAssertEqual(inMemoryStore.get(target), defaultValue)
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_get_storedValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(storedValue, forKey: id)
+
+        if supportsStoredValues {
+            XCTAssertEqual(target.get(from: inMemoryStore), storedValue)
+            XCTAssertEqual(inMemoryStore.get(target), storedValue)
+        } else {
+            XCTAssertEqual(target.get(from: inMemoryStore), defaultValue)
+            XCTAssertEqual(inMemoryStore.get(target), defaultValue)
+        }
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_get_storedValueOfOtherType() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(UUID(), forKey: id)
+
+        XCTAssertEqual(target.get(from: inMemoryStore), defaultValue)
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_remove_noValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        target.remove(from: inMemoryStore)
+
+        XCTAssertNil(inMemoryStore.object(forKey: id))
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_remove_storedValue() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(storedValue, forKey: id)
+        inMemoryStore.remove(target)
+
+        if supportsStoredValues {
+            XCTAssertNil(inMemoryStore.object(forKey: id))
+        } else {
+            XCTAssertEqual(inMemoryStore.object(forKey: id) as? Key.Value, storedValue)
+        }
+    }
+
+    @MainActor
+    func test_persistentKey_inMemoryStore_set() {
+        let inMemoryStore = InMemoryPersistentKeyValueStore()
+
+        inMemoryStore.set(target, to: storedValue)
+
+        if supportsStoredValues {
+            XCTAssertEqual(inMemoryStore.object(forKey: id) as? Key.Value, storedValue)
+        } else {
+            XCTAssertNil(inMemoryStore.object(forKey: id))
+        }
+    }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_get_defaultValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -72,7 +147,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         XCTAssertEqual(target.get(from: ubiquitousKeyValueStore), defaultValue)
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_get_storedValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -86,7 +160,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         }
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_remove_noValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -96,7 +169,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         XCTAssertNil(ubiquitousKeyValueStore.dictionaryRepresentation[id])
     }
 
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_remove_storedValue() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -112,7 +184,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
         }
     }
     
-    @available(watchOS 9.0, *)
     @MainActor
     func test_persistentKey_ubiquitousKeyValueStore_set() {
         let ubiquitousKeyValueStore: NSUbiquitousKeyValueStore = MockUbiquitousKeyValueStore()
@@ -169,19 +240,6 @@ public class AbstractPersistentKeyTests<Key>: XCTestCase where Key: PersistentKe
             XCTAssertEqual(userDefaults.dictionaryRepresentation()[id] as? Key.Value, storedValue)
         } else {
             XCTAssertNil(userDefaults.dictionaryRepresentation()[id])
-        }
-    }
-    
-    // MARK: Internal Instance Interface
-    
-    /// Skip the test if the environment is not iOS 16, or later, or equivalent.
-    ///
-    /// There is an issue with the implementation of tryCast across the Objective-C bridge when testing on
-    /// iOS 15 from Xcode 16. Additionally, marking test cases as available <= iOS 16 is not working in the
-    /// same environment.
-    func skipIfNotiOS16OrLaterOrEquivalent() throws {
-        guard #available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *) else {
-            throw XCTSkip(">= iOS 16 is required for this test.")
         }
     }
 }
