@@ -467,8 +467,9 @@ principles:
   those distinctions. Each snapshot is verified according to the rules of the
   store that holds it. Snapshots in
   `UserDefaultsMigrationBackend` and `UbiquitousKeyValueMigrationBackend` capture
-  `PropertyListStorage.exactCopy(_:allowingLegacyURL:)` (preserving each
-  number's `CFNumber` type, including integer width and `NSDecimalNumber`), so
+  `PropertyListStorage.exactCopy(_:)` (preserving each number's `CFNumber`
+  type, including integer width and `NSDecimalNumber`; the iCloud backend
+  keeps a legacy top-level `URL` as is), so
   migration decodes an exact snapshot of the persisted object, which an
   ordinary `get` can differ from (a launch argument can mask it).
   `PropertyListStorage.equal(_:_:distinguishingIntegerWidths:)` checks
@@ -499,7 +500,7 @@ principles:
   and string-keyed dictionaries, rejecting keyed-archive UIDs, `NSNull`, `URL`s,
   non-string keys, and self-containing containers itself without relying on
   `PropertyListSerialization.propertyList(_:isValidFor: .binary)`) before
-  taking a throwing `PropertyListStorage.exactCopy(_:allowingLegacyURL:)`
+  taking a throwing `PropertyListStorage.exactCopy(_:)`
   (throwing `PersistentKeyValueConversionError.encodingFailed` if the object is
   not a storable property list) and validating that immutable Foundation-bridged
   deep copy with `decode(storageObject:format:)`, so a decoder that consumes or
